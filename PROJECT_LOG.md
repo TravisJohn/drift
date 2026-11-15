@@ -74,3 +74,32 @@ wireframe cube); `npm test` passes (19 tests); lint and production build pass.
 
 Next: M1 - drone controller in a grey-box room (input, hover movement,
 sphere collision, follow camera).
+
+---
+
+## 2026-11-15 - M1 complete: drone in a grey-box room
+
+**Milestone M1 done.** 69 tests passing; lint, types and build clean.
+
+- Pure-math modules (no Three.js imports, fully unit-tested):
+  `physics/vec3`, `physics/colliders` (AABB + slab segment test),
+  `physics/sphereCollision` (resolve-and-slide, inside-box pushout),
+  `player/droneController`, `player/followCamera`.
+- Movement feel: velocity chases input exponentially (soft floaty starts and
+  stops), drone faces its travel direction, leans into motion, banks into
+  turns, and bobs gently when idle. All rates live in `config/gameConfig.ts`.
+- Follow camera orbits with mouse (pointer lock), clamps pitch, and pulls in
+  front of occluding walls via segment-vs-AABB (snaps in, eases out).
+- Grey room: floor/ceiling/4 walls/4 crates; meshes and colliders built from
+  the same box specs so they cannot drift apart. Mood lighting first pass.
+- Render interpolation: visuals lerp between fixed steps (prevPosition).
+- Dev-only `window.__drift` handle exposes a read-only snapshot for tooling.
+- Verified in the embedded browser: renders correctly, input drives the
+  drone, damping settles it, no console errors. NOTE: the embedded pane
+  reports visibility:hidden and throttles rAF to ~2fps, so real-time feel
+  cannot be judged there - playtest in a normal browser at localhost:5173.
+- Decision: when the tab is hidden the game effectively pauses (capped
+  catch-up drops time). Acceptable; a real pause menu lands in M7.
+
+Next: M2 - full ship interior in grey boxes from `shipLayout.ts` data
+(5 rooms, corridors, windows), plus content validation tests.

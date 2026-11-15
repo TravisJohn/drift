@@ -15,6 +15,42 @@ export const gameConfig = {
     maxCatchUpSteps: 5,
   },
 
+  /** Drone movement feel. All speeds m/s, rates per second. */
+  drone: {
+    radius: 0.35,
+    maxSpeed: 3.2,
+    /** How quickly velocity approaches the target (exponential rate). */
+    acceleration: 7,
+    /** How quickly velocity bleeds off with no input. */
+    damping: 5,
+    maxVerticalSpeed: 2.2,
+    verticalAcceleration: 6,
+    /** Idle hover bob. */
+    bobFrequency: 1.6,
+    bobAmplitude: 0.04,
+    /** How quickly the drone turns to face its direction of travel. */
+    faceTurnRate: 8,
+    /** Visual lean into motion (radians at full speed) and its smoothing. */
+    leanPitchMax: 0.22,
+    leanRollMax: 0.18,
+    leanSmoothing: 6,
+  },
+
+  /** Third-person follow camera. */
+  camera: {
+    distance: 3.4,
+    minDistance: 0.6,
+    /** The camera looks at a point this far above the drone's center. */
+    eyeHeight: 0.45,
+    lookSensitivity: 0.0023,
+    pitchMin: -0.5,
+    pitchMax: 1.25,
+    /** Gap kept between the camera and an occluding wall. */
+    collisionMargin: 0.25,
+    /** Exponential smoothing rate for camera position. */
+    positionSmoothing: 14,
+  },
+
   /** Debug flags, toggled via Vite env (`VITE_DEBUG=true npm run dev`). */
   debug: {
     enabled: import.meta.env?.VITE_DEBUG === 'true',

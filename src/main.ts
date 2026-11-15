@@ -11,6 +11,11 @@ function bootstrap(): void {
   }
   const game = new Game(container);
   game.start();
+
+  if (import.meta.env.DEV) {
+    // Dev-only handle so tooling can inspect live state from the console.
+    (window as unknown as Record<string, unknown>).__drift = game;
+  }
 }
 
 bootstrap();
