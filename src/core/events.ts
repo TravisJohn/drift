@@ -23,6 +23,12 @@ export interface GameEvents {
   'travel:departed': { destinationId: string };
   /** The ship has arrived at its destination. */
   'travel:arrived': { destinationId: string };
+  /** Any ship phase transition (docked/departing/cruising/arriving). */
+  'ship:phaseChanged': { from: string; to: string; destinationId: string | null };
+
+  // --- Player mode (M3) ---
+  /** The player switched mode (roaming/atHelm/atTerminal/cinematic). */
+  'player:modeChanged': { from: string; to: string };
 
   // --- Interaction (M3+) ---
   /** The drone moved close enough to an interactable to focus it. */

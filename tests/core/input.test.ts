@@ -78,6 +78,43 @@ describe('InputManager movement axes', () => {
   });
 });
 
+describe('InputManager consumePress (edge detection)', () => {
+  it('reports a press exactly once', () => {
+    const input = makeAttached();
+    window.dispatchEvent(key('keydown', 'KeyE'));
+    expect(input.consumePress('KeyE')).toBe(true);
+    expect(input.consumePress('KeyE')).toBe(false); // consumed
+    input.detach();
+  });
+
+  it('a held key (auto-repeat) does not count as new presses', () => {
+    const input = makeAttached();
+    window.dispatchEvent(key('keydown', 'KeyE'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', repeat: true }));
+    expect(input.consumePress('KeyE')).toBe(true);
+    expect(input.consumePress('KeyE')).toBe(false);
+    input.detach();
+  });
+
+  it('a new physical press after release registers again', () => {
+    const input = makeAttached();
+    window.dispatchEvent(key('keydown', 'KeyE'));
+    input.consumePress('KeyE');
+    window.dispatchEvent(key('keyup', 'KeyE'));
+    window.dispatchEvent(key('keydown', 'KeyE'));
+    expect(input.consumePress('KeyE')).toBe(true);
+    input.detach();
+  });
+
+  it('blur clears pending presses', () => {
+    const input = makeAttached();
+    window.dispatchEvent(key('keydown', 'KeyE'));
+    window.dispatchEvent(new Event('blur'));
+    expect(input.consumePress('KeyE')).toBe(false);
+    input.detach();
+  });
+});
+
 describe('InputManager mouse look', () => {
   it('accumulates deltas across events and resets on consume', () => {
     const input = makeAttached();

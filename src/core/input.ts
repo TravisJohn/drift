@@ -30,6 +30,8 @@ type Target = Pick<Window, 'addEventListener' | 'removeEventListener'>;
 
 export class InputManager {
   private readonly pressed = new Set<string>();
+  /** Keys pressed since last consumed - edge detection for E, Esc etc. */
+  private readonly justPressed = new Set<string>();
   private lookDx = 0;
   private lookDy = 0;
   private target: Target | null = null;
@@ -58,6 +60,7 @@ export class InputManager {
     this.target.removeEventListener('blur', this.onBlur);
     this.target = null;
     this.pressed.clear();
+    this.justPressed.clear();
   }
 
   /** Current movement axes; sampled once per fixed update. */
@@ -79,6 +82,16 @@ export class InputManager {
     };
   }
 
+  /**
+   * True exactly once per physical key press (auto-repeat ignored).
+   * Call once per fixed update for each key of interest.
+   */
+  consumePress(code: string): boolean {
+    const was = this.justPressed.has(code);
+    this.justPressed.delete(code);
+    return was;
+  }
+
   /** Accumulated mouse movement since the last call; resets on read. */
   consumeLookDelta(): LookDelta {
     const delta = { dx: this.lookDx, dy: this.lookDy };
@@ -91,6 +104,7 @@ export class InputManager {
     const e = event as KeyboardEvent;
     // Keep the browser from scrolling/space-paging while playing.
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+    if (!e.repeat) this.justPressed.add(e.code);
     this.pressed.add(e.code);
   };
 
@@ -108,5 +122,6 @@ export class InputManager {
   /** Losing focus releases all keys, or they'd stay stuck "down". */
   private readonly onBlur = (): void => {
     this.pressed.clear();
+    this.justPressed.clear();
   };
 }

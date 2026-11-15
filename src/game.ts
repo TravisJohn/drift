@@ -1,9 +1,9 @@
 /**
  * Game - wires the systems together and owns the loop.
  *
- * M1 scope: a grey-box room, the hover drone with collision, the orbit
- * follow camera, keyboard+mouse input with pointer lock. The real ship
- * layout arrives in M2; interior/space layering (D2) arrives in M4.
+ * M3 scope: the ship interior, the drone, interaction (helm), the
+ * destination menu, and the ShipState journey running underneath.
+ * Travel visuals (space scene, cinematic camera) arrive in M4.
  */
 import * as THREE from 'three';
 import { GameLoop } from './core/loop';
@@ -15,6 +15,15 @@ import { DroneVisual } from './player/droneVisual';
 import { FollowCamera } from './player/followCamera';
 import { shipLayout } from './content/shipLayout';
 import { buildShip, type ShipWorld } from './world/ship/shipBuilder';
+import { START_LOCATION_ID, getLocation, locations } from './content/destinations';
+import { ShipState } from './state/shipState';
+import { PlayerMode } from './state/playerMode';
+import { InteractionSystem } from './interaction/interactionSystem';
+import type { Interactable } from './interaction/interactable';
+import { Hud } from './ui/hud';
+import { DestinationMenu } from './ui/destinationMenu';
+
+const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
 
 export class Game {
   readonly events = new EventBus();
@@ -29,6 +38,13 @@ export class Game {
   private readonly droneVisual: DroneVisual;
   private readonly followCamera: FollowCamera;
   private readonly ship: ShipWorld;
+
+  private readonly shipState: ShipState;
+  private readonly playerMode = new PlayerMode();
+  private readonly interaction = new InteractionSystem();
+  private readonly interactables: Interactable[] = [];
+  private readonly hud: Hud;
+  private readonly menu = new DestinationMenu();
 
   private readonly onResize = (): void => this.handleResize();
   private readonly onCanvasClick = (): void => {
@@ -68,6 +84,34 @@ export class Game {
     this.renderer.domElement.addEventListener('click', this.onCanvasClick);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
 
+    // --- M3: journey state, HUD, and the helm interactable ---
+    this.shipState = new ShipState(START_LOCATION_ID, {
+      departDuration: gameConfig.travel.departDuration,
+      arriveDuration: gameConfig.travel.arriveDuration,
+    });
+    this.hud = new Hud();
+    this.refreshStatus();
+
+    const helmProp = shipLayout.props.find((p) => p.id === 'helm');
+    if (!helmProp) {
+      throw new Error('Ship layout has no prop with id "helm"');
+    }
+    this.interactables.push({
+      id: 'helm',
+      position: helmProp.center,
+      radius: gameConfig.interaction.helmRadius,
+      promptText: '[E] Helm — set course',
+      onInteract: () => this.openHelm(),
+    });
+
+    this.events.on('travel:requested', ({ destinationId }) => {
+      const cruise = getLocation(destinationId).travelTime * gameConfig.travel.cruiseScale;
+      const change = this.shipState.beginTravel(destinationId, cruise);
+      this.events.emit('ship:phaseChanged', change);
+      this.events.emit('travel:departed', { destinationId });
+      this.refreshStatus();
+    });
+
     this.loop = new GameLoop(
       {
         update: (dt) => this.update(dt),
@@ -95,6 +139,8 @@ export class Game {
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
     this.input.detach();
+    this.menu.close();
+    this.hud.dispose();
     this.ship.dispose();
     this.droneVisual.dispose();
     this.renderer.dispose();
@@ -102,15 +148,100 @@ export class Game {
   }
 
   /** Read-only state for dev tooling and tests (see main.ts). */
-  get debugSnapshot(): { position: { x: number; y: number; z: number }; cameraYaw: number } {
+  get debugSnapshot(): {
+    position: { x: number; y: number; z: number };
+    cameraYaw: number;
+    shipPhase: string;
+    locationId: string;
+    playerMode: string;
+  } {
     const { position } = this.drone.snapshot;
-    return { position, cameraYaw: this.followCamera.yaw };
+    return {
+      position,
+      cameraYaw: this.followCamera.yaw,
+      shipPhase: this.shipState.phase,
+      locationId: this.shipState.locationId,
+      playerMode: this.playerMode.mode,
+    };
   }
 
   private update(dt: number): void {
-    this.followCamera.applyLook(this.input.consumeLookDelta());
-    const actions = this.input.sample();
-    this.drone.update(dt, actions, this.followCamera.yaw, this.ship.colliders);
+    // Always consume edge presses so stale ones can't fire later.
+    const interactPressed = this.input.consumePress('KeyE');
+
+    // The journey continues regardless of what the player is doing (D3).
+    for (const change of this.shipState.update(dt)) {
+      this.events.emit('ship:phaseChanged', change);
+      if (change.to === 'docked' && change.destinationId) {
+        this.events.emit('travel:arrived', { destinationId: change.destinationId });
+      }
+    }
+    this.refreshStatus();
+
+    if (this.playerMode.isRoaming) {
+      this.followCamera.applyLook(this.input.consumeLookDelta());
+      const actions = this.input.sample();
+      this.drone.update(dt, actions, this.followCamera.yaw, this.ship.colliders);
+
+      const focusChange = this.interaction.update(this.drone.snapshot.position, this.interactables);
+      if (focusChange) {
+        this.hud.setPrompt(focusChange.focused?.promptText ?? null);
+        if (focusChange.blurred) {
+          this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
+        }
+        if (focusChange.focused) {
+          this.events.emit('interact:focused', { interactableId: focusChange.focused.id });
+        }
+      }
+      if (interactPressed) {
+        this.interaction.focused?.onInteract();
+      }
+    } else {
+      // Menus/overlays own the keys; the drone settles where it is.
+      this.input.consumeLookDelta();
+      this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.ship.colliders);
+    }
+  }
+
+  /** Open the destination menu at the helm (only meaningful while docked). */
+  private openHelm(): void {
+    if (this.shipState.phase !== 'docked') {
+      return; // autopilot already engaged; the ship AI will say so in M5
+    }
+    this.events.emit('player:modeChanged', this.playerMode.enterHelm());
+    const focusChange = this.interaction.clear();
+    if (focusChange?.blurred) {
+      this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
+    }
+    this.hud.setPrompt(null);
+    document.exitPointerLock();
+
+    const choices = locations.filter((l) => l.id !== this.shipState.locationId);
+    this.menu.open(choices, {
+      onSelect: (destinationId) => {
+        this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+        this.events.emit('travel:requested', { destinationId });
+      },
+      onCancel: () => {
+        this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+      },
+    });
+  }
+
+  /** Keep the HUD's quiet status line in sync with the journey. */
+  private refreshStatus(): void {
+    const phase = this.shipState.phase;
+    if (phase === 'docked') {
+      this.hud.setStatus(`Docked — ${getLocation(this.shipState.locationId).name}`);
+    } else {
+      const dest = this.shipState.destinationId
+        ? getLocation(this.shipState.destinationId).name
+        : '';
+      const pct = phase === 'cruising' ? ` ${Math.round(this.shipState.progress * 100)}%` : '';
+      const label =
+        phase === 'departing' ? 'Departing' : phase === 'arriving' ? 'Arriving' : 'Cruising';
+      this.hud.setStatus(`${label} — ${dest}${pct}`);
+    }
   }
 
   private render(alpha: number): void {

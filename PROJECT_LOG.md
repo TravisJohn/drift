@@ -130,3 +130,36 @@ correctly at the corridor hull wall).
 - Known cosmetic: favicon 404 in console; add an icon in M7.
 
 Next: M3 - interaction system, helm, destination menu, ShipState machine.
+
+---
+
+## 2026-11-15 - M3 complete: helm, destinations, journey state
+
+**Milestone M3 done.** 145 tests passing; verified live: travel:requested ->
+departing -> cruising with the HUD percentage climbing, and the Set Course
+menu rendering with keyboard/mouse selection.
+
+- `content/destinations.ts`: 3 locations (Anchorage Point, Aurelia, Cinder)
+  with blurbs, 60-120s cruise times (PRD), accent colors for M4 visuals,
+  plus content validation.
+- `state/shipState.ts`: docked -> departing -> cruising -> arriving ->
+  docked, owning its own phase timing; update(dt) returns transition records
+  the game emits as events; arrival rebinds the ship's location. Design note:
+  the architecture table gave the travel timeline to TravelDirector - it
+  lives in ShipState instead, and M4's TravelDirector will be purely visual,
+  reading ship phase/progress. Logged as a deliberate deviation.
+- `state/playerMode.ts`: roaming/atHelm/atTerminal/cinematic with guarded
+  transitions (invalid ones throw).
+- `interaction/`: Interactable interface + proximity-focus system
+  (nearest-in-radius wins, returns focus changes, no event spam).
+- `core/input.ts`: consumePress() edge detection (auto-repeat ignored).
+- `ui/`: Hud (status line + prompt), DestinationMenu (W/S/arrows + Enter/E,
+  Esc, mouse; owns its key listener while open), styles.css.
+- game.ts: helm interactable built from the layout's 'helm' prop; while a
+  menu is open the drone gets idle input and settles; E presses are consumed
+  every frame so stale presses can't fire; menu keys never leak to gameplay.
+- Travel runs during roaming (D3 payoff): status line shows live progress
+  while you wander.
+
+Next: M4 - space scene, layered rendering (D2), TravelDirector visuals,
+cinematic exterior camera, arrival changing the view.

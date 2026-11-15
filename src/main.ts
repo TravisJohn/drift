@@ -2,6 +2,7 @@
  * Entry point: bootstraps the Game into the #app container.
  */
 import { Game } from './game';
+import './ui/styles.css';
 
 function bootstrap(): void {
   const container = document.getElementById('app');

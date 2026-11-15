@@ -36,6 +36,22 @@ export const gameConfig = {
     leanSmoothing: 6,
   },
 
+  /** Autopilot travel timings (seconds). */
+  travel: {
+    departDuration: 5,
+    arriveDuration: 5,
+    /**
+     * Multiplier on each destination's cruise time. 1 = PRD pacing;
+     * debug runs can shrink it to iterate quickly.
+     */
+    cruiseScale: 1,
+  },
+
+  /** Interaction defaults. */
+  interaction: {
+    helmRadius: 2.2,
+  },
+
   /** Third-person follow camera. */
   camera: {
     distance: 3.4,
