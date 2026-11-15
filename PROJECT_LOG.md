@@ -436,3 +436,69 @@ Trade-offs and risks:
   and the wiring (sizes, colour spread, band density, ring shadow
   tracking, shared clock); the look itself was checked by eye in-browser.
 - Anchorage station radius went 10 -> 15 so it reads from the windows.
+
+## 2026-11-16 - Visual pass 2 of 2: ship interior, baked lighting, performance
+
+The interior half of the beauty pass, and a performance rework it forced.
+341 tests passing; lint, format, types and build clean.
+
+What the ship gained:
+- `rendering/panelTextures.ts` (new): hull-plate surfaces generated from
+  pure pixel functions (no canvas, no image files): plates, seams, rivets,
+  brushed grain, as a colour map and a normal map per surface kind.
+- `world/ship/boxesGeometry.ts` (new): structure merged into one mesh per
+  surface kind with world-space texture coordinates, so plates never
+  stretch and seams line up across wall pieces. Faces can be split into
+  small cells for lighting detail.
+- `world/ship/trim.ts` (new, pure): baseboards with an ankle-height guide
+  light, ceiling coves, frames round every window and door, a light bar
+  over each doorway, and glass in the windows. Visual only, no colliders.
+- `rendering/environment.ts` (new): a small baked reflection map so metal
+  has something to mirror.
+- Drone: a soft ground shadow that fades with height.
+
+The performance finding (measured, not guessed):
+- The embedded pane on this machine renders on integrated Intel UHD P630
+  graphics. The first interior build (live shadows from 8 room lights,
+  4x MSAA, live nebula shader) took about 50 ms a frame at 1024x768;
+  60 fps needs under 16.7.
+- Costs found by switching features off one at a time, in ms per frame:
+  4x MSAA on the HDR frame ~10; live nebula noise ~9; soft shadows ~9;
+  drawing hidden walls before visible ones (overdraw) ~6; the 8 room
+  lights ~6; a roughness/metalness texture ~2.
+
+Decisions that came out of it:
+- **Room lighting is baked** (`world/ship/bakedLighting.ts`, new). Light
+  and shadow from every room light are computed once at startup for each
+  vertex (ray against the ship's own collider boxes) and added in the
+  shader as diffuse light. Zero cost per frame, real shadows from props
+  and walls, and light no longer leaks through walls. The engineering
+  flicker survives as a multiplier on that room's baked share.
+  `ShipWorld.lightWaver` replaces the old flickering PointLight.
+- **Depth pre-pass** (`rendering/interiorPass.ts`, new): solid surfaces
+  write depth first, so hidden pixels are never lit.
+- **Nebula baked** to a background texture at startup (`SkyDome.
+  bakeNebula`).
+- **FXAA replaces MSAA**; canvas anti-aliasing off.
+- **Adaptive resolution** (`rendering/adaptiveResolution.ts`, new, pure):
+  lowers the drawn pixel count when frames run slow and raises it again
+  after holding steady, so weak hardware gets a softer picture instead of
+  a slow one. Pixel ratio is also capped at 1.25.
+- Result here: about 13-16 ms a frame at 1024x768, down from ~50.
+
+Trade-offs and risks:
+- Baked light is per vertex on 0.25 m cells: shadow edges are soft and
+  slightly blocky up close. `rendering.lightCellSize` tunes it.
+- Baked light is diffuse only; room lights give no specular highlight.
+  The reflection map and the drone's own (live) lights cover that.
+- The bake hooks into Three.js shader include names. A Three upgrade that
+  renames them throws at material compile rather than failing silently
+  (covered by a test).
+- Anything added later that should cast a shadow must be in the collider
+  list; anything see-through must have `transparent` or no depth write, or
+  the pre-pass will let it hide what is behind it.
+- Frame times were measured in a hidden embedded pane with a forced GPU
+  sync; treat them as relative. PRD criterion 3 (steady 60 fps) still
+  needs the author's eyes in a normal browser window, where a larger
+  window will make adaptive resolution do more work.
+- The exterior hull (cinematic shot) was not touched in this pass.

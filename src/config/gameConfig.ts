@@ -103,20 +103,52 @@ export const gameConfig = {
       bandSpread: 0.16,
       /** Overall brightness of the nebula clouds. */
       nebulaIntensity: 0.7,
+      /** Pixels per side of each face of the baked nebula texture. */
+      nebulaBakeSize: 512,
       seed: 77031,
     },
   },
 
   /** Final image treatment: tone mapping and the glow around bright things. */
   rendering: {
+    /**
+     * Cap on device pixels drawn per CSS pixel. High-density screens
+     * multiply the lighting cost by up to 4x for little visible gain.
+     */
+    maxPixelRatio: 1.25,
     /** Overall brightness after tone mapping. */
-    exposure: 1.15,
+    exposure: 1.0,
     /** Glow strength, spread and the brightness above which things glow. */
     bloomStrength: 0.55,
     bloomRadius: 0.6,
     bloomThreshold: 0.9,
-    /** Anti-aliasing samples for the offscreen frame (0 turns it off). */
-    msaaSamples: 4,
+    /**
+     * Multisample anti-aliasing of the offscreen frame. Off by default:
+     * on integrated graphics 4 samples cost as much as the whole rest of
+     * the frame (measured ~10 ms). `fxaa` smooths edges for about 1 ms.
+     */
+    msaaSamples: 0,
+    fxaa: true,
+    /**
+     * Room lighting is worked out once at startup, per vertex. Surfaces are
+     * split into cells this many metres across; smaller = softer, more
+     * accurate shadow edges, longer startup.
+     */
+    lightCellSize: 0.25,
+    /**
+     * Automatic resolution: the picture is drawn with fewer pixels when
+     * frames run slow, and sharpened again when there is headroom.
+     */
+    adaptive: {
+      targetFps: 60,
+      minScale: 0.6,
+      windowFrames: 45,
+      holdSeconds: 6,
+    },
+    /** How strongly interior surfaces reflect their surroundings. */
+    environmentIntensity: 0.22,
+    /** Pixels per side of each generated hull-panel texture. */
+    panelTextureSize: 256,
   },
 
   /** Exterior cinematic camera (M4), orbiting the ship during travel. */

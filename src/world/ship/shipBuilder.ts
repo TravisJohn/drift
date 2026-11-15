@@ -3,7 +3,8 @@
  * physics colliders (D4: content is data, not code).
  *
  * Meshes and colliders are generated from the same box list, so visuals and
- * collision cannot drift apart. Walls are built once per shared edge (with a
+ * collision cannot drift apart. Structure is merged into one panel-textured
+ * mesh per surface kind, then dressed with trim (see trim.ts). Walls are built once per shared edge (with a
  * door opening when one is declared) and per exterior span (with window
  * openings); windows are real holes in the hull - the space scene (M4) will
  * show through them.
@@ -22,6 +23,21 @@ import {
 } from './layoutGeometry';
 import { validateLayout } from './validateLayout';
 import { buildPropVisual, type GlowPulse } from './propVisuals';
+import { gameConfig } from '../../config/gameConfig';
+import {
+  PANEL_FINISH,
+  type PanelTextures,
+  createPanelTextures,
+} from '../../rendering/panelTextures';
+import { buildBoxesGeometry } from './boxesGeometry';
+import {
+  type BakeLight,
+  bakeVertexLight,
+  setBakedLight,
+  useBakedLight,
+  worldVertices,
+} from './bakedLighting';
+import { type TrimBox, type TrimRole, buildTrimBoxes } from './trim';
 
 /** One axis-aligned box with a material role. */
 export interface ShipBox {
@@ -30,15 +46,20 @@ export interface ShipBox {
   readonly role: 'floor' | 'ceiling' | 'wall' | PropKind;
 }
 
-const COLORS: Record<ShipBox['role'], number> = {
-  floor: 0x343a42,
-  ceiling: 0x2e3540,
-  wall: 0x3d434d,
-  crate: 0x4a5261,
-  console: 0x3b4b5e,
-  pod: 0x5a6a78,
-  machine: 0x55493f,
-  seat: 0x47505c,
+type SurfaceKind = 'floor' | 'ceiling' | 'wall';
+
+/**
+ * How each structural surface is finished. `color` tints the panel texture
+ * (which is grey); `tileSize` is the world metres one texture repeat spans.
+ */
+const SURFACES: Record<
+  SurfaceKind,
+  { readonly color: number; readonly tileSize: number; readonly faces: 'all' | 'top' | 'bottom' }
+> = {
+  floor: { color: 0x596372, tileSize: 2, faces: 'top' },
+  ceiling: { color: 0x4a5462, tileSize: 2.4, faces: 'bottom' },
+  // Wall tile = ceiling height: one belt seam at mid-height, none else.
+  wall: { color: 0x6c7786, tileSize: 3.2, faces: 'all' },
 };
 
 /** Per-room ceiling light colors - first mood pass, refined in M6. */
@@ -50,6 +71,45 @@ const ROOM_LIGHT: Record<string, number> = {
   cryo: 0x7fd4e8,
   engineering: 0xffb070,
 };
+
+const ROOM_LIGHT_INTENSITY = 11;
+const AMBIENT_INTENSITY = 0.3;
+/** Emissive level of the ceiling strips: above 1 so they bloom. */
+const STRIP_GLOW = 1.8;
+
+function createTrimMaterial(role: TrimRole): THREE.Material {
+  switch (role) {
+    case 'baseboard':
+    case 'cove':
+    case 'frame':
+      return new THREE.MeshStandardMaterial({ color: 0x20252d, roughness: 0.45, metalness: 0.75 });
+    case 'guideLight':
+      // A faint line at ankle height: guides the eye down long rooms.
+      return new THREE.MeshStandardMaterial({
+        color: 0x0c1116,
+        emissive: 0x5cc4dc,
+        emissiveIntensity: 0.55,
+      });
+    case 'doorLight':
+      return new THREE.MeshStandardMaterial({
+        color: 0x0c1116,
+        emissive: 0x8fe6ff,
+        emissiveIntensity: 1.5,
+      });
+    case 'glass':
+      // Barely there: a cool tint and a reflection, so a window reads as
+      // glazed instead of as a hole in the wall.
+      return new THREE.MeshPhysicalMaterial({
+        color: 0xa8d4ee,
+        transparent: true,
+        opacity: 0.1,
+        roughness: 0.04,
+        metalness: 0,
+        envMapIntensity: 2.5,
+        depthWrite: false,
+      });
+  }
+}
 
 /** Pure part: compute every box of the ship from the layout. */
 export function buildShipBoxes(layout: ShipLayout): ShipBox[] {
@@ -146,15 +206,50 @@ export interface ShipWorld {
   readonly group: THREE.Group;
   readonly colliders: readonly BoxCollider[];
   readonly spawn: Vec3;
+  /**
+   * Brightness multiplier of the wavering lights (engineering's tired
+   * fixture): 1 is nominal. Shared with every baked-light material.
+   */
+  readonly lightWaver: { readonly value: number };
   /** Animate breathing glows and light flicker. `elapsed` is seconds. */
   update(elapsed: number): void;
   dispose(): void;
 }
 
-/** A light whose intensity wavers slightly (engineering's tired fixture). */
-interface Flicker {
-  readonly light: THREE.PointLight;
-  readonly base: number;
+/** Linear RGB of a colour at a given intensity, as the bake wants it. */
+function lightColor(hex: number, intensity: number): readonly [number, number, number] {
+  const c = new THREE.Color(hex);
+  return [c.r * intensity, c.g * intensity, c.b * intensity];
+}
+
+/** The room lights as data: one per room, three along a long corridor. */
+export function buildRoomLights(layout: ShipLayout): BakeLight[] {
+  const lights: BakeLight[] = [];
+  const y = layout.ceilingHeight - 0.5;
+  for (const room of layout.rooms) {
+    const cx = (room.minX + room.maxX) / 2;
+    const cz = (room.minZ + room.maxZ) / 2;
+    const w = room.maxX - room.minX;
+    const d = room.maxZ - room.minZ;
+    const base = {
+      color: lightColor(ROOM_LIGHT[room.id] ?? 0xcfd8e3, ROOM_LIGHT_INTENSITY),
+      distance: Math.max(w, d) * 1.5,
+      decay: 1.5,
+      softRadius: 1.4,
+      // Engineering's fixture is old and tired: it wavers, slightly (M6).
+      wavers: room.id === 'engineering',
+    };
+    lights.push({ ...base, position: vec3(cx, y, cz) });
+    // The long corridor needs more than one light to avoid a dark middle.
+    if (d > 12) {
+      lights.push({ ...base, position: vec3(cx, y, room.minZ + d * 0.2) });
+      lights.push({ ...base, position: vec3(cx, y, room.maxZ - d * 0.2) });
+    } else if (w > 12) {
+      lights.push({ ...base, position: vec3(room.minX + w * 0.2, y, cz) });
+      lights.push({ ...base, position: vec3(room.maxX - w * 0.2, y, cz) });
+    }
+  }
+  return lights;
 }
 
 /** Build the renderable ship. Throws on invalid layout content (fail loud). */
@@ -164,74 +259,114 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     throw new Error(`Ship layout is invalid:\n- ${problems.join('\n- ')}`);
   }
 
+  const cfg = gameConfig.rendering;
   const group = new THREE.Group();
   const colliders: BoxCollider[] = [];
+  const textures: PanelTextures[] = [];
+  const pulses: GlowPulse[] = [];
+  const lightWaver = { value: 1 };
+  const roomLights = buildRoomLights(layout);
 
-  const materials = new Map<ShipBox['role'], THREE.MeshStandardMaterial>();
-  const materialFor = (role: ShipBox['role']): THREE.MeshStandardMaterial => {
-    let m = materials.get(role);
-    if (!m) {
-      m = new THREE.MeshStandardMaterial({
-        color: COLORS[role],
-        roughness: role === 'pod' ? 0.4 : 0.85,
-        metalness: role === 'pod' || role === 'console' ? 0.4 : 0.1,
-        ...(role === 'pod' ? { emissive: 0x16424e, emissiveIntensity: 0.7 } : {}),
-      });
-      materials.set(role, m);
+  /** Light a mesh from the room lights, shadowed by the ship's own boxes. */
+  const patched = new Set<THREE.Material>();
+  const bakedGeometries = new Set<THREE.BufferGeometry>();
+  const bake = (mesh: THREE.Mesh, ownCollider = -1): void => {
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    if (!material.isMeshStandardMaterial) return;
+    // Each placement needs its own light values, so no shared geometry.
+    if (bakedGeometries.has(mesh.geometry)) mesh.geometry = mesh.geometry.clone();
+    bakedGeometries.add(mesh.geometry);
+    const { positions, normals } = worldVertices(mesh);
+    setBakedLight(
+      mesh.geometry,
+      bakeVertexLight(positions, normals, roomLights, colliders, ownCollider),
+    );
+    if (!patched.has(material)) {
+      useBakedLight(material, lightWaver);
+      patched.add(material);
     }
-    return m;
   };
 
-  const pulses: GlowPulse[] = [];
-  const flickers: Flicker[] = [];
-
-  // Colliders come from the full box list (the source of truth); structure
-  // boxes also become plain meshes, while props get detailed visuals (M6)
-  // that stay inside the same collider footprint.
-  // One unit cube shared by every structural mesh, scaled per box (M7
-  // perf pass: one geometry instead of ~150, same draw result).
-  const unitBox = new THREE.BoxGeometry(1, 1, 1);
+  // Colliders come from the full box list (the source of truth). Structure
+  // boxes are merged into one textured mesh per surface kind; props get
+  // detailed visuals (M6) that stay inside the same collider footprint.
+  const structure: Record<SurfaceKind, ShipBox[]> = { floor: [], ceiling: [], wall: [] };
+  const propColliderIndex: number[] = [];
   for (const box of buildShipBoxes(layout)) {
+    if (box.role === 'floor' || box.role === 'ceiling' || box.role === 'wall') {
+      structure[box.role].push(box);
+    } else {
+      propColliderIndex.push(colliders.length); // props follow in layout order
+    }
     colliders.push(boxFromCenterSize(box.center, box.size));
-    if (box.role !== 'floor' && box.role !== 'ceiling' && box.role !== 'wall') continue;
-    const mesh = new THREE.Mesh(unitBox, materialFor(box.role));
-    mesh.scale.set(box.size.x, box.size.y, box.size.z);
-    mesh.position.set(box.center.x, box.center.y, box.center.z);
-    group.add(mesh);
   }
+
+  const lit: THREE.Mesh[] = [];
+  (Object.keys(structure) as SurfaceKind[]).forEach((kind, index) => {
+    const surface = SURFACES[kind];
+    const panels = createPanelTextures(kind, cfg.panelTextureSize, 101 + index);
+    textures.push(panels);
+    const mesh = new THREE.Mesh(
+      buildBoxesGeometry(structure[kind], surface.tileSize, {
+        maxCell: cfg.lightCellSize,
+        faces: surface.faces,
+      }),
+      new THREE.MeshStandardMaterial({
+        color: surface.color,
+        map: panels.map,
+        normalMap: panels.normalMap,
+        roughness: PANEL_FINISH[kind].roughness,
+        metalness: PANEL_FINISH[kind].metalness,
+      }),
+    );
+    group.add(mesh);
+    lit.push(mesh);
+  });
+
+  // --- Trim: baseboards, coves, frames, door lights, window glass ---
+  const trimByRole = new Map<TrimRole, TrimBox[]>();
+  for (const box of buildTrimBoxes(layout, structure.wall)) {
+    const list = trimByRole.get(box.role) ?? [];
+    list.push(box);
+    trimByRole.set(box.role, list);
+  }
+  for (const [role, boxes] of trimByRole) {
+    const mesh = new THREE.Mesh(
+      buildBoxesGeometry(boxes, 1, { maxCell: cfg.lightCellSize * 2 }),
+      createTrimMaterial(role),
+    );
+    group.add(mesh);
+    if (role === 'baseboard' || role === 'cove' || role === 'frame') lit.push(mesh);
+  }
+  for (const mesh of lit) bake(mesh);
 
   layout.props.forEach((prop, index) => {
     const visual = buildPropVisual(prop.kind, prop.size, index * 1.7);
     visual.group.position.set(prop.center.x, prop.center.y, prop.center.z);
     group.add(visual.group);
+    visual.group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      // A prop sits inside its own collider; that box must not shadow it.
+      if (mesh.isMesh) bake(mesh, propColliderIndex[index] ?? -1);
+    });
     pulses.push(...visual.pulses);
   });
 
-  // --- Lighting: a ceiling light per room + a dim ambient base ---
-  group.add(new THREE.AmbientLight(0x1c2432, 1.1));
+  // A dim base so nothing is ever pure black; all other room light is baked.
+  group.add(new THREE.AmbientLight(0x1c2432, AMBIENT_INTENSITY));
+
+  // --- Ceiling light strips: the visible source of each room's glow ---
   for (const room of layout.rooms) {
     const cx = (room.minX + room.maxX) / 2;
     const cz = (room.minZ + room.maxZ) / 2;
     const w = room.maxX - room.minX;
     const d = room.maxZ - room.minZ;
-    const reach = Math.max(w, d) * 1.4;
-    const lightColor = ROOM_LIGHT[room.id] ?? 0xcfd8e3;
-    const light = new THREE.PointLight(lightColor, 14, reach, 1.6);
-    light.position.set(cx, layout.ceilingHeight - 0.25, cz);
-    group.add(light);
-
-    // Engineering's fixture is old and tired: it wavers, slightly (M6).
-    if (room.id === 'engineering') {
-      flickers.push({ light, base: light.intensity });
-    }
-
-    // Ceiling light strip: a visible source for the room's glow (M6).
     const along = d >= w ? 'z' : 'x';
     const stripLength = (along === 'z' ? d : w) * 0.55;
     const stripMaterial = new THREE.MeshStandardMaterial({
       color: 0x10151c,
-      emissive: lightColor,
-      emissiveIntensity: 1.5,
+      emissive: ROOM_LIGHT[room.id] ?? 0xcfd8e3,
+      emissiveIntensity: STRIP_GLOW,
       roughness: 0.4,
     });
     const strip = new THREE.Mesh(
@@ -246,25 +381,11 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       // The cryo bay's strip breathes with the pods.
       pulses.push({
         material: stripMaterial,
-        base: 1.4,
-        amplitude: 0.3,
+        base: STRIP_GLOW,
+        amplitude: 0.4,
         frequency: 0.16,
         phase: 0.8,
       });
-    }
-
-    // The long corridor needs more than one light to avoid a dark middle.
-    if (d > 12 || w > 12) {
-      const extra1 = light.clone();
-      const extra2 = light.clone();
-      if (d > w) {
-        extra1.position.set(cx, light.position.y, room.minZ + d * 0.2);
-        extra2.position.set(cx, light.position.y, room.maxZ - d * 0.2);
-      } else {
-        extra1.position.set(room.minX + w * 0.2, light.position.y, cz);
-        extra2.position.set(room.maxX - w * 0.2, light.position.y, cz);
-      }
-      group.add(extra1, extra2);
     }
   }
 
@@ -272,19 +393,18 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     group,
     colliders,
     spawn: layout.spawn,
+    lightWaver,
     update(elapsed: number) {
       for (const p of pulses) {
         p.material.emissiveIntensity =
           p.base + p.amplitude * Math.sin(2 * Math.PI * p.frequency * elapsed + p.phase);
       }
-      for (const f of flickers) {
-        // Two incommensurate sines read as organic waver, stay deterministic.
-        f.light.intensity =
-          f.base * (1 + 0.05 * Math.sin(elapsed * 9.7) + 0.04 * Math.sin(elapsed * 23.3 + 1.3));
-      }
+      // Two incommensurate sines read as organic waver, stay deterministic.
+      lightWaver.value = 1 + 0.05 * Math.sin(elapsed * 9.7) + 0.04 * Math.sin(elapsed * 23.3 + 1.3);
     },
     dispose() {
       disposeObject3D(group);
+      for (const t of textures) t.dispose();
     },
   };
 }

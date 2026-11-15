@@ -28,6 +28,8 @@ import { Hud } from './ui/hud';
 import { DestinationMenu } from './ui/destinationMenu';
 import { SpaceScene } from './world/space/spaceScene';
 import { RenderPipeline } from './rendering/renderPipeline';
+import { AdaptiveResolution } from './rendering/adaptiveResolution';
+import { type InteriorEnvironment, createInteriorEnvironment } from './rendering/environment';
 import {
   computeTravelView,
   type TravelShipSnapshot,
@@ -66,6 +68,8 @@ export class Game {
   private readonly spaceScene: SpaceScene;
   private readonly spaceCamera: THREE.PerspectiveCamera;
   private readonly pipeline: RenderPipeline;
+  private readonly environment: InteriorEnvironment;
+  private readonly resolution: AdaptiveResolution;
   private readonly cinematicCamera = new CinematicCamera();
   private cinematicPose: CameraPose | null = null;
   private travelView: TravelView;
@@ -109,8 +113,14 @@ export class Game {
   private readonly onPointerLockChange = (): void => this.updateHint();
 
   constructor(private readonly container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // No canvas anti-aliasing: the frame is drawn offscreen and smoothed
+    // there (FXAA); multisampling the final copy would be paid for nothing.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false });
+    this.resolution = new AdaptiveResolution({
+      ...gameConfig.rendering.adaptive,
+      maxScale: Math.min(window.devicePixelRatio, gameConfig.rendering.maxPixelRatio),
+    });
+    this.renderer.setPixelRatio(this.resolution.scale);
     this.renderer.setClearColor(0x05060a);
     // Layered render (D2): we clear manually - space first, interior on top.
     this.renderer.autoClear = false;
@@ -124,6 +134,10 @@ export class Game {
 
     this.ship = buildShip(shipLayout); // throws on invalid layout content
     this.scene.add(this.ship.group);
+    // Something for the metal to reflect (baked once, no image files).
+    this.environment = createInteriorEnvironment(this.renderer);
+    this.scene.environment = this.environment.texture;
+    this.scene.environmentIntensity = gameConfig.rendering.environmentIntensity;
 
     // --- M4: the universe outside the windows ---
     this.spaceScene = new SpaceScene(locations, shipLayout);
@@ -136,7 +150,7 @@ export class Game {
 
     this.drone = new DroneController(this.ship.spawn);
     this.droneVisual = new DroneVisual();
-    this.scene.add(this.droneVisual.group);
+    this.scene.add(this.droneVisual.group, this.droneVisual.groundShadow);
 
     this.followCamera = new FollowCamera(0, 0.35);
     this.input = new InputManager(() => document.pointerLockElement === this.renderer.domElement);
@@ -247,6 +261,7 @@ export class Game {
   /** Boot to the title screen; the loop renders the dim ship behind it. */
   start(): void {
     this.titleScreen.show({ onBegin: () => this.beginSession() });
+    this.spaceScene.prepare(this.renderer);
     this.loop.start();
   }
 
@@ -273,6 +288,7 @@ export class Game {
     this.ship.dispose();
     this.spaceScene.dispose();
     this.pipeline.dispose();
+    this.environment.dispose();
     this.droneVisual.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -521,6 +537,11 @@ export class Game {
     // Rolling fps over ~30 frames, for the PRD performance check (M7).
     const now = performance.now();
     if (this.lastFrameAt !== null) {
+      // Slow frames lower the drawn resolution; headroom raises it again.
+      if (this.resolution.sample(now - this.lastFrameAt) !== null) {
+        this.renderer.setPixelRatio(this.resolution.scale);
+        this.handleResize();
+      }
       this.fpsAccum += now - this.lastFrameAt;
       if (++this.fpsFrames >= 30) {
         this.fps = this.fpsAccum > 0 ? (1000 * this.fpsFrames) / this.fpsAccum : 0;

@@ -10,10 +10,12 @@
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { gameConfig } from '../config/gameConfig';
+import { InteriorPass } from './interiorPass';
 
 export interface RenderLayer {
   readonly scene: THREE.Scene;
@@ -22,7 +24,7 @@ export interface RenderLayer {
 
 export class RenderPipeline {
   private readonly composer: EffectComposer;
-  private readonly interiorPass: RenderPass;
+  private readonly interiorPass: InteriorPass;
   private readonly bloomPass: UnrealBloomPass;
   private readonly target: THREE.WebGLRenderTarget;
 
@@ -38,10 +40,7 @@ export class RenderPipeline {
     this.composer = new EffectComposer(renderer, this.target);
 
     const spacePass = new RenderPass(space.scene, space.camera);
-    this.interiorPass = new RenderPass(interior.scene, interior.camera);
-    // Keep the space image; only depth is reset before the interior draws.
-    this.interiorPass.clear = false;
-    this.interiorPass.clearDepth = true;
+    this.interiorPass = new InteriorPass(interior.scene, interior.camera);
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(1, 1),
@@ -54,6 +53,8 @@ export class RenderPipeline {
     this.composer.addPass(this.interiorPass);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
+    // After tone mapping: FXAA finds edges by contrast in the final image.
+    if (cfg.fxaa) this.composer.addPass(new FXAAPass());
   }
 
   setSize(width: number, height: number, pixelRatio: number): void {
@@ -69,6 +70,7 @@ export class RenderPipeline {
 
   dispose(): void {
     this.bloomPass.dispose();
+    this.interiorPass.dispose();
     this.composer.dispose();
     this.target.dispose();
   }

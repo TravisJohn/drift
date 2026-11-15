@@ -48,6 +48,14 @@ export class SpaceScene {
     this.scene.add(this.sky.group, this.starfield.points, this.bodies.group, this.exterior.group);
   }
 
+  /**
+   * One-off startup work that needs the renderer: paint the static nebula
+   * into the scene background (see SkyDome.bakeNebula).
+   */
+  prepare(renderer: THREE.WebGLRenderer): void {
+    this.scene.background = this.sky.bakeNebula(renderer);
+  }
+
   /** Keep star sizes true to the viewport; call on every resize. */
   setViewport(heightPx: number, fovDegrees: number): void {
     const scale = projectionScale(heightPx, fovDegrees);

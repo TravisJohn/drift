@@ -8,8 +8,46 @@ import type { DroneSnapshot } from './droneController';
 import { lerp } from '../physics/vec3';
 import { disposeObject3D } from '../rendering/dispose';
 
+/** Height above the deck at which the ground shadow has faded out. */
+const SHADOW_FADE_HEIGHT = 2.6;
+
+const SHADOW_VERTEX = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const SHADOW_FRAGMENT = /* glsl */ `
+  uniform float uStrength;
+  varying vec2 vUv;
+  void main() {
+    float d = length(vUv - 0.5) * 2.0;
+    float alpha = (1.0 - smoothstep(0.0, 1.0, d)) * uStrength;
+    gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
+  }
+`;
+
+/**
+ * How dark the ground shadow is for a drone `height` above the deck:
+ * strongest when it skims the floor, gone by SHADOW_FADE_HEIGHT.
+ */
+export function groundShadowStrength(height: number): number {
+  const t = 1 - Math.min(1, Math.max(0, height / SHADOW_FADE_HEIGHT));
+  return 0.55 * t * t;
+}
+
 export class DroneVisual {
   readonly group: THREE.Group;
+  /**
+   * A soft dark patch on the deck under the drone. The room shadows are
+   * drawn once at startup, so the one thing that moves needs its own - and
+   * without it a hovering object looks pasted onto the picture. Add it to
+   * the scene beside `group` (it must not tilt or bob with the drone).
+   */
+  readonly groundShadow: THREE.Mesh;
+  private readonly groundShadowMaterial: THREE.ShaderMaterial;
   private readonly glow: THREE.PointLight;
 
   constructor() {
@@ -54,6 +92,19 @@ export class DroneVisual {
     headlight.position.set(0, 0, -0.18);
     headlight.target.position.set(0, -0.6, -4);
     this.group.add(headlight, headlight.target);
+
+    this.groundShadowMaterial = new THREE.ShaderMaterial({
+      uniforms: { uStrength: { value: 0 } },
+      vertexShader: SHADOW_VERTEX,
+      fragmentShader: SHADOW_FRAGMENT,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.groundShadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.1, 1.1),
+      this.groundShadowMaterial,
+    );
+    this.groundShadow.rotation.x = -Math.PI / 2;
   }
 
   /** Apply controller state; `alpha` interpolates between fixed steps. */
@@ -61,9 +112,14 @@ export class DroneVisual {
     const p = lerp(snapshot.prevPosition, snapshot.position, alpha);
     this.group.position.set(p.x, p.y + snapshot.bobOffset, p.z);
     this.group.rotation.set(snapshot.leanPitch, snapshot.yaw, snapshot.leanRoll, 'YXZ');
+    // Just above the deck (y = 0) so it never fights the floor for depth.
+    this.groundShadow.position.set(p.x, 0.012, p.z);
+    this.groundShadowMaterial.uniforms.uStrength!.value = groundShadowStrength(p.y);
   }
 
   dispose(): void {
     disposeObject3D(this.group);
+    this.groundShadow.geometry.dispose();
+    this.groundShadowMaterial.dispose();
   }
 }

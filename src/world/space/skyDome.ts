@@ -120,6 +120,8 @@ export class SkyDome {
   private readonly starMaterial: THREE.ShaderMaterial;
   private readonly nebulaGeometry: THREE.SphereGeometry;
   private readonly nebulaMaterial: THREE.ShaderMaterial;
+  private readonly nebula: THREE.Mesh;
+  private baked: THREE.WebGLCubeRenderTarget | null = null;
 
   constructor() {
     const cfg = gameConfig.space.sky;
@@ -138,6 +140,7 @@ export class SkyDome {
     });
     const nebula = new THREE.Mesh(this.nebulaGeometry, this.nebulaMaterial);
     nebula.renderOrder = -2; // behind everything else in space
+    this.nebula = nebula;
 
     const positions = createSkyStarPositions(
       cfg.starCount,
@@ -160,6 +163,29 @@ export class SkyDome {
     this.group.add(nebula, stars);
   }
 
+  /**
+   * Paint the nebula once into a texture that surrounds the scene, and
+   * return it for use as the scene background.
+   *
+   * The nebula shader layers a lot of noise per pixel - about a third of
+   * the frame time on integrated graphics when run live, for a picture
+   * that never changes. Baked, it costs one texture lookup per pixel.
+   */
+  bakeNebula(renderer: THREE.WebGLRenderer): THREE.CubeTexture {
+    if (this.baked) return this.baked.texture;
+    const cfg = gameConfig.space.sky;
+    this.baked = new THREE.WebGLCubeRenderTarget(cfg.nebulaBakeSize, {
+      // Half-float keeps the dark gradients smooth (no visible steps).
+      type: THREE.HalfFloatType,
+      generateMipmaps: false,
+    });
+    const scene = new THREE.Scene();
+    scene.add(this.nebula); // moves it out of the live group
+    new THREE.CubeCamera(1, cfg.radius * 2, this.baked).update(renderer, scene);
+    scene.remove(this.nebula);
+    return this.baked.texture;
+  }
+
   setProjectionScale(scale: number): void {
     this.starMaterial.uniforms.uProjectionScale!.value = scale;
   }
@@ -173,5 +199,6 @@ export class SkyDome {
     this.starMaterial.dispose();
     this.nebulaGeometry.dispose();
     this.nebulaMaterial.dispose();
+    this.baked?.dispose();
   }
 }

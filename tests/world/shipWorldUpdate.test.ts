@@ -32,21 +32,13 @@ describe('ShipWorld animation (M6)', () => {
 
   it('the engineering light wavers but never strays far from base', () => {
     const ship = buildShip(shipLayout);
-    const lights: THREE.PointLight[] = [];
-    ship.group.traverse((obj) => {
-      if ((obj as THREE.PointLight).isPointLight) lights.push(obj as THREE.PointLight);
-    });
-    const baseline = lights.map((l) => l.intensity);
-
     let sawChange = false;
     for (let t = 0; t < 5; t += 0.37) {
       ship.update(t);
-      lights.forEach((light, i) => {
-        const base = baseline[i] ?? 0;
-        expect(light.intensity).toBeGreaterThan(base * 0.85);
-        expect(light.intensity).toBeLessThan(base * 1.15);
-        if (Math.abs(light.intensity - base) > 1e-4) sawChange = true;
-      });
+      // 1 is nominal brightness for the wavering (engineering) fixture.
+      expect(ship.lightWaver.value).toBeGreaterThan(0.85);
+      expect(ship.lightWaver.value).toBeLessThan(1.15);
+      if (Math.abs(ship.lightWaver.value - 1) > 1e-4) sawChange = true;
     }
     expect(sawChange).toBe(true);
     ship.dispose();

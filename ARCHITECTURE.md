@@ -231,6 +231,26 @@ Optional: short AI voice clips per line. Subtitles work without them.
 
 ---
 
+## 6b. Rendering additions after v0 (2026-11-16)
+
+Added by the visual pass; details and measurements are in PROJECT_LOG.md.
+
+- `rendering/renderPipeline.ts`: offscreen HDR frame, bloom, ACES tone
+  mapping, FXAA. The layered draw (D2) is unchanged.
+- `rendering/interiorPass.ts`: depth pre-pass so hidden pixels are not lit.
+- `rendering/adaptiveResolution.ts`: holds frame rate by adjusting pixels.
+- `rendering/panelTextures.ts`, `rendering/environment.ts`,
+  `rendering/glslNoise.ts`: generated surfaces, reflections, shared noise.
+- `world/ship/bakedLighting.ts`, `boxesGeometry.ts`, `trim.ts`: room light
+  and shadow computed once at startup; merged textured structure; trim.
+- `world/space/starLook.ts`, `skyDome.ts`, `bodyMaterials.ts`: star look,
+  distant sky and nebula, procedural planet/sun/ring shaders.
+
+Rule of thumb for new work: anything static should be baked at startup,
+not paid for per frame - the target includes integrated graphics.
+
+---
+
 ## 7. Build milestones (for Fable)
 
 Each milestone ends with: tests passing, a playable build, a PROJECT_LOG.md
