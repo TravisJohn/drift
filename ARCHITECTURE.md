@@ -144,6 +144,9 @@ drift/  (project root: D:\WEB PROJECTS\game_app_poc)
       narrativeDirector.ts   event -> AI line triggers, cooldowns, no repeats
     audio/
       audioManager.ts        music/ambience layers, crossfades, volume, missing-file warnings
+      audioLibrary.ts        which files exist per folder (pure; shared with the Vite plugin)
+      audioLibrarySource.ts  startup fetch + live pushed updates of the file listing
+      trackRotation.ts       which file of a folder plays next (pure)
     ui/
       hud.ts                 interaction prompt, subtitle line for AI voice
       destinationMenu.ts
@@ -200,10 +203,16 @@ drift/  (project root: D:\WEB PROJECTS\game_app_poc)
 
 ## 6. Audio you'll supply
 
-Put files in `public/audio/` as `.ogg` (preferred), `.mp3` or `.wav`; the
-loader tries them in that order per key. Loops should be seamless (`.mp3`
-adds a few ms of padding, so prefer `.ogg` or `.wav` for loops that click).
-Until a file exists the game runs silently and logs a warning.
+Each key below is a folder under `public/audio/`. Drop `.ogg`, `.mp3` or
+`.wav` files into it under any name; several files in a folder take turns.
+The extra `music/` folder is a shared playlist for every music key that has
+no files of its own. Files can be added, replaced and deleted while
+`npm run dev` is running: `tools/audioLibraryPlugin.ts` lists the folders
+(`/audio/library.json`) and pushes each change to the running game, and
+`AudioManager.setLibrary()` applies it without a reload. A build includes
+the files present at build time. An empty folder means that sound runs
+silent with one logged warning. (`.mp3` adds a few ms of padding, so prefer
+`.ogg` or `.wav` for a single-file loop that clicks.)
 
 | Key                 | Type   | Use |
 |---------------------|--------|-----|

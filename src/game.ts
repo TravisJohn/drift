@@ -39,6 +39,7 @@ import { PlaceholderPuzzle } from './learning/placeholderPuzzle';
 import { PuzzleOverlay } from './ui/puzzleOverlay';
 import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
+import { connectAudioLibrary } from './audio/audioLibrarySource';
 import type { RoomSpec } from './content/shipLayout';
 import { AppState } from './state/appState';
 import { TitleScreen } from './ui/titleScreen';
@@ -195,6 +196,8 @@ export class Game {
     this.events.on('terminal:opened', () => this.narrative.trigger('terminalOpened'));
 
     // --- M6: the soundscape follows the journey (author-supplied files) ---
+    // The file listing arrives async and again whenever files change.
+    connectAudioLibrary((library) => this.audio.setLibrary(library));
     this.cryoRoom = shipLayout.rooms.find((r) => r.id === 'cryo') ?? null;
     this.events.on('app:started', () => {
       this.audio.playLoop('amb_ship_hum');

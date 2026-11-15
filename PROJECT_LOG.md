@@ -338,3 +338,57 @@ and production build clean.
   probe wav (removed afterwards): ogg and mp3 failed, wav loaded with no
   warning; a key with no files warned exactly once.
 - Docs: public/audio/README.txt and ARCHITECTURE.md section 6 updated.
+
+## 2026-11-16 - Audio: a folder per moment, changeable while the game runs
+
+**Author request:** "freely upload and delete files without stopping the
+game". Their four tracks also had their own names (Deep Field.mp3 ...), so
+the fixed-filename scheme from earlier today could not find them. This
+replaces it. 285 tests passing; lint, format, types and build clean.
+
+Decisions (author-approved via questions in session):
+- **Folder per moment.** Each manifest key is a folder under public/audio;
+  any ogg/mp3/wav dropped in, under any name, plays for that key. This
+  supersedes the per-key filename candidates added this morning.
+- **"All four everywhere".** A shared `music/` folder feeds every music key
+  without files of its own; the author's four tracks were moved there.
+
+How it works:
+- `tools/audioLibraryPlugin.ts` (new, Vite plugin): scans the folders,
+  serves the listing at /audio/library.json, creates missing moment
+  folders at dev start, and pushes a fresh listing over Vite's HMR channel
+  when files change (300 ms settle so a burst of copies sends once). At
+  build it writes the listing into the bundle. Each URL carries a version
+  (mtime + size), so a file replaced in place reads as a new track.
+- `audio/audioLibrary.ts` (pure, shared by plugin and game): build, parse
+  and resolve the listing. `audio/audioLibrarySource.ts`: startup fetch
+  plus pushed updates; a slow fetch never overwrites a newer push.
+- `audio/trackRotation.ts` (pure): play order within a folder; survives
+  the list changing under it; skips files that failed.
+- `audio/audioManager.ts` rewritten around `setLibrary()`: only folders
+  that changed are touched; a track still present keeps playing; deleting
+  the playing track cuts it and fades the next in. Several files in a loop
+  folder form a playlist; one file loops natively.
+- Keys that resolve to the same folder share one voice and their volumes
+  sum, so the shared playlist carries straight through roaming -> cruise
+  at a level volume instead of restarting.
+
+Trade-offs and risks:
+- Live changes are a dev-server feature. A production build is static: it
+  plays what was in the folders at build time.
+- Two keys on one voice must both be loops or both one-shots; the manifest
+  validator enforces it.
+- A play() rejected because pause() interrupted it (AbortError) is no
+  longer treated as a broken file; any other rejection still is.
+- Missing-sound warnings are now per sound with an empty folder (once,
+  and again if its files are later all deleted), since "missing file" has
+  no meaning when file names are free.
+- New dev dependency: @types/node (the plugin uses the file system).
+- Audio files in public/audio are untracked and were not committed; there
+  is no .gitignore rule for them yet (author's call).
+
+Verified in-browser on the dev server: with the four tracks in music/,
+Begin started "Deep Field (1).mp3" and faded to 0.5; moving that file out
+of the folder switched to "Deep Field.mp3" with a fade-in and no page
+reload; moving it back raised the playlist to four tracks without
+disturbing the track playing.

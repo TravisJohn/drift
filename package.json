@@ -10,15 +10,16 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src tests",
-    "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,css}\" \"tests/**/*.ts\""
+    "lint": "eslint src tests tools",
+    "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"tools/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"tools/**/*.ts\""
   },
   "dependencies": {
     "three": "^0.187.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
     "eslint": "^10.15.0",
     "jsdom": "^31.0.1",

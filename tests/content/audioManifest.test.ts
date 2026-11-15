@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SHARED_MUSIC_FOLDER,
+  audioFolders,
   audioManifest,
   validateAudioManifest,
   type AudioSpec,
 } from '../../src/content/audioManifest';
+
+const base: AudioSpec = {
+  key: 'a',
+  folder: 'a',
+  fallbackFolder: null,
+  loop: true,
+  volume: 0.5,
+  category: 'music',
+};
 
 describe('audio manifest content', () => {
   it('the shipped manifest is valid', () => {
@@ -28,23 +39,41 @@ describe('audio manifest content', () => {
     }
   });
 
-  it('every sound accepts ogg, mp3 and wav, preferring ogg (author may supply any)', () => {
+  it('every sound has its own folder named after its key', () => {
+    for (const s of audioManifest) expect(s.folder).toBe(s.key);
+  });
+
+  it('only music falls back to the shared playlist folder', () => {
     for (const s of audioManifest) {
-      expect(s.files).toEqual([`audio/${s.key}.ogg`, `audio/${s.key}.mp3`, `audio/${s.key}.wav`]);
+      expect(s.fallbackFolder).toBe(s.category === 'music' ? SHARED_MUSIC_FOLDER : null);
     }
   });
 
-  it('validation catches duplicates, bad volume, empty paths and no candidates', () => {
-    const bad: AudioSpec[] = [
-      { key: 'a', files: ['audio/a.ogg'], loop: true, volume: 0.5, category: 'music' },
-      { key: 'a', files: ['audio/a.ogg'], loop: true, volume: 0.5, category: 'music' },
-      { key: 'b', files: [''], loop: false, volume: 1.5, category: 'sfx' },
-      { key: 'c', files: [], loop: false, volume: 0.5, category: 'sfx' },
-    ];
-    const problems = validateAudioManifest(bad);
+  it('audioFolders lists own and shared folders once each', () => {
+    const folders = audioFolders(audioManifest);
+    expect(folders).toContain(SHARED_MUSIC_FOLDER);
+    expect(folders).toHaveLength(audioManifest.length + 1);
+  });
+
+  it('validation catches duplicates, bad volume and empty folders', () => {
+    const problems = validateAudioManifest([
+      base,
+      base,
+      { ...base, key: 'b', folder: '', volume: 1.5 },
+      { ...base, key: 'c', folder: 'c', fallbackFolder: ' ' },
+    ]);
     expect(problems.some((p) => p.includes('duplicate audio key'))).toBe(true);
-    expect(problems.some((p) => p.includes('no file candidates'))).toBe(true);
-    expect(problems.some((p) => p.includes('empty file path'))).toBe(true);
+    expect(problems.some((p) => p.includes('is used twice'))).toBe(true);
+    expect(problems.some((p) => p.includes('empty folder'))).toBe(true);
+    expect(problems.some((p) => p.includes('empty fallback folder'))).toBe(true);
     expect(problems.some((p) => p.includes('volume outside'))).toBe(true);
+  });
+
+  it('a folder cannot feed both loops and one-shots', () => {
+    const problems = validateAudioManifest([
+      { ...base, fallbackFolder: 'shared' },
+      { ...base, key: 'b', folder: 'b', fallbackFolder: 'shared', loop: false },
+    ]);
+    expect(problems.some((p) => p.includes('both loops and one-shots'))).toBe(true);
   });
 });
