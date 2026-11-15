@@ -103,3 +103,30 @@ sphere collision, follow camera).
 
 Next: M2 - full ship interior in grey boxes from `shipLayout.ts` data
 (5 rooms, corridors, windows), plus content validation tests.
+
+---
+
+## 2026-11-15 - M2 complete: full ship interior from layout data
+
+**Milestone M2 done.** 106 tests passing; lint, types clean; verified in
+browser (spawn in cryo bay, drove through the cryo->corridor door, stopped
+correctly at the corridor hull wall).
+
+- `content/shipLayout.ts`: the whole floor plan as data - 6 rooms (bridge,
+  corridor spine, lab, cargo, cryo, engineering), 5 doors, 6 windows,
+  26 props (helm console, lab terminal, cryo pods, reactor, crates). Spawn
+  is in the cryo bay, beside the pods the drone tends.
+- `world/ship/layoutGeometry.ts`: pure helpers - shared-edge detection,
+  interval subtraction, wall segmentation around door/window openings.
+- `world/ship/validateLayout.ts`: rejects overlapping rooms, doors without
+  a shared edge, unreachable rooms (BFS over doors), windows on non-exterior
+  walls, props outside their room, bad spawn. buildShip() throws on invalid
+  content - the game refuses to start with a broken layout.
+- `world/ship/shipBuilder.ts`: layout -> meshes + colliders from the same
+  box list (can't drift apart); shared walls built once; windows are real
+  hull openings (space will show through them in M4); per-room mood lighting
+  (cryo cool blue, engineering warm orange) + exp2 fog for depth.
+- Deleted the temporary `world/greyRoom.ts`.
+- Known cosmetic: favicon 404 in console; add an icon in M7.
+
+Next: M3 - interaction system, helm, destination menu, ShipState machine.

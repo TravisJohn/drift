@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import type { DroneSnapshot } from './droneController';
-import { lerp, vec3 } from '../physics/vec3';
+import { lerp } from '../physics/vec3';
 import { disposeObject3D } from '../rendering/dispose';
 
 export class DroneVisual {
@@ -60,6 +60,3 @@ export class DroneVisual {
     disposeObject3D(this.group);
   }
 }
-
-/** Convenience for tests/debug: initial spawn point used by game.ts. */
-export const DRONE_SPAWN = vec3(0, 1.2, 2);

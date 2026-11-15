@@ -11,9 +11,10 @@ import { EventBus } from './core/events';
 import { InputManager } from './core/input';
 import { gameConfig } from './config/gameConfig';
 import { DroneController } from './player/droneController';
-import { DroneVisual, DRONE_SPAWN } from './player/droneVisual';
+import { DroneVisual } from './player/droneVisual';
 import { FollowCamera } from './player/followCamera';
-import { buildGreyRoom, type GreyRoom } from './world/greyRoom';
+import { shipLayout } from './content/shipLayout';
+import { buildShip, type ShipWorld } from './world/ship/shipBuilder';
 
 export class Game {
   readonly events = new EventBus();
@@ -27,7 +28,7 @@ export class Game {
   private readonly drone: DroneController;
   private readonly droneVisual: DroneVisual;
   private readonly followCamera: FollowCamera;
-  private readonly room: GreyRoom;
+  private readonly ship: ShipWorld;
 
   private readonly onResize = (): void => this.handleResize();
   private readonly onCanvasClick = (): void => {
@@ -51,10 +52,13 @@ export class Game {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
 
-    this.room = buildGreyRoom();
-    this.scene.add(this.room.group);
+    // Gentle distance haze; makes the long corridor read deep and quiet.
+    this.scene.fog = new THREE.FogExp2(0x05060a, 0.03);
 
-    this.drone = new DroneController(DRONE_SPAWN);
+    this.ship = buildShip(shipLayout); // throws on invalid layout content
+    this.scene.add(this.ship.group);
+
+    this.drone = new DroneController(this.ship.spawn);
     this.droneVisual = new DroneVisual();
     this.scene.add(this.droneVisual.group);
 
@@ -91,7 +95,7 @@ export class Game {
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
     this.input.detach();
-    this.room.dispose();
+    this.ship.dispose();
     this.droneVisual.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -106,7 +110,7 @@ export class Game {
   private update(dt: number): void {
     this.followCamera.applyLook(this.input.consumeLookDelta());
     const actions = this.input.sample();
-    this.drone.update(dt, actions, this.followCamera.yaw, this.room.colliders);
+    this.drone.update(dt, actions, this.followCamera.yaw, this.ship.colliders);
   }
 
   private render(alpha: number): void {
@@ -121,7 +125,7 @@ export class Game {
         y: this.droneVisual.group.position.y,
         z: this.droneVisual.group.position.z,
       },
-      this.room.colliders,
+      this.ship.colliders,
     );
     this.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
