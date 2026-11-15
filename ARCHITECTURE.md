@@ -200,8 +200,10 @@ drift/  (project root: D:\WEB PROJECTS\game_app_poc)
 
 ## 6. Audio you'll supply
 
-Put files in `public/audio/` as `.ogg` (preferred) or `.mp3`. Loops should be
-seamless. Until a file exists the game runs silently and logs a warning.
+Put files in `public/audio/` as `.ogg` (preferred), `.mp3` or `.wav`; the
+loader tries them in that order per key. Loops should be seamless (`.mp3`
+adds a few ms of padding, so prefer `.ogg` or `.wav` for loops that click).
+Until a file exists the game runs silently and logs a warning.
 
 | Key                 | Type   | Use |
 |---------------------|--------|-----|

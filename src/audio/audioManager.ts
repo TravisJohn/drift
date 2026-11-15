@@ -10,6 +10,9 @@
  *   unlock(), called from the first click. Loops requested earlier start
  *   then.
  * - The element factory is injectable so tests can run without real media.
+ * - Each sound has several candidate files (one per accepted format). When
+ *   one fails to load, the next is tried; only when all have failed is the
+ *   sound marked missing and the single warning logged.
  * - A per-loop gain (0..1) lets gameplay scale a loop live, e.g. the drone
  *   hover following flight speed - gain changes are immediate, fades are
  *   not.
@@ -37,7 +40,10 @@ const defaultFactory: AudioElementFactory = (url) => {
 
 interface Entry {
   readonly spec: AudioSpec;
-  readonly el: AudioElementLike;
+  /** The element for the candidate file currently in use. */
+  el: AudioElementLike;
+  /** Index into spec.files of the candidate `el` plays. */
+  candidate: number;
   missing: boolean;
   warned: boolean;
   playing: boolean;
@@ -53,19 +59,22 @@ export class AudioManager {
 
   constructor(
     manifest: readonly AudioSpec[] = audioManifest,
-    factory: AudioElementFactory = defaultFactory,
+    private readonly factory: AudioElementFactory = defaultFactory,
   ) {
     const problems = validateAudioManifest(manifest);
     if (problems.length > 0) {
       throw new Error(`AudioManager: invalid manifest:\n- ${problems.join('\n- ')}`);
     }
     for (const spec of manifest) {
-      const el = factory(spec.file);
-      el.loop = spec.loop;
-      el.volume = 0;
+      const first = spec.files[0];
+      if (first === undefined) {
+        // Unreachable after validation; kept so the type narrows loudly.
+        throw new Error(`AudioManager: "${spec.key}" has no file candidates`);
+      }
       const entry: Entry = {
         spec,
-        el,
+        el: this.createElement(spec, first),
+        candidate: 0,
         missing: false,
         warned: false,
         playing: false,
@@ -73,7 +82,7 @@ export class AudioManager {
         current: 0,
         gain: 1,
       };
-      el.addEventListener('error', () => this.markMissing(entry));
+      this.watchForFailure(entry);
       this.entries.set(spec.key, entry);
     }
   }
@@ -153,17 +162,53 @@ export class AudioManager {
     return entry;
   }
 
+  private createElement(spec: AudioSpec, url: string): AudioElementLike {
+    const el = this.factory(url);
+    el.loop = spec.loop;
+    el.volume = 0;
+    return el;
+  }
+
+  private watchForFailure(entry: Entry): void {
+    const el = entry.el;
+    el.addEventListener('error', () => this.handleFailure(entry, el));
+  }
+
   private startElement(entry: Entry): void {
     if (entry.missing) return;
+    const el = entry.el;
     try {
-      const result = entry.el.play();
+      const result = el.play();
       entry.playing = true;
       if (result && typeof result.catch === 'function') {
-        result.catch(() => this.markMissing(entry));
+        result.catch(() => this.handleFailure(entry, el));
       }
     } catch {
-      this.markMissing(entry);
+      this.handleFailure(entry, el);
     }
+  }
+
+  /**
+   * A candidate file failed: move to the next format, or give up.
+   *
+   * One bad file can report twice (an error event and a rejected play()),
+   * so only a failure from the element currently in use advances the
+   * fallback - a stale report would otherwise skip a candidate.
+   */
+  private handleFailure(entry: Entry, failed: AudioElementLike): void {
+    if (entry.missing || entry.el !== failed) return;
+    const nextUrl = entry.spec.files[entry.candidate + 1];
+    if (nextUrl === undefined) {
+      this.markMissing(entry);
+      return;
+    }
+    entry.candidate += 1;
+    entry.playing = false;
+    entry.el = this.createElement(entry.spec, nextUrl);
+    this.watchForFailure(entry);
+    // A loop that should be sounding resumes on the new file. A one-shot
+    // is not replayed: a late blip is worse than a skipped one.
+    if (this.unlocked && entry.spec.loop && entry.target > 0) this.startElement(entry);
   }
 
   private markMissing(entry: Entry): void {
@@ -173,7 +218,7 @@ export class AudioManager {
       entry.warned = true;
       // PRD: run silently, but say so once.
       console.warn(
-        `Drift audio: "${entry.spec.key}" not available at ${entry.spec.file} - running silent`,
+        `Drift audio: "${entry.spec.key}" not available (tried ${entry.spec.files.join(', ')}) - running silent`,
       );
     }
   }

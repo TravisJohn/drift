@@ -28,14 +28,22 @@ describe('audio manifest content', () => {
     }
   });
 
-  it('validation catches duplicates, bad volume and empty paths', () => {
+  it('every sound accepts ogg, mp3 and wav, preferring ogg (author may supply any)', () => {
+    for (const s of audioManifest) {
+      expect(s.files).toEqual([`audio/${s.key}.ogg`, `audio/${s.key}.mp3`, `audio/${s.key}.wav`]);
+    }
+  });
+
+  it('validation catches duplicates, bad volume, empty paths and no candidates', () => {
     const bad: AudioSpec[] = [
-      { key: 'a', file: 'audio/a.ogg', loop: true, volume: 0.5, category: 'music' },
-      { key: 'a', file: 'audio/a.ogg', loop: true, volume: 0.5, category: 'music' },
-      { key: 'b', file: '', loop: false, volume: 1.5, category: 'sfx' },
+      { key: 'a', files: ['audio/a.ogg'], loop: true, volume: 0.5, category: 'music' },
+      { key: 'a', files: ['audio/a.ogg'], loop: true, volume: 0.5, category: 'music' },
+      { key: 'b', files: [''], loop: false, volume: 1.5, category: 'sfx' },
+      { key: 'c', files: [], loop: false, volume: 0.5, category: 'sfx' },
     ];
     const problems = validateAudioManifest(bad);
     expect(problems.some((p) => p.includes('duplicate audio key'))).toBe(true);
+    expect(problems.some((p) => p.includes('no file candidates'))).toBe(true);
     expect(problems.some((p) => p.includes('empty file path'))).toBe(true);
     expect(problems.some((p) => p.includes('volume outside'))).toBe(true);
   });

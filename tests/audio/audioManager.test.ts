@@ -31,8 +31,25 @@ class FakeElement implements AudioElementLike {
 }
 
 const MANIFEST: readonly AudioSpec[] = [
-  { key: 'hum', file: 'audio/hum.ogg', loop: true, volume: 0.8, category: 'ambience' },
-  { key: 'blip', file: 'audio/blip.ogg', loop: false, volume: 0.6, category: 'sfx' },
+  { key: 'hum', files: ['audio/hum.ogg'], loop: true, volume: 0.8, category: 'ambience' },
+  { key: 'blip', files: ['audio/blip.ogg'], loop: false, volume: 0.6, category: 'sfx' },
+];
+
+const MULTI_FORMAT: readonly AudioSpec[] = [
+  {
+    key: 'hum',
+    files: ['audio/hum.ogg', 'audio/hum.mp3', 'audio/hum.wav'],
+    loop: true,
+    volume: 0.8,
+    category: 'ambience',
+  },
+  {
+    key: 'blip',
+    files: ['audio/blip.ogg', 'audio/blip.mp3'],
+    loop: false,
+    volume: 0.6,
+    category: 'sfx',
+  },
 ];
 
 describe('AudioManager', () => {
@@ -48,9 +65,9 @@ describe('AudioManager', () => {
       return el;
     });
   };
-  const el = (key: string): FakeElement => {
-    const found = elements.get(`audio/${key}.ogg`);
-    if (!found) throw new Error(`no fake element for ${key}`);
+  const el = (key: string, ext = 'ogg'): FakeElement => {
+    const found = elements.get(`audio/${key}.${ext}`);
+    if (!found) throw new Error(`no fake element for ${key}.${ext}`);
     return found;
   };
 
@@ -64,9 +81,9 @@ describe('AudioManager', () => {
   });
 
   it('refuses an invalid manifest (fail loud)', () => {
-    expect(() => make([{ key: 'x', file: '', loop: true, volume: 2, category: 'music' }])).toThrow(
-      /invalid manifest/,
-    );
+    expect(() =>
+      make([{ key: 'x', files: [''], loop: true, volume: 2, category: 'music' }]),
+    ).toThrow(/invalid manifest/);
   });
 
   it('nothing plays before unlock; requested loops start on unlock', () => {
@@ -149,5 +166,73 @@ describe('AudioManager', () => {
     manager.playLoop('hum');
     manager.dispose();
     expect(el('hum').pauseCalls).toBeGreaterThan(0);
+  });
+
+  describe('format fallback (author may supply ogg, mp3 or wav)', () => {
+    beforeEach(() => {
+      manager = make(MULTI_FORMAT);
+    });
+
+    it('only the preferred format is requested while it loads fine', () => {
+      expect([...elements.keys()]).toEqual(['audio/hum.ogg', 'audio/blip.ogg']);
+    });
+
+    it('a failed format falls through to the next without warning', () => {
+      el('hum').fireError();
+      expect(warn).not.toHaveBeenCalled();
+      manager.unlock();
+      manager.playLoop('hum');
+      manager.update(gameConfig.audio.fadeSeconds * 2);
+      expect(el('hum', 'mp3').playCalls).toBe(1);
+      expect(el('hum', 'mp3').loop).toBe(true);
+      expect(el('hum', 'mp3').volume).toBeCloseTo(0.8, 5);
+      expect(el('hum').playCalls).toBe(0);
+    });
+
+    it('a loop already requested resumes on the fallback file', () => {
+      manager.unlock();
+      manager.playLoop('hum');
+      el('hum').fireError();
+      el('hum', 'mp3').fireError();
+      expect(el('hum', 'wav').playCalls).toBe(1);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('a one-shot plays from the fallback file on its next trigger', () => {
+      el('blip').fireError();
+      manager.unlock();
+      expect(el('blip', 'mp3').playCalls).toBe(0);
+      manager.playOnce('blip');
+      expect(el('blip', 'mp3').playCalls).toBe(1);
+      expect(el('blip', 'mp3').volume).toBeCloseTo(0.6, 5);
+    });
+
+    it('warns once, naming every tried file, only after all formats fail', () => {
+      el('hum').fireError();
+      el('hum', 'mp3').fireError();
+      expect(warn).not.toHaveBeenCalled();
+      el('hum', 'wav').fireError();
+      el('hum', 'wav').fireError();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain(
+        'audio/hum.ogg, audio/hum.mp3, audio/hum.wav',
+      );
+      manager.unlock();
+      manager.playLoop('hum');
+      expect(el('hum', 'wav').playCalls).toBe(0);
+    });
+
+    it('a file that reports failure twice does not skip a format', async () => {
+      // A bad source fires an error event and also rejects play().
+      el('hum').rejectPlay = true;
+      manager.unlock();
+      manager.playLoop('hum');
+      el('hum').fireError();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(el('hum', 'mp3').playCalls).toBe(1);
+      expect(elements.has('audio/hum.wav')).toBe(false);
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });

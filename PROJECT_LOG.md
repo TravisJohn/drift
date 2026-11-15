@@ -311,3 +311,30 @@ fixed with an SVG icon).
 
 v0 complete. Remaining for the author: supply audio files (public/audio/
 README.txt), playtest the vibe, then decide what Drift becomes next.
+
+## 2026-11-16 - Audio accepts ogg, mp3 or wav
+
+**Change after v0, at the author's request** (their files are MP3/WAV,
+the loader only looked for .ogg). 230 tests passing; lint, format, types
+and production build clean.
+
+- `content/audioManifest.ts`: each sound now lists candidate files, one
+  per format in `AUDIO_EXTENSIONS` (ogg, mp3, wav - that order is the
+  preference when several formats of one key exist). `AudioSpec.file`
+  became `AudioSpec.files`; validation also rejects an empty candidate
+  list.
+- `audio/audioManager.ts`: when a candidate fails to load the manager
+  moves to the next one; the single "running silent" warning is logged
+  only after every format failed, and now names all files tried. A loop
+  that should be sounding resumes on the fallback file; a one-shot is not
+  replayed late. A stale failure report (one bad file can report twice:
+  error event plus rejected play()) cannot skip a format.
+- Trade-off: with no files present the browser makes three requests per
+  sound instead of one (30 at startup). Harmless at this scale; the
+  alternative, a build-time file listing, was not worth the machinery.
+- Risk noted in the README: mp3 padding can make loops gap slightly;
+  ogg or wav is the fix for any loop that clicks.
+- Verified in-browser against the dev server with a temporary silent
+  probe wav (removed afterwards): ogg and mp3 failed, wav loaded with no
+  warning; a key with no files warned exactly once.
+- Docs: public/audio/README.txt and ARCHITECTURE.md section 6 updated.
