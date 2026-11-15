@@ -1,0 +1,31 @@
+{
+  "name": "drift",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Drift - a quiet space travel game. You are a maintenance drone on a research vessel whose crew is in cryosleep.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests",
+    "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,css}\" \"tests/**/*.ts\""
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/three": "^0.187.0",
+    "eslint": "^10.15.0",
+    "jsdom": "^31.0.1",
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
