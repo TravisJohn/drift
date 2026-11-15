@@ -40,6 +40,9 @@ import { PuzzleOverlay } from './ui/puzzleOverlay';
 import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
 import type { RoomSpec } from './content/shipLayout';
+import { AppState } from './state/appState';
+import { TitleScreen } from './ui/titleScreen';
+import { PauseMenu } from './ui/pauseMenu';
 
 const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
 
@@ -75,6 +78,17 @@ export class Game {
   private readonly cryoRoom: RoomSpec | null;
   private elapsed = 0;
   private cryoGain = 0;
+
+  // --- M7: app flow and the fps probe ---
+  private readonly appState = new AppState();
+  private readonly titleScreen = new TitleScreen();
+  private readonly pauseMenu = new PauseMenu();
+  /** True when any modal overlay was open at the end of the last step. */
+  private lastOverlayOpen = false;
+  private lastFrameAt: number | null = null;
+  private fpsAccum = 0;
+  private fpsFrames = 0;
+  private fps = 0;
 
   private readonly onResize = (): void => this.handleResize();
   private readonly onCanvasClick = (): void => {
@@ -220,9 +234,18 @@ export class Game {
     this.updateHint();
   }
 
+  /** Boot to the title screen; the loop renders the dim ship behind it. */
   start(): void {
-    this.events.emit('app:started');
+    this.titleScreen.show({ onBegin: () => this.beginSession() });
     this.loop.start();
+  }
+
+  /** The Begin click: a real user gesture, so it may unlock audio. */
+  private beginSession(): void {
+    this.audio.unlock();
+    this.appState.start();
+    this.events.emit('app:started');
+    this.onCanvasClick(); // capture the pointer from the same gesture
   }
 
   dispose(): void {
@@ -233,6 +256,8 @@ export class Game {
     this.input.detach();
     this.menu.close();
     this.puzzleOverlay.close();
+    this.titleScreen.close();
+    this.pauseMenu.close();
     this.audio.dispose();
     this.hud.dispose();
     this.ship.dispose();
@@ -250,6 +275,8 @@ export class Game {
     locationId: string;
     playerMode: string;
     starDrift: number;
+    appState: string;
+    fps: number;
   } {
     const { position } = this.drone.snapshot;
     return {
@@ -259,6 +286,8 @@ export class Game {
       locationId: this.shipState.locationId,
       playerMode: this.playerMode.mode,
       starDrift: this.travelView.driftSpeed,
+      appState: this.appState.state,
+      fps: this.fps,
     };
   }
 
@@ -266,6 +295,26 @@ export class Game {
     // Always consume edge presses so stale ones can't fire later.
     const interactPressed = this.input.consumePress('KeyE');
     const viewPressed = this.input.consumePress('KeyV');
+    const escPressed = this.input.consumePress('Escape');
+    const overlayWasOpen = this.lastOverlayOpen;
+    this.lastOverlayOpen = this.menu.isOpen || this.puzzleOverlay.isOpen || this.pauseMenu.isOpen;
+
+    // Title / pause: time stands still, but the ship keeps breathing and
+    // audio fades keep moving so nothing pops when the player returns.
+    if (!this.appState.isPlaying) {
+      this.elapsed += dt;
+      this.ship.update(this.elapsed);
+      this.audio.update(dt);
+      this.input.consumeLookDelta();
+      return;
+    }
+
+    // Esc pauses - unless this press just closed an overlay (its own
+    // listener handled it between steps) or we are mid-overlay.
+    if (escPressed && this.playerMode.isRoaming && !overlayWasOpen) {
+      this.openPause();
+      return;
+    }
 
     // The journey continues regardless of what the player is doing (D3).
     for (const change of this.shipState.update(dt)) {
@@ -326,6 +375,19 @@ export class Game {
       this.input.consumeLookDelta();
       this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.ship.colliders);
     }
+  }
+
+  /** Freeze the simulation and show the pause menu (Esc, M7). */
+  private openPause(): void {
+    this.appState.pause();
+    this.events.emit('app:paused');
+    document.exitPointerLock();
+    this.pauseMenu.open({
+      onResume: () => {
+        this.appState.resume();
+        this.events.emit('app:resumed');
+      },
+    });
   }
 
   /** Per-step audio gains: hover follows speed, cryo ambience proximity. */
@@ -445,6 +507,18 @@ export class Game {
   }
 
   private render(alpha: number): void {
+    // Rolling fps over ~30 frames, for the PRD performance check (M7).
+    const now = performance.now();
+    if (this.lastFrameAt !== null) {
+      this.fpsAccum += now - this.lastFrameAt;
+      if (++this.fpsFrames >= 30) {
+        this.fps = this.fpsAccum > 0 ? (1000 * this.fpsFrames) / this.fpsAccum : 0;
+        this.fpsFrames = 0;
+        this.fpsAccum = 0;
+      }
+    }
+    this.lastFrameAt = now;
+
     const snapshot = this.drone.snapshot;
     this.droneVisual.apply(snapshot, alpha);
 

@@ -13,8 +13,12 @@
 /** All game events and their payloads. `void` means "no payload". */
 export interface GameEvents {
   // --- App lifecycle (M0+) ---
-  /** The game has been constructed and the first frame is about to run. */
+  /** The player left the title screen and the session began (M7). */
   'app:started': void;
+  /** The pause menu opened; the simulation is frozen (M7). */
+  'app:paused': void;
+  /** The pause menu closed; the simulation is running again (M7). */
+  'app:resumed': void;
 
   // --- Travel (M3/M4) ---
   /** The player chose a destination at the helm. */

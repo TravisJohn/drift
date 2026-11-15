@@ -266,3 +266,48 @@ and exactly one "running silent" console warning per missing audio file.
 
 Next: M7 - title/pause menus (AppState), favicon, 60fps performance pass,
 playtest against the PRD success criteria.
+
+---
+
+## 2026-11-15 - M7 complete: title, pause, favicon, performance - v0 done
+
+**Milestone M7 done - v0 is complete.** 223 tests passing; lint, types,
+production build clean; zero console errors on a fresh load (favicon 404
+fixed with an SVG icon).
+
+- `state/appState.ts` (D3): Title -> Playing <-> Paused, pure and guarded
+  like the other machines. The loop always renders; the simulation only
+  advances while playing - on title/pause, time stands still but the pods
+  keep breathing and audio fades keep moving so nothing pops.
+- `ui/titleScreen.ts`: DRIFT over the dim, already-rendered ship, one line
+  of fiction, Begin. The Begin click is the user gesture: it unlocks
+  audio, starts the session (app:started) and captures the pointer.
+- `ui/pauseMenu.ts`: Esc pauses while roaming; panel shows a controls
+  reminder; Esc or Resume returns. A one-step "overlay just closed" guard
+  stops the Esc that closes any overlay from immediately re-pausing.
+- New events: app:paused / app:resumed (documented in the catalog).
+- Performance: structural meshes now share one unit BoxGeometry (scaled
+  per box) instead of ~150 geometries; a rolling fps probe is exposed at
+  window.__drift.debugSnapshot.fps. Measured 60.0 fps in the embedded
+  pane while displayed, full scene. Criterion 3 still needs the author's
+  machine for the final word.
+- Verified in-browser: title -> Begin -> greeting; Esc opened the pause
+  menu with the sim provably frozen (star drift unchanged over 120 steps);
+  Esc resumed without re-pausing; journey continued to cruising after.
+- Synthetic-event note: the pause menu listens on document; keyboard
+  events dispatched on window never reach it. Real keys hit both.
+
+### PRD success criteria at v0
+
+1. Feel (author judges, ~10 min session at localhost:5173): OPEN - the
+   only remaining line item, and the whole point.
+2. Loop works end to end, no dead ends: PASS (verified repeatedly).
+3. Steady 60 fps: PASS in the embedded pane; confirm on target laptop.
+4. Extensible puzzles without touching movement/camera/travel: PASS by
+   construction (M5 seam; PlaceholderPuzzle proves it).
+5. Core logic tested: PASS - 223 tests across loop, events, input,
+   physics, drone, camera, layout, builder, travel, states, interaction,
+   narrative, puzzles, audio, UI.
+
+v0 complete. Remaining for the author: supply audio files (public/audio/
+README.txt), playtest the vibe, then decide what Drift becomes next.

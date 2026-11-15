@@ -188,13 +188,14 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   // Colliders come from the full box list (the source of truth); structure
   // boxes also become plain meshes, while props get detailed visuals (M6)
   // that stay inside the same collider footprint.
+  // One unit cube shared by every structural mesh, scaled per box (M7
+  // perf pass: one geometry instead of ~150, same draw result).
+  const unitBox = new THREE.BoxGeometry(1, 1, 1);
   for (const box of buildShipBoxes(layout)) {
     colliders.push(boxFromCenterSize(box.center, box.size));
     if (box.role !== 'floor' && box.role !== 'ceiling' && box.role !== 'wall') continue;
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(box.size.x, box.size.y, box.size.z),
-      materialFor(box.role),
-    );
+    const mesh = new THREE.Mesh(unitBox, materialFor(box.role));
+    mesh.scale.set(box.size.x, box.size.y, box.size.z);
     mesh.position.set(box.center.x, box.center.y, box.center.z);
     group.add(mesh);
   }

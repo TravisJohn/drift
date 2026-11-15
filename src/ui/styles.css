@@ -210,3 +210,112 @@
   color: #5d7285;
   text-transform: uppercase;
 }
+
+/* Title screen - the quiet front door (M7). */
+#title {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 4, 8, 0.72);
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+#title .panel {
+  text-align: center;
+  color: #cfe3f5;
+  padding: 40px 60px;
+}
+
+#title h1 {
+  margin: 0;
+  font-size: 54px;
+  font-weight: 200;
+  letter-spacing: 0.65em;
+  text-indent: 0.65em; /* visually recenter the letterspaced word */
+  color: #9fd4e8;
+}
+
+#title .tagline {
+  margin: 18px 0 36px;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #6f8296;
+}
+
+#title .begin,
+#pause .resume {
+  padding: 11px 40px;
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  text-transform: uppercase;
+  color: #cfe3f5;
+  background: rgba(127, 212, 232, 0.1);
+  border: 1px solid rgba(127, 212, 232, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+
+#title .begin:hover,
+#pause .resume:hover {
+  background: rgba(127, 212, 232, 0.22);
+}
+
+/* Pause menu (M7). */
+#pause {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.6);
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+#pause .panel {
+  min-width: 360px;
+  text-align: center;
+  background: rgba(10, 15, 22, 0.92);
+  border: 1px solid rgba(110, 160, 200, 0.4);
+  border-radius: 6px;
+  padding: 26px 34px 24px;
+  color: #cfe3f5;
+}
+
+#pause h2 {
+  margin: 0 0 18px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  text-transform: uppercase;
+  color: #8fb8d8;
+}
+
+#pause .controls {
+  margin: 0 0 22px;
+  font-size: 12px;
+}
+
+#pause .controls .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 26px;
+  padding: 4px 0;
+}
+
+#pause .controls .keys {
+  color: #9fd4e8;
+  letter-spacing: 0.08em;
+}
+
+#pause .controls .action {
+  color: #7d93a8;
+}
