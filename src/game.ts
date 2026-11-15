@@ -3,7 +3,9 @@
  *
  * M3 scope: the ship interior, the drone, interaction (helm), the
  * destination menu, and the ShipState journey running underneath.
- * Travel visuals (space scene, cinematic camera) arrive in M4.
+ * M4 scope: the space scene behind the windows (layered render, D2), the
+ * TravelDirector's visual read of the journey, and the exterior cinematic
+ * camera (V during travel).
  */
 import * as THREE from 'three';
 import { GameLoop } from './core/loop';
@@ -22,6 +24,14 @@ import { InteractionSystem } from './interaction/interactionSystem';
 import type { Interactable } from './interaction/interactable';
 import { Hud } from './ui/hud';
 import { DestinationMenu } from './ui/destinationMenu';
+import { SpaceScene } from './world/space/spaceScene';
+import {
+  computeTravelView,
+  type TravelShipSnapshot,
+  type TravelView,
+} from './travel/travelDirector';
+import { CinematicCamera } from './travel/cinematicCamera';
+import type { CameraPose } from './player/followCamera';
 
 const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
 
@@ -40,6 +50,11 @@ export class Game {
   private readonly ship: ShipWorld;
 
   private readonly shipState: ShipState;
+  private readonly spaceScene: SpaceScene;
+  private readonly spaceCamera: THREE.PerspectiveCamera;
+  private readonly cinematicCamera = new CinematicCamera();
+  private cinematicPose: CameraPose | null = null;
+  private travelView: TravelView;
   private readonly playerMode = new PlayerMode();
   private readonly interaction = new InteractionSystem();
   private readonly interactables: Interactable[] = [];
@@ -63,6 +78,8 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x05060a);
+    // Layered render (D2): we clear manually - space first, interior on top.
+    this.renderer.autoClear = false;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -73,6 +90,10 @@ export class Game {
 
     this.ship = buildShip(shipLayout); // throws on invalid layout content
     this.scene.add(this.ship.group);
+
+    // --- M4: the universe outside the windows ---
+    this.spaceScene = new SpaceScene(locations, shipLayout);
+    this.spaceCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 2000);
 
     this.drone = new DroneController(this.ship.spawn);
     this.droneVisual = new DroneVisual();
@@ -89,6 +110,8 @@ export class Game {
       departDuration: gameConfig.travel.departDuration,
       arriveDuration: gameConfig.travel.arriveDuration,
     });
+    this.travelView = computeTravelView(this.shipSnapshot());
+    this.spaceScene.update(0, this.travelView);
     this.hud = new Hud();
     this.refreshStatus();
 
@@ -142,6 +165,7 @@ export class Game {
     this.menu.close();
     this.hud.dispose();
     this.ship.dispose();
+    this.spaceScene.dispose();
     this.droneVisual.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -154,6 +178,7 @@ export class Game {
     shipPhase: string;
     locationId: string;
     playerMode: string;
+    starDrift: number;
   } {
     const { position } = this.drone.snapshot;
     return {
@@ -162,12 +187,14 @@ export class Game {
       shipPhase: this.shipState.phase,
       locationId: this.shipState.locationId,
       playerMode: this.playerMode.mode,
+      starDrift: this.travelView.driftSpeed,
     };
   }
 
   private update(dt: number): void {
     // Always consume edge presses so stale ones can't fire later.
     const interactPressed = this.input.consumePress('KeyE');
+    const viewPressed = this.input.consumePress('KeyV');
 
     // The journey continues regardless of what the player is doing (D3).
     for (const change of this.shipState.update(dt)) {
@@ -177,6 +204,25 @@ export class Game {
       }
     }
     this.refreshStatus();
+
+    // M4: space keeps drifting whatever the player is doing.
+    this.travelView = computeTravelView(this.shipSnapshot());
+    this.spaceScene.update(dt, this.travelView);
+
+    // The exterior shot ends itself when the journey does.
+    if (this.playerMode.mode === 'cinematic' && this.shipState.phase === 'docked') {
+      this.exitCinematic();
+    }
+
+    if (this.playerMode.mode === 'cinematic') {
+      if (viewPressed) {
+        this.exitCinematic();
+      } else {
+        this.cinematicPose = this.cinematicCamera.update(dt);
+      }
+    } else if (viewPressed && this.playerMode.isRoaming && this.shipState.phase !== 'docked') {
+      this.enterCinematic();
+    }
 
     if (this.playerMode.isRoaming) {
       this.followCamera.applyLook(this.input.consumeLookDelta());
@@ -201,6 +247,36 @@ export class Game {
       this.input.consumeLookDelta();
       this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.ship.colliders);
     }
+  }
+
+  /** Enter the exterior travel shot (V during travel, M4). */
+  private enterCinematic(): void {
+    this.events.emit('player:modeChanged', this.playerMode.enterCinematic());
+    const focusChange = this.interaction.clear();
+    if (focusChange?.blurred) {
+      this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
+    }
+    this.cinematicCamera.reset();
+    this.cinematicPose = this.cinematicCamera.update(0);
+    this.spaceScene.setExteriorVisible(true);
+    this.hud.setPrompt('[V] Return inside');
+  }
+
+  private exitCinematic(): void {
+    this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+    this.cinematicPose = null;
+    this.spaceScene.setExteriorVisible(false);
+    this.hud.setPrompt(null);
+  }
+
+  /** The slice of ShipState the TravelDirector reads. */
+  private shipSnapshot(): TravelShipSnapshot {
+    return {
+      phase: this.shipState.phase,
+      phaseProgress: this.shipState.phaseProgress,
+      locationId: this.shipState.locationId,
+      destinationId: this.shipState.destinationId,
+    };
   }
 
   /** Open the destination menu at the helm (only meaningful while docked). */
@@ -248,6 +324,17 @@ export class Game {
     const snapshot = this.drone.snapshot;
     this.droneVisual.apply(snapshot, alpha);
 
+    this.renderer.clear();
+
+    // Cinematic: only the space scene, from the orbiting exterior camera.
+    if (this.cinematicPose !== null) {
+      const { position, lookAt } = this.cinematicPose;
+      this.spaceCamera.position.set(position.x, position.y, position.z);
+      this.spaceCamera.lookAt(lookAt.x, lookAt.y, lookAt.z);
+      this.renderer.render(this.spaceScene.scene, this.spaceCamera);
+      return;
+    }
+
     // Camera tracks the interpolated visual position for judder-free follow.
     const pose = this.followCamera.update(
       1 / gameConfig.simulation.updateHz,
@@ -261,6 +348,13 @@ export class Game {
     this.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
 
+    // Layered render (D2): space from the origin with the interior camera's
+    // rotation, then depth cleared and the interior drawn on top - so space
+    // is only visible through the real window openings.
+    this.spaceCamera.position.set(0, 0, 0);
+    this.spaceCamera.quaternion.copy(this.camera.quaternion);
+    this.renderer.render(this.spaceScene.scene, this.spaceCamera);
+    this.renderer.clearDepth();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -270,6 +364,8 @@ export class Game {
     if (width === 0 || height === 0) return;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.spaceCamera.aspect = width / height;
+    this.spaceCamera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   }
 

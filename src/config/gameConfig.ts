@@ -52,6 +52,32 @@ export const gameConfig = {
     helmRadius: 2.2,
   },
 
+  /** Space scene (M4). The ship never moves; space moves around it (D2). */
+  space: {
+    starCount: 1400,
+    /** Stars live in a cube of this half-size, centered on the ship. */
+    starExtent: 240,
+    /** No stars spawn within this radius of the ship (they'd sit indoors). */
+    starClearRadius: 24,
+    /** Star drift in m/s at full cruise. */
+    cruiseStarSpeed: 55,
+    /** Deterministic star placement (same sky every run). */
+    starSeed: 20261115,
+    /** Distance of a docked location's body from the ship. */
+    bodyDistance: 170,
+  },
+
+  /** Exterior cinematic camera (M4), orbiting the ship during travel. */
+  cinematic: {
+    orbitRadius: 30,
+    orbitHeight: 9,
+    /** Slow orbit, radians per second. */
+    yawRate: 0.07,
+    /** Gentle vertical breathing of the orbit height. */
+    bobAmplitude: 1.5,
+    bobFrequency: 0.1,
+  },
+
   /** Third-person follow camera. */
   camera: {
     distance: 3.4,

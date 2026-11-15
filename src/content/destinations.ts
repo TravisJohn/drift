@@ -7,6 +7,15 @@
  * `accentColor` seeds each location's look (skybox/body tint, M4).
  */
 
+/** What the location looks like out the window (built in celestialBodies.ts). */
+export type BodyKind = 'station' | 'ringed' | 'sun';
+
+export interface BodySpec {
+  readonly kind: BodyKind;
+  /** World-units radius of the main body mesh. */
+  readonly radius: number;
+}
+
 export interface LocationSpec {
   readonly id: string;
   readonly name: string;
@@ -16,6 +25,8 @@ export interface LocationSpec {
   readonly travelTime: number;
   /** 0xRRGGBB accent used by the space scene (M4) and UI highlights. */
   readonly accentColor: number;
+  /** The celestial body seen while docked here (M4). */
+  readonly body: BodySpec;
 }
 
 export const locations: readonly LocationSpec[] = [
@@ -25,6 +36,7 @@ export const locations: readonly LocationSpec[] = [
     blurb: 'The long mooring. Quiet gantries and a dim service beacon.',
     travelTime: 75,
     accentColor: 0x8fa3b8,
+    body: { kind: 'station', radius: 10 },
   },
   {
     id: 'aurelia',
@@ -32,6 +44,7 @@ export const locations: readonly LocationSpec[] = [
     blurb: 'An ice giant wrapped in pale rings. The survey is years overdue.',
     travelTime: 90,
     accentColor: 0x7fd4e8,
+    body: { kind: 'ringed', radius: 30 },
   },
   {
     id: 'cinder',
@@ -39,6 +52,7 @@ export const locations: readonly LocationSpec[] = [
     blurb: 'A dying red sun and the asteroid field it keeps.',
     travelTime: 70,
     accentColor: 0xe8865a,
+    body: { kind: 'sun', radius: 34 },
   },
 ];
 
@@ -62,6 +76,7 @@ export function validateLocations(): string[] {
     ids.add(loc.id);
     if (loc.travelTime <= 0) problems.push(`location "${loc.id}" has non-positive travelTime`);
     if (!loc.name.trim()) problems.push(`location "${loc.id}" has an empty name`);
+    if (loc.body.radius <= 0) problems.push(`location "${loc.id}" body has non-positive radius`);
   }
   if (locations.length < 2) problems.push('need at least 2 locations for travel to exist');
   if (!ids.has(START_LOCATION_ID)) problems.push(`start location "${START_LOCATION_ID}" missing`);

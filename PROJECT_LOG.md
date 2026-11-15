@@ -163,3 +163,36 @@ menu rendering with keyboard/mouse selection.
 
 Next: M4 - space scene, layered rendering (D2), TravelDirector visuals,
 cinematic exterior camera, arrival changing the view.
+
+---
+
+## 2026-11-15 - M4 complete: space outside the windows
+
+**Milestone M4 done.** 166 tests passing; lint, types, production build
+clean. Verified live in the browser: stars visible through the bridge window
+while cruising (screenshot), star buffer confirmed drifting, V toggles the
+exterior shot (hull + engine glow + receding station), and arrival at
+Aurelia swapped the visible body and returned drift to zero.
+
+- `world/space/starfield.ts`: deterministic starfield (seeded mulberry32) in
+  a wrap-around cube; drift math is pure Float32Array functions, fully
+  tested. The ship never moves - stars slide past it (D2).
+- `world/space/celestialBodies.ts`: one grey-box body per location built
+  from new `body` data on LocationSpec (station / ringed / sun). The current
+  location's body recedes astern during departure; the destination grows in
+  from dead ahead during arrival.
+- `world/space/shipExterior.ts`: hull built from the same room rectangles
+  as the interior (silhouettes can't drift apart), aft engines whose glow
+  follows engine intensity. Only visible in the cinematic shot.
+- `travel/travelDirector.ts`: pure `computeTravelView()` mapping ShipState's
+  phase/phaseProgress to drift speed, engine glow and body presences
+  (smoothstep ramps). Visuals-only, per the M3 logged deviation.
+- `travel/cinematicCamera.ts`: slow exterior orbit with gentle height bob;
+  V enters it during travel, V (or docking) returns inside.
+- game.ts: layered render - space scene first from a rotation-matched
+  camera at the origin, depth cleared, interior on top; so space shows only
+  through the real window openings. autoClear off, manual clears.
+- Hint line now mentions E and V.
+
+Next: M5 - lab terminal + PuzzleModule interface/registry + placeholder
+puzzle overlay; NarrativeDirector + AI lines + HUD subtitles. Full v0 loop.

@@ -1,0 +1,117 @@
+/**
+ * Starfield - the drifting stars outside the windows (D2).
+ *
+ * The ship never moves: during travel the stars slide past it instead.
+ * Star placement and drift are pure functions over a Float32Array so the
+ * wrap-around logic is unit-testable; the Starfield class is the thin
+ * Three.js wrapper that owns the Points object.
+ */
+import * as THREE from 'three';
+import { gameConfig } from '../../config/gameConfig';
+
+/** Small deterministic PRNG (mulberry32) so the sky is the same every run. */
+export function mulberry32(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Generate star positions in a cube of half-size `extent`, keeping a clear
+ * sphere of `clearRadius` around the origin (stars there would sit inside
+ * the ship). Returns xyz triplets.
+ */
+export function createStarPositions(
+  count: number,
+  extent: number,
+  clearRadius: number,
+  random: () => number,
+): Float32Array {
+  if (count <= 0 || extent <= 0 || clearRadius >= extent) {
+    throw new Error('createStarPositions: need count > 0 and 0 <= clearRadius < extent');
+  }
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let x: number;
+    let y: number;
+    let z: number;
+    // Rejection-sample the clear zone; the zone is a tiny fraction of the
+    // cube, so this terminates almost immediately.
+    do {
+      x = (random() * 2 - 1) * extent;
+      y = (random() * 2 - 1) * extent;
+      z = (random() * 2 - 1) * extent;
+    } while (x * x + y * y + z * z < clearRadius * clearRadius);
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+  }
+  return positions;
+}
+
+/**
+ * Drift every star by `dz` along +Z (the ship flies toward -Z), wrapping
+ * within [-extent, extent) so the field is endless. Mutates in place.
+ */
+export function advanceStars(positions: Float32Array, dz: number, extent: number): void {
+  if (extent <= 0) {
+    throw new Error('advanceStars: extent must be positive');
+  }
+  const size = 2 * extent;
+  for (let i = 2; i < positions.length; i += 3) {
+    const z = (positions[i] ?? 0) + dz;
+    // True modulo (never negative) keeps z in [-extent, extent).
+    positions[i] = ((((z + extent) % size) + size) % size) - extent;
+  }
+}
+
+export class Starfield {
+  readonly points: THREE.Points;
+
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly material: THREE.PointsMaterial;
+  private readonly positions: Float32Array;
+  private readonly extent: number;
+
+  constructor() {
+    const cfg = gameConfig.space;
+    this.extent = cfg.starExtent;
+    this.positions = createStarPositions(
+      cfg.starCount,
+      cfg.starExtent,
+      cfg.starClearRadius,
+      mulberry32(cfg.starSeed),
+    );
+
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.material = new THREE.PointsMaterial({
+      color: 0xcfd8e6,
+      size: 1.4,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    this.points = new THREE.Points(this.geometry, this.material);
+    // The field surrounds the camera; never let Three cull it away.
+    this.points.frustumCulled = false;
+  }
+
+  /** `driftSpeed` is 0..1 of full cruise speed (from the TravelDirector). */
+  update(dt: number, driftSpeed: number): void {
+    if (driftSpeed <= 0) return;
+    advanceStars(this.positions, driftSpeed * gameConfig.space.cruiseStarSpeed * dt, this.extent);
+    this.geometry.getAttribute('position').needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.geometry.dispose();
+    this.material.dispose();
+  }
+}
