@@ -36,7 +36,7 @@ export const locations: readonly LocationSpec[] = [
     blurb: 'The long mooring. Quiet gantries and a dim service beacon.',
     travelTime: 75,
     accentColor: 0x8fa3b8,
-    body: { kind: 'station', radius: 10 },
+    body: { kind: 'station', radius: 15 },
   },
   {
     id: 'aurelia',

@@ -12,33 +12,55 @@ import type { LocationSpec } from '../../content/destinations';
 import type { ShipLayout } from '../../content/shipLayout';
 import type { TravelView } from '../../travel/travelDirector';
 import { Starfield } from './starfield';
+import { SkyDome } from './skyDome';
 import { CelestialBodies } from './celestialBodies';
 import { ShipExterior } from './shipExterior';
+import { createSpaceUniforms } from './bodyMaterials';
+import { projectionScale } from './starLook';
+
+/**
+ * Where the key light sits. Chosen so a docked body, seen from the ship,
+ * shows a little over half its lit face with the terminator in view.
+ */
+const KEY_LIGHT_DIRECTION = new THREE.Vector3(0.75, 0.45, -0.5).normalize();
 
 export class SpaceScene {
   readonly scene = new THREE.Scene();
 
+  private readonly sky: SkyDome;
   private readonly starfield: Starfield;
+  private elapsed = 0;
   private readonly bodies: CelestialBodies;
   private readonly exterior: ShipExterior;
 
   constructor(specs: readonly LocationSpec[], layout: ShipLayout) {
+    this.sky = new SkyDome();
     this.starfield = new Starfield();
-    this.bodies = new CelestialBodies(specs);
+    this.bodies = new CelestialBodies(specs, createSpaceUniforms(KEY_LIGHT_DIRECTION));
     this.exterior = new ShipExterior(layout);
     this.exterior.group.visible = false; // only shown in the cinematic shot
 
     // A cold key light plus faint fill so bodies and hull read in the dark.
-    const key = new THREE.DirectionalLight(0xbfd2e8, 1.1);
-    key.position.set(-0.6, 0.5, -0.3);
-    this.scene.add(key, new THREE.AmbientLight(0x10141c));
+    const key = new THREE.DirectionalLight(0xdfe8f5, 3.0);
+    key.position.copy(KEY_LIGHT_DIRECTION);
+    this.scene.add(key, new THREE.AmbientLight(0x1a2030, 1.2));
 
-    this.scene.add(this.starfield.points, this.bodies.group, this.exterior.group);
+    this.scene.add(this.sky.group, this.starfield.points, this.bodies.group, this.exterior.group);
+  }
+
+  /** Keep star sizes true to the viewport; call on every resize. */
+  setViewport(heightPx: number, fovDegrees: number): void {
+    const scale = projectionScale(heightPx, fovDegrees);
+    this.sky.setProjectionScale(scale);
+    this.starfield.setProjectionScale(scale);
   }
 
   /** Advance the drift and re-place bodies (called once per fixed update). */
   update(dt: number, view: TravelView): void {
-    this.starfield.update(dt, view.driftSpeed);
+    this.elapsed += dt;
+    this.sky.update(this.elapsed);
+    this.starfield.update(dt, view.driftSpeed, this.elapsed);
+    this.bodies.update(this.elapsed);
     this.bodies.apply(view);
     this.exterior.setEngineIntensity(view.engineIntensity);
   }
@@ -49,6 +71,7 @@ export class SpaceScene {
   }
 
   dispose(): void {
+    this.sky.dispose();
     this.starfield.dispose();
     this.bodies.dispose();
     this.exterior.dispose();

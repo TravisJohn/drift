@@ -27,6 +27,7 @@ import type { Interactable } from './interaction/interactable';
 import { Hud } from './ui/hud';
 import { DestinationMenu } from './ui/destinationMenu';
 import { SpaceScene } from './world/space/spaceScene';
+import { RenderPipeline } from './rendering/renderPipeline';
 import {
   computeTravelView,
   type TravelShipSnapshot,
@@ -64,6 +65,7 @@ export class Game {
   private readonly shipState: ShipState;
   private readonly spaceScene: SpaceScene;
   private readonly spaceCamera: THREE.PerspectiveCamera;
+  private readonly pipeline: RenderPipeline;
   private readonly cinematicCamera = new CinematicCamera();
   private cinematicPose: CameraPose | null = null;
   private travelView: TravelView;
@@ -126,6 +128,11 @@ export class Game {
     // --- M4: the universe outside the windows ---
     this.spaceScene = new SpaceScene(locations, shipLayout);
     this.spaceCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 2000);
+    this.pipeline = new RenderPipeline(
+      this.renderer,
+      { scene: this.spaceScene.scene, camera: this.spaceCamera },
+      { scene: this.scene, camera: this.camera },
+    );
 
     this.drone = new DroneController(this.ship.spawn);
     this.droneVisual = new DroneVisual();
@@ -265,6 +272,7 @@ export class Game {
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
+    this.pipeline.dispose();
     this.droneVisual.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -525,14 +533,12 @@ export class Game {
     const snapshot = this.drone.snapshot;
     this.droneVisual.apply(snapshot, alpha);
 
-    this.renderer.clear();
-
     // Cinematic: only the space scene, from the orbiting exterior camera.
     if (this.cinematicPose !== null) {
       const { position, lookAt } = this.cinematicPose;
       this.spaceCamera.position.set(position.x, position.y, position.z);
       this.spaceCamera.lookAt(lookAt.x, lookAt.y, lookAt.z);
-      this.renderer.render(this.spaceScene.scene, this.spaceCamera);
+      this.pipeline.render(false);
       return;
     }
 
@@ -554,9 +560,7 @@ export class Game {
     // is only visible through the real window openings.
     this.spaceCamera.position.set(0, 0, 0);
     this.spaceCamera.quaternion.copy(this.camera.quaternion);
-    this.renderer.render(this.spaceScene.scene, this.spaceCamera);
-    this.renderer.clearDepth();
-    this.renderer.render(this.scene, this.camera);
+    this.pipeline.render(true);
   }
 
   private handleResize(): void {
@@ -568,6 +572,9 @@ export class Game {
     this.spaceCamera.aspect = width / height;
     this.spaceCamera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    const pixelRatio = this.renderer.getPixelRatio();
+    this.pipeline.setSize(width, height, pixelRatio);
+    this.spaceScene.setViewport(height * pixelRatio, this.spaceCamera.fov);
   }
 
   /** Show the controls hint only while the pointer is not locked. */

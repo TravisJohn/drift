@@ -392,3 +392,47 @@ Begin started "Deep Field (1).mp3" and faded to 0.5; moving that file out
 of the folder switched to "Deep Field.mp3" with a fade-in and no page
 reload; moving it back raised the playlist to four tracks without
 disturbing the track playing.
+
+## 2026-11-16 - Visual pass 1 of 2: space, bloom and tone mapping
+
+**Author feedback after first look:** "very plain, the stars do not look
+like stars, the shapes are literally very plain". Scope agreed in session:
+full pass, still procedural. This entry is the space half. 302 tests
+passing; lint, format, types and build clean.
+
+- **Why the stars looked wrong:** they were square, untextured points, all
+  one colour and one size, and near ones grew to 30 px blocks.
+- `world/space/starLook.ts` (new): one star look shared by both star
+  layers. Pure generator for size (steep power law: mostly faint, a few
+  bright), tint (blue-white to red, weighted) and twinkle phase; a point
+  shader draws each as a soft round glow, sized in true perspective and
+  faded rather than shrunk below 3 px so it does not shimmer.
+- `world/space/skyDome.ts` (new): the distant sky. 4200 stars on a far
+  sphere (no parallax, so they read as far away), 45% gathered into a
+  tilted galactic band, over a shader nebula (teal/violet/amber clouds,
+  band glow, dust lanes, dithered against banding).
+- `world/space/starfield.ts`: the old layer stays as the near stars that
+  slide past in travel, now fewer (900) and smaller, using the new look.
+- `world/space/bodyMaterials.ts` (new) + `celestialBodies.ts`: per-pixel
+  procedural bodies. Aurelia is a banded ice giant with an atmosphere rim
+  and ringlets that carry the planet's shadow; Cinder is a boiling red
+  sun with limb darkening and a corona; Anchorage is a station with a
+  turning habitat wheel, lit windows, solar wings and a blinking beacon.
+  One shared light direction and clock for all of them.
+- `rendering/renderPipeline.ts` (new): the layered draw (space, clear
+  depth, interior) now happens in an offscreen HDR frame with 4x MSAA,
+  followed by bloom and ACES tone mapping. D2 is unchanged: space still
+  shows only through real window openings.
+- `rendering/glslNoise.ts` (new): the one noise chunk every shader uses.
+- Tuning lives in gameConfig: `space.sky.*`, `space.star*`, `rendering.*`.
+
+Trade-offs and risks:
+- Bloom plus an HDR offscreen frame costs GPU time. Still to be confirmed
+  on the author's laptop against the 60 fps criterion; `rendering.
+  msaaSamples` and `bloomStrength` are the levers if it dips.
+- ACES tone mapping changes every colour in the game, interior included;
+  interior lighting is retuned in pass 2.
+- Shader code is not unit-testable in jsdom. Tests cover the generators
+  and the wiring (sizes, colour spread, band density, ring shadow
+  tracking, shared clock); the look itself was checked by eye in-browser.
+- Anchorage station radius went 10 -> 15 so it reads from the windows.

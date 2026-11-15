@@ -75,7 +75,11 @@ export const gameConfig = {
 
   /** Space scene (M4). The ship never moves; space moves around it (D2). */
   space: {
-    starCount: 1400,
+    /** Near stars that slide past during travel (the sense of motion). */
+    starCount: 900,
+    /** World-space glow diameter of the smallest and largest near star. */
+    starMinSize: 0.2,
+    starMaxSize: 1.0,
     /** Stars live in a cube of this half-size, centered on the ship. */
     starExtent: 240,
     /** No stars spawn within this radius of the ship (they'd sit indoors). */
@@ -86,6 +90,33 @@ export const gameConfig = {
     starSeed: 20261115,
     /** Distance of a docked location's body from the ship. */
     bodyDistance: 170,
+    /** The distant sky: stars too far away to ever move, plus the nebula. */
+    sky: {
+      radius: 900,
+      starCount: 4200,
+      /** World-space glow diameters at `radius` (a few pixels on screen). */
+      starMinSize: 3.5,
+      starMaxSize: 24,
+      /** Share of stars gathered into the galactic band, 0..1. */
+      bandShare: 0.45,
+      /** Thickness of the band (standard deviation, radians of latitude). */
+      bandSpread: 0.16,
+      /** Overall brightness of the nebula clouds. */
+      nebulaIntensity: 0.7,
+      seed: 77031,
+    },
+  },
+
+  /** Final image treatment: tone mapping and the glow around bright things. */
+  rendering: {
+    /** Overall brightness after tone mapping. */
+    exposure: 1.15,
+    /** Glow strength, spread and the brightness above which things glow. */
+    bloomStrength: 0.55,
+    bloomRadius: 0.6,
+    bloomThreshold: 0.9,
+    /** Anti-aliasing samples for the offscreen frame (0 turns it off). */
+    msaaSamples: 4,
   },
 
   /** Exterior cinematic camera (M4), orbiting the ship during travel. */

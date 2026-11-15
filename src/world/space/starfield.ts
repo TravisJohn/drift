@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three';
 import { gameConfig } from '../../config/gameConfig';
+import { createStarAttributes, createStarGeometry, createStarMaterial } from './starLook';
 
 /** Small deterministic PRNG (mulberry32) so the sky is the same every run. */
 export function mulberry32(seed: number): () => number {
@@ -74,37 +75,39 @@ export class Starfield {
   readonly points: THREE.Points;
 
   private readonly geometry: THREE.BufferGeometry;
-  private readonly material: THREE.PointsMaterial;
+  private readonly material: THREE.ShaderMaterial;
   private readonly positions: Float32Array;
   private readonly extent: number;
 
   constructor() {
     const cfg = gameConfig.space;
     this.extent = cfg.starExtent;
+    const random = mulberry32(cfg.starSeed);
     this.positions = createStarPositions(
       cfg.starCount,
       cfg.starExtent,
       cfg.starClearRadius,
-      mulberry32(cfg.starSeed),
+      random,
     );
 
-    this.geometry = new THREE.BufferGeometry();
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.material = new THREE.PointsMaterial({
-      color: 0xcfd8e6,
-      size: 1.4,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-    });
+    this.geometry = createStarGeometry(
+      this.positions,
+      createStarAttributes(cfg.starCount, cfg.starMinSize, cfg.starMaxSize, random),
+    );
+    this.material = createStarMaterial();
     this.points = new THREE.Points(this.geometry, this.material);
     // The field surrounds the camera; never let Three cull it away.
     this.points.frustumCulled = false;
   }
 
+  /** Keep star sizes true to the viewport (see starLook.projectionScale). */
+  setProjectionScale(scale: number): void {
+    this.material.uniforms.uProjectionScale!.value = scale;
+  }
+
   /** `driftSpeed` is 0..1 of full cruise speed (from the TravelDirector). */
-  update(dt: number, driftSpeed: number): void {
+  update(dt: number, driftSpeed: number, elapsed: number): void {
+    this.material.uniforms.uTime!.value = elapsed;
     if (driftSpeed <= 0) return;
     advanceStars(this.positions, driftSpeed * gameConfig.space.cruiseStarSpeed * dt, this.extent);
     this.geometry.getAttribute('position').needsUpdate = true;
