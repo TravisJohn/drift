@@ -38,6 +38,8 @@ import { PuzzleRegistry } from './learning/puzzleRegistry';
 import { PlaceholderPuzzle } from './learning/placeholderPuzzle';
 import { PuzzleOverlay } from './ui/puzzleOverlay';
 import { NarrativeDirector } from './narrative/narrativeDirector';
+import { AudioManager } from './audio/audioManager';
+import type { RoomSpec } from './content/shipLayout';
 
 const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
 
@@ -69,9 +71,15 @@ export class Game {
   private readonly puzzles = new PuzzleRegistry();
   private readonly puzzleOverlay = new PuzzleOverlay();
   private readonly narrative = new NarrativeDirector();
+  private readonly audio = new AudioManager();
+  private readonly cryoRoom: RoomSpec | null;
+  private elapsed = 0;
+  private cryoGain = 0;
 
   private readonly onResize = (): void => this.handleResize();
   private readonly onCanvasClick = (): void => {
+    // The first gesture also unlocks audio (browser autoplay rules, M6).
+    this.audio.unlock();
     // Pointer lock enables mouse look; the browser exits it on Esc.
     if (document.pointerLockElement !== this.renderer.domElement) {
       // Can reject (e.g. right after Esc); a failed lock just leaves the
@@ -172,6 +180,30 @@ export class Game {
     );
     this.events.on('terminal:opened', () => this.narrative.trigger('terminalOpened'));
 
+    // --- M6: the soundscape follows the journey (author-supplied files) ---
+    this.cryoRoom = shipLayout.rooms.find((r) => r.id === 'cryo') ?? null;
+    this.events.on('app:started', () => {
+      this.audio.playLoop('amb_ship_hum');
+      this.audio.playLoop('music_roaming');
+      this.audio.playLoop('sfx_drone_hover');
+      this.audio.playLoop('amb_cryo_bay');
+      this.audio.setLoopGain('amb_cryo_bay', 0); // swells only inside the bay
+    });
+    this.events.on('ship:phaseChanged', ({ to }) => {
+      if (to === 'departing') {
+        this.audio.playOnce('sfx_depart');
+        this.audio.playLoop('amb_engine_cruise');
+        this.audio.stopLoop('music_roaming');
+        this.audio.playLoop('music_cruise');
+      } else if (to === 'docked') {
+        this.audio.playOnce('sfx_arrive');
+        this.audio.stopLoop('amb_engine_cruise');
+        this.audio.stopLoop('music_cruise');
+        this.audio.playLoop('music_roaming');
+      }
+    });
+    this.events.on('terminal:opened', () => this.audio.playOnce('sfx_terminal'));
+
     this.loop = new GameLoop(
       {
         update: (dt) => this.update(dt),
@@ -201,6 +233,7 @@ export class Game {
     this.input.detach();
     this.menu.close();
     this.puzzleOverlay.close();
+    this.audio.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -246,6 +279,11 @@ export class Game {
     // M5: the ship AI's subtitle (null = silence).
     this.hud.setSubtitle(this.narrative.update(dt));
 
+    // M6: breathing glows, light waver, and the soundscape.
+    this.elapsed += dt;
+    this.ship.update(this.elapsed);
+    this.updateAudio(dt);
+
     // M4: space keeps drifting whatever the player is doing.
     this.travelView = computeTravelView(this.shipSnapshot());
     this.spaceScene.update(dt, this.travelView);
@@ -288,6 +326,28 @@ export class Game {
       this.input.consumeLookDelta();
       this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.ship.colliders);
     }
+  }
+
+  /** Per-step audio gains: hover follows speed, cryo ambience proximity. */
+  private updateAudio(dt: number): void {
+    const { velocity, position } = this.drone.snapshot;
+    const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+    const factor = Math.min(1, speed / gameConfig.drone.maxSpeed);
+    const idle = gameConfig.audio.hoverIdleGain;
+    this.audio.setLoopGain('sfx_drone_hover', idle + (1 - idle) * factor);
+
+    if (this.cryoRoom) {
+      const inside =
+        position.x >= this.cryoRoom.minX &&
+        position.x <= this.cryoRoom.maxX &&
+        position.z >= this.cryoRoom.minZ &&
+        position.z <= this.cryoRoom.maxZ;
+      const blend = 1 - Math.exp(-2 * dt);
+      this.cryoGain += ((inside ? 1 : 0) - this.cryoGain) * blend;
+      this.audio.setLoopGain('amb_cryo_bay', this.cryoGain);
+    }
+
+    this.audio.update(dt);
   }
 
   /** Enter the exterior travel shot (V during travel, M4). */
@@ -335,6 +395,7 @@ export class Game {
     this.hud.setPrompt(null);
     document.exitPointerLock();
 
+    this.audio.playOnce('sfx_ui_blip');
     const choices = locations.filter((l) => l.id !== this.shipState.locationId);
     this.menu.open(choices, {
       onSelect: (destinationId) => {

@@ -53,6 +53,14 @@ export const gameConfig = {
     terminalRadius: 2.0,
   },
 
+  /** Audio behavior (M6). Files themselves are author-supplied (PRD). */
+  audio: {
+    /** Seconds for a loop to fade fully in or out. */
+    fadeSeconds: 2.5,
+    /** Hover loop keeps this floor of its volume while idle. */
+    hoverIdleGain: 0.3,
+  },
+
   /** Ship AI subtitles (M5). */
   narrative: {
     /** Seconds a trigger stays muted after it last spoke (anti-nag). */

@@ -231,3 +231,38 @@ lines in order during travel, arrival line when docked at Aurelia.
 Next: M6 - art and atmosphere: CC0 models (ASSETS.md credits), lighting
 pass, cryo pod detail, audio manager wired to author-supplied files in
 public/audio/ (silent with a console warning when files are missing).
+
+---
+
+## 2026-11-15 - M6 complete: procedural art, atmosphere, audio manager
+
+**Milestone M6 done.** 211 tests passing; lint, types, production build
+clean. Verified in the browser: cryo pods read as glass pods with a soft
+breathing glow, stars through the window behind them, console screens lit,
+and exactly one "running silent" console warning per missing audio file.
+
+- Decision: art is procedural, not downloaded. The author chose code-built
+  detail over pulling a CC0 pack; swapping in CC0 models stays possible
+  later (ASSETS.md deferred until real third-party assets exist).
+- `world/ship/propVisuals.ts`: each prop kind is now a small assembly
+  (pods: frame + glass canopy + breathing sleeper light at ~10 breaths/min;
+  consoles: angled glowing screens; reactor: core, glow band, containment
+  rings; crates: lids + straps; seats). Everything stays inside the same
+  box collider footprint, so collision is untouched.
+- shipBuilder: ceiling light strips per room (visible glow sources), the
+  cryo strip breathes with the pods, engineering's light flickers subtly
+  (two incommensurate sines, deterministic). ShipWorld gained update(t).
+- Drone got a forward headlight - a small pool of light it carries through
+  dark rooms.
+- `content/audioManifest.ts` (D4) + `audio/audioManager.ts`: 10 keys per
+  the architecture. Loops fade in/out (2.5s), one-shots fire, per-loop
+  gain lets hover volume follow drone speed and the cryo-bay room tone
+  swell only inside the bay. Everything waits for the first click
+  (autoplay rules). Missing files warn once each and stay silent (PRD).
+  The element factory is injectable; tests run on fakes.
+- `public/audio/README.txt` lists the exact filenames to drop in.
+- Glow tuning pass after first screenshots: pod/console emissives halved -
+  first version read as "lit aquariums".
+
+Next: M7 - title/pause menus (AppState), favicon, 60fps performance pass,
+playtest against the PRD success criteria.

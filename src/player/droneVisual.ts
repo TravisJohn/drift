@@ -47,6 +47,13 @@ export class DroneVisual {
     this.glow = new THREE.PointLight(0x55d5ff, 0.9, 4, 2);
     this.glow.position.set(0, -0.05, 0);
     this.group.add(this.glow);
+
+    // Headlight (M6): a small forward pool of light - the drone's own
+    // company in dark corners. Target parented so it steers with the nose.
+    const headlight = new THREE.SpotLight(0xbfe8ff, 6, 9, 0.5, 0.55, 1.2);
+    headlight.position.set(0, 0, -0.18);
+    headlight.target.position.set(0, -0.6, -4);
+    this.group.add(headlight, headlight.target);
   }
 
   /** Apply controller state; `alpha` interpolates between fixed steps. */

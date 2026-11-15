@@ -21,6 +21,7 @@ import {
   sharedEdge,
 } from './layoutGeometry';
 import { validateLayout } from './validateLayout';
+import { buildPropVisual, type GlowPulse } from './propVisuals';
 
 /** One axis-aligned box with a material role. */
 export interface ShipBox {
@@ -145,7 +146,15 @@ export interface ShipWorld {
   readonly group: THREE.Group;
   readonly colliders: readonly BoxCollider[];
   readonly spawn: Vec3;
+  /** Animate breathing glows and light flicker. `elapsed` is seconds. */
+  update(elapsed: number): void;
   dispose(): void;
+}
+
+/** A light whose intensity wavers slightly (engineering's tired fixture). */
+interface Flicker {
+  readonly light: THREE.PointLight;
+  readonly base: number;
 }
 
 /** Build the renderable ship. Throws on invalid layout content (fail loud). */
@@ -173,15 +182,29 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     return m;
   };
 
+  const pulses: GlowPulse[] = [];
+  const flickers: Flicker[] = [];
+
+  // Colliders come from the full box list (the source of truth); structure
+  // boxes also become plain meshes, while props get detailed visuals (M6)
+  // that stay inside the same collider footprint.
   for (const box of buildShipBoxes(layout)) {
+    colliders.push(boxFromCenterSize(box.center, box.size));
+    if (box.role !== 'floor' && box.role !== 'ceiling' && box.role !== 'wall') continue;
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(box.size.x, box.size.y, box.size.z),
       materialFor(box.role),
     );
     mesh.position.set(box.center.x, box.center.y, box.center.z);
     group.add(mesh);
-    colliders.push(boxFromCenterSize(box.center, box.size));
   }
+
+  layout.props.forEach((prop, index) => {
+    const visual = buildPropVisual(prop.kind, prop.size, index * 1.7);
+    visual.group.position.set(prop.center.x, prop.center.y, prop.center.z);
+    group.add(visual.group);
+    pulses.push(...visual.pulses);
+  });
 
   // --- Lighting: a ceiling light per room + a dim ambient base ---
   group.add(new THREE.AmbientLight(0x1c2432, 1.1));
@@ -191,9 +214,43 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     const w = room.maxX - room.minX;
     const d = room.maxZ - room.minZ;
     const reach = Math.max(w, d) * 1.4;
-    const light = new THREE.PointLight(ROOM_LIGHT[room.id] ?? 0xcfd8e3, 14, reach, 1.6);
+    const lightColor = ROOM_LIGHT[room.id] ?? 0xcfd8e3;
+    const light = new THREE.PointLight(lightColor, 14, reach, 1.6);
     light.position.set(cx, layout.ceilingHeight - 0.25, cz);
     group.add(light);
+
+    // Engineering's fixture is old and tired: it wavers, slightly (M6).
+    if (room.id === 'engineering') {
+      flickers.push({ light, base: light.intensity });
+    }
+
+    // Ceiling light strip: a visible source for the room's glow (M6).
+    const along = d >= w ? 'z' : 'x';
+    const stripLength = (along === 'z' ? d : w) * 0.55;
+    const stripMaterial = new THREE.MeshStandardMaterial({
+      color: 0x10151c,
+      emissive: lightColor,
+      emissiveIntensity: 1.5,
+      roughness: 0.4,
+    });
+    const strip = new THREE.Mesh(
+      along === 'z'
+        ? new THREE.BoxGeometry(0.22, 0.05, stripLength)
+        : new THREE.BoxGeometry(stripLength, 0.05, 0.22),
+      stripMaterial,
+    );
+    strip.position.set(cx, layout.ceilingHeight - 0.03, cz);
+    group.add(strip);
+    if (room.id === 'cryo') {
+      // The cryo bay's strip breathes with the pods.
+      pulses.push({
+        material: stripMaterial,
+        base: 1.4,
+        amplitude: 0.3,
+        frequency: 0.16,
+        phase: 0.8,
+      });
+    }
 
     // The long corridor needs more than one light to avoid a dark middle.
     if (d > 12 || w > 12) {
@@ -214,6 +271,17 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     group,
     colliders,
     spawn: layout.spawn,
+    update(elapsed: number) {
+      for (const p of pulses) {
+        p.material.emissiveIntensity =
+          p.base + p.amplitude * Math.sin(2 * Math.PI * p.frequency * elapsed + p.phase);
+      }
+      for (const f of flickers) {
+        // Two incommensurate sines read as organic waver, stay deterministic.
+        f.light.intensity =
+          f.base * (1 + 0.05 * Math.sin(elapsed * 9.7) + 0.04 * Math.sin(elapsed * 23.3 + 1.3));
+      }
+    },
     dispose() {
       disposeObject3D(group);
     },
