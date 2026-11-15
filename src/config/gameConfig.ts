@@ -50,6 +50,19 @@ export const gameConfig = {
   /** Interaction defaults. */
   interaction: {
     helmRadius: 2.2,
+    terminalRadius: 2.0,
+  },
+
+  /** Ship AI subtitles (M5). */
+  narrative: {
+    /** Seconds a trigger stays muted after it last spoke (anti-nag). */
+    cooldownSeconds: 8,
+    /** Beat of silence between queued lines. */
+    gapSeconds: 0.7,
+    /** Subtitle screen time: at least this ... */
+    minDuration: 2.8,
+    /** ... plus this per character of the line. */
+    perCharSeconds: 0.055,
   },
 
   /** Space scene (M4). The ship never moves; space moves around it (D2). */

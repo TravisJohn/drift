@@ -196,3 +196,38 @@ Aurelia swapped the visible body and returned drift to zero.
 
 Next: M5 - lab terminal + PuzzleModule interface/registry + placeholder
 puzzle overlay; NarrativeDirector + AI lines + HUD subtitles. Full v0 loop.
+
+---
+
+## 2026-11-15 - M5 complete: terminal, puzzles seam, ship AI voice
+
+**Milestone M5 done - the full v0 loop is playable in grey boxes.**
+190 tests passing; lint, types, production build clean. Verified in the
+browser by stepping the simulation: greeting on start, terminal overlay
+opens/completes/closes with its AI lines, departure/locked-helm/cruising
+lines in order during travel, arrival line when docked at Aurelia.
+
+- `learning/puzzleModule.ts` + `puzzleRegistry.ts` (D5): the plug-in seam
+  for the AWS MLE side quest. The game only knows "mount a module into an
+  overlay"; adding a real question bank later touches no movement, camera
+  or travel code (PRD criterion 4). Registry is fail-loud.
+- `learning/placeholderPuzzle.ts`: one canned drill card + "Log session",
+  proving the seam end to end. Content deliberately placeholder (PRD).
+- `ui/puzzleOverlay.ts`: terminal modal in the destination-menu family;
+  owns Esc-to-close and always unmounts the module on close.
+- `content/aiLines.ts` (D4): the ship AI's lines as data, grouped by
+  trigger (started/departed/cruising/arrived/helmLocked/terminalOpened/
+  terminalComplete), {destination} templating, delays, validation.
+- `narrative/narrativeDirector.ts`: pure; queues lines per trigger with
+  per-trigger cooldown (anti-nag), rotation for variety, duration from
+  line length, a beat of silence between lines. update(dt) returns the
+  current subtitle; HUD shows it lower-third, italic.
+- game.ts: terminal interactable from the layout's 'terminal-lab' prop;
+  trying the helm mid-flight now gets an AI line instead of silence.
+- Note: the embedded preview pane fully pauses rAF while hidden, so this
+  round was verified by stepping game.update() manually - worth keeping as
+  a technique, it exercises the same code the loop runs.
+
+Next: M6 - art and atmosphere: CC0 models (ASSETS.md credits), lighting
+pass, cryo pod detail, audio manager wired to author-supplied files in
+public/audio/ (silent with a console warning when files are missing).

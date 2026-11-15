@@ -6,6 +6,8 @@
  * M4 scope: the space scene behind the windows (layered render, D2), the
  * TravelDirector's visual read of the journey, and the exterior cinematic
  * camera (V during travel).
+ * M5 scope: the lab terminal + pluggable puzzles (D5) and the ship AI's
+ * subtitles via the NarrativeDirector.
  */
 import * as THREE from 'three';
 import { GameLoop } from './core/loop';
@@ -32,6 +34,10 @@ import {
 } from './travel/travelDirector';
 import { CinematicCamera } from './travel/cinematicCamera';
 import type { CameraPose } from './player/followCamera';
+import { PuzzleRegistry } from './learning/puzzleRegistry';
+import { PlaceholderPuzzle } from './learning/placeholderPuzzle';
+import { PuzzleOverlay } from './ui/puzzleOverlay';
+import { NarrativeDirector } from './narrative/narrativeDirector';
 
 const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
 
@@ -60,6 +66,9 @@ export class Game {
   private readonly interactables: Interactable[] = [];
   private readonly hud: Hud;
   private readonly menu = new DestinationMenu();
+  private readonly puzzles = new PuzzleRegistry();
+  private readonly puzzleOverlay = new PuzzleOverlay();
+  private readonly narrative = new NarrativeDirector();
 
   private readonly onResize = (): void => this.handleResize();
   private readonly onCanvasClick = (): void => {
@@ -135,6 +144,34 @@ export class Game {
       this.refreshStatus();
     });
 
+    // --- M5: the lab terminal, pluggable puzzles and the ship AI ---
+    this.puzzles.register(new PlaceholderPuzzle());
+
+    const terminalProp = shipLayout.props.find((p) => p.id === 'terminal-lab');
+    if (!terminalProp) {
+      throw new Error('Ship layout has no prop with id "terminal-lab"');
+    }
+    this.interactables.push({
+      id: 'terminal-lab',
+      position: terminalProp.center,
+      radius: gameConfig.interaction.terminalRadius,
+      promptText: '[E] Terminal — training',
+      onInteract: () => this.openTerminal('terminal-lab'),
+    });
+
+    // The ship AI reacts to the journey; the director decides what it says.
+    this.events.on('app:started', () => this.narrative.trigger('started'));
+    this.events.on('travel:departed', ({ destinationId }) =>
+      this.narrative.trigger('departed', { destination: getLocation(destinationId).name }),
+    );
+    this.events.on('ship:phaseChanged', ({ to }) => {
+      if (to === 'cruising') this.narrative.trigger('cruising');
+    });
+    this.events.on('travel:arrived', ({ destinationId }) =>
+      this.narrative.trigger('arrived', { destination: getLocation(destinationId).name }),
+    );
+    this.events.on('terminal:opened', () => this.narrative.trigger('terminalOpened'));
+
     this.loop = new GameLoop(
       {
         update: (dt) => this.update(dt),
@@ -163,6 +200,7 @@ export class Game {
     this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
     this.input.detach();
     this.menu.close();
+    this.puzzleOverlay.close();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -204,6 +242,9 @@ export class Game {
       }
     }
     this.refreshStatus();
+
+    // M5: the ship AI's subtitle (null = silence).
+    this.hud.setSubtitle(this.narrative.update(dt));
 
     // M4: space keeps drifting whatever the player is doing.
     this.travelView = computeTravelView(this.shipSnapshot());
@@ -282,7 +323,9 @@ export class Game {
   /** Open the destination menu at the helm (only meaningful while docked). */
   private openHelm(): void {
     if (this.shipState.phase !== 'docked') {
-      return; // autopilot already engaged; the ship AI will say so in M5
+      // Autopilot already has the helm; the ship AI says so (cooldown-gated).
+      this.narrative.trigger('helmLocked');
+      return;
     }
     this.events.emit('player:modeChanged', this.playerMode.enterHelm());
     const focusChange = this.interaction.clear();
@@ -300,6 +343,26 @@ export class Game {
       },
       onCancel: () => {
         this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+      },
+    });
+  }
+
+  /** Open the training terminal overlay (M5, D5). */
+  private openTerminal(terminalId: string): void {
+    this.events.emit('player:modeChanged', this.playerMode.enterTerminal());
+    const focusChange = this.interaction.clear();
+    if (focusChange?.blurred) {
+      this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
+    }
+    this.hud.setPrompt(null);
+    document.exitPointerLock();
+    this.events.emit('terminal:opened', { terminalId });
+
+    this.puzzleOverlay.open(this.puzzles.get('placeholder'), {
+      onComplete: () => this.narrative.trigger('terminalComplete'),
+      onClose: () => {
+        this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+        this.events.emit('terminal:closed', { terminalId });
       },
     });
   }

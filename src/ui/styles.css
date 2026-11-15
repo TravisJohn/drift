@@ -113,3 +113,100 @@
   color: #5d7285;
   text-transform: uppercase;
 }
+
+/* Ship AI subtitle - lower third, calm and unhurried. */
+#hud .subtitle {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 640px;
+  text-align: center;
+  color: #9fd4e8;
+  font-size: 15px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+#hud .subtitle.visible {
+  opacity: 1;
+}
+
+/* Terminal puzzle overlay - same family as the destination menu. */
+#puzzle {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.55);
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+#puzzle .panel {
+  min-width: 440px;
+  max-width: 560px;
+  background: rgba(10, 15, 22, 0.92);
+  border: 1px solid rgba(110, 160, 200, 0.4);
+  border-radius: 6px;
+  padding: 22px 26px 16px;
+  color: #cfe3f5;
+}
+
+#puzzle h2 {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #8fb8d8;
+}
+
+#puzzle .puzzle-intro {
+  margin: 0 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #6f8296;
+  text-transform: uppercase;
+}
+
+#puzzle .puzzle-card {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid rgba(110, 160, 200, 0.25);
+  border-radius: 4px;
+  background: rgba(127, 212, 232, 0.05);
+}
+
+#puzzle .puzzle-complete {
+  display: block;
+  margin: 0 auto;
+  padding: 9px 22px;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #cfe3f5;
+  background: rgba(127, 212, 232, 0.12);
+  border: 1px solid rgba(127, 212, 232, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#puzzle .puzzle-complete:hover {
+  background: rgba(127, 212, 232, 0.22);
+}
+
+#puzzle .footer {
+  margin-top: 16px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #5d7285;
+  text-transform: uppercase;
+}
