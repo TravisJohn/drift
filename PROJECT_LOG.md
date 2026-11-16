@@ -616,3 +616,49 @@ Trade-offs and limits (also listed in ART_PROMPTS.md):
   the console readouts and the holo-table: the author's art decides the
   look. Structural additions (ribs, per-room accent lighting, which cost
   nothing per frame once baked) remain an option.
+
+## 2026-11-16 - Performance: resolution chosen by measurement, cheaper glow, F2 readout
+
+**Why:** on integrated graphics the game started at full sharpness, ran
+slow, and only crept toward a workable resolution over many seconds, with
+a hitch at every step. 428 tests passing; lint, format, types and build
+clean.
+
+- `rendering/renderScale.ts` (pure, tested): from two timed frames (the
+  sharpest and the softest setting) it solves for the sharpest setting
+  that fits a time budget. Cost is modelled as a fixed part plus a part
+  per pixel; a pixels-only guess picks a setting that is too slow.
+- `RenderPipeline.measureFrameMs`: draws real frames and waits for the
+  graphics chip to finish each one. Blocking by design; runs once at
+  startup and half a second after a window resize.
+- `AdaptiveResolution.calibrate`: starts from the measured setting and
+  treats it as the ceiling, so the game no longer tries sharper settings
+  that were just measured to be too slow. It still lowers the resolution
+  when a heavier view runs slow, and returns to the ceiling afterwards.
+- Glow is worked out on a smaller image
+  (`gameConfig.rendering.bloomResolutionScale`). At full size it was
+  close to half the frame's cost on integrated graphics.
+- The renderer now asks for the fast graphics chip on machines with two
+  (`powerPreference`). It is a request; Windows and the browser decide.
+- F2 shows a readout: frame rate, drawing resolution, graphics chip. The
+  chip and the chosen setting are also written to the console once. F2 is
+  listed in the pause menu.
+- Tuning: `minScale` 0.6 to 0.5, `holdSeconds` 6 to 20, new `budgetMs` 11
+  and `calibrationFrames` 8, all in `gameConfig.rendering.adaptive`.
+
+Verified in the embedded preview (Intel UHD Graphics P630, 1024x768): a
+full-sharpness frame measured 19.6 ms, the game chose 0.60x, and a frame
+at that setting then measured 11.1 ms against the 11 ms budget. No
+console errors; the readout shows and hides on F2.
+
+Trade-offs and limits:
+- Measuring blocks for roughly a third of a second at startup and after
+  each resize.
+- The measurement is of the view on screen at that moment. Heavier views
+  are covered by the budget sitting below 16.7 ms and by the running
+  adjustment, not by measuring them.
+- The frame rate in the readout could not be checked in the embedded
+  preview, which throttles animation while hidden. It needs a look in a
+  normal browser.
+- Not verified: whether a normal browser on the author's machine gets the
+  dedicated graphics chip. The F2 readout answers that.

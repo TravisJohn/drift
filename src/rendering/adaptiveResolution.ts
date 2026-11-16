@@ -36,13 +36,33 @@ export class AdaptiveResolution {
   private hold: number;
   /** True while a step up is on trial: a drop right after means it failed. */
   private trialUp = false;
+  /** The sharpest setting worth trying; lowered by calibrate(). */
+  private ceiling: number;
 
   constructor(private readonly options: AdaptiveResolutionOptions) {
     if (options.minScale <= 0 || options.maxScale < options.minScale || options.targetFps <= 0) {
       throw new Error('AdaptiveResolution: need 0 < minScale <= maxScale and targetFps > 0');
     }
     this.current = options.maxScale;
+    this.ceiling = options.maxScale;
     this.hold = options.holdSeconds;
+  }
+
+  /**
+   * Start from a measured setting (see renderScale.fitRenderScale). It
+   * also becomes the ceiling: there is no point trying sharper than what
+   * was just measured to be the limit, and every failed try is a hitch.
+   */
+  calibrate(scale: number): number {
+    const { minScale, maxScale } = this.options;
+    this.ceiling = Math.min(maxScale, Math.max(minScale, scale));
+    this.current = this.ceiling;
+    this.sum = 0;
+    this.frames = 0;
+    this.sinceChange = 0;
+    this.hold = this.options.holdSeconds;
+    this.trialUp = false;
+    return this.current;
   }
 
   get scale(): number {
@@ -81,7 +101,7 @@ export class AdaptiveResolution {
 
     this.trialUp = false;
     if (average < budget * FAST_FACTOR && this.sinceChange >= this.hold) {
-      const next = this.change(Math.min(this.options.maxScale, this.current * STEP_UP));
+      const next = this.change(Math.min(this.ceiling, this.current * STEP_UP));
       if (next !== null) this.trialUp = true;
       return next;
     }

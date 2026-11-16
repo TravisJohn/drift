@@ -29,6 +29,7 @@ import { DestinationMenu } from './ui/destinationMenu';
 import { SpaceScene } from './world/space/spaceScene';
 import { RenderPipeline } from './rendering/renderPipeline';
 import { AdaptiveResolution } from './rendering/adaptiveResolution';
+import { fitRenderScale, isIntegratedGpu, shortGpuName } from './rendering/renderScale';
 import { type InteriorEnvironment, createInteriorEnvironment } from './rendering/environment';
 import {
   computeTravelView,
@@ -56,6 +57,8 @@ import { dashboardPose } from './travel/dashboardCamera';
 import { vec3 } from './physics/vec3';
 
 const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
+/** Wait for a window drag to stop before re-measuring. */
+const RESIZE_SETTLE_MS = 500;
 
 export class Game {
   readonly events = new EventBus();
@@ -77,6 +80,9 @@ export class Game {
   private readonly pipeline: RenderPipeline;
   private readonly environment: InteriorEnvironment;
   private readonly resolution: AdaptiveResolution;
+  private readonly gpuName: string;
+  private showPerf = false;
+  private resizeTimer: number | undefined;
   private readonly cinematicCamera = new CinematicCamera();
   private cinematicPose: CameraPose | null = null;
   private travelView: TravelView;
@@ -123,7 +129,13 @@ export class Game {
   private fpsFrames = 0;
   private fps = 0;
 
-  private readonly onResize = (): void => this.handleResize();
+  private readonly onResize = (): void => {
+    this.handleResize();
+    // A different window size (or screen) means a different pixel count:
+    // re-measure once the dragging stops.
+    window.clearTimeout(this.resizeTimer);
+    this.resizeTimer = window.setTimeout(() => this.calibrateResolution(), RESIZE_SETTLE_MS);
+  };
   private readonly onCanvasClick = (): void => {
     // The first gesture also unlocks audio (browser autoplay rules, M6).
     this.audio.unlock();
@@ -142,12 +154,18 @@ export class Game {
   constructor(private readonly container: HTMLElement) {
     // No canvas anti-aliasing: the frame is drawn offscreen and smoothed
     // there (FXAA); multisampling the final copy would be paid for nothing.
-    this.renderer = new THREE.WebGLRenderer({ antialias: false });
+    // On a laptop with two graphics chips, ask for the fast one. It is only
+    // a request: the browser and Windows have the final say.
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      powerPreference: 'high-performance',
+    });
+    this.gpuName = this.readGpuName();
     this.resolution = new AdaptiveResolution({
       ...gameConfig.rendering.adaptive,
-      maxScale: Math.min(window.devicePixelRatio, gameConfig.rendering.maxPixelRatio),
+      maxScale: gameConfig.rendering.maxPixelRatio,
     });
-    this.renderer.setPixelRatio(this.resolution.scale);
+    this.renderer.setPixelRatio(this.resolution.calibrate(this.sharpestPixelRatio()));
     this.renderer.setClearColor(0x05060a);
     // Layered render (D2): we clear manually - space first, interior on top.
     this.renderer.autoClear = false;
@@ -332,6 +350,7 @@ export class Game {
   start(): void {
     this.titleScreen.show({ onBegin: () => this.beginSession() });
     this.spaceScene.prepare(this.renderer);
+    this.calibrateResolution();
     this.loop.start();
   }
 
@@ -347,6 +366,7 @@ export class Game {
   dispose(): void {
     this.loop.stop();
     window.removeEventListener('resize', this.onResize);
+    window.clearTimeout(this.resizeTimer);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
     this.input.detach();
@@ -397,6 +417,10 @@ export class Game {
     const interactPressed = this.input.consumePress('KeyE');
     const viewPressed = this.input.consumePress('KeyV');
     const escPressed = this.input.consumePress('Escape');
+    if (this.input.consumePress('F2')) {
+      this.showPerf = !this.showPerf;
+      this.refreshPerf();
+    }
     const overlayWasOpen = this.lastOverlayOpen;
     this.lastOverlayOpen =
       this.menu.isOpen ||
@@ -692,6 +716,7 @@ export class Game {
       this.fpsAccum += now - this.lastFrameAt;
       if (++this.fpsFrames >= 30) {
         this.fps = this.fpsAccum > 0 ? (1000 * this.fpsFrames) / this.fpsAccum : 0;
+        this.refreshPerf();
         this.fpsFrames = 0;
         this.fpsAccum = 0;
       }
@@ -736,6 +761,76 @@ export class Game {
     this.spaceCamera.position.set(0, 0, 0);
     this.spaceCamera.quaternion.copy(this.camera.quaternion);
     this.pipeline.render(true);
+  }
+
+  /** The sharpest pixel ratio this screen can show, within the game's cap. */
+  private sharpestPixelRatio(): number {
+    return Math.min(window.devicePixelRatio, gameConfig.rendering.maxPixelRatio);
+  }
+
+  /** The graphics chip the browser gave us, as a readable name. */
+  private readGpuName(): string {
+    const gl = this.renderer.getContext();
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const raw: unknown = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : '';
+    return shortGpuName(typeof raw === 'string' ? raw : '');
+  }
+
+  private applyPixelRatio(scale: number): void {
+    this.renderer.setPixelRatio(scale);
+    this.handleResize();
+  }
+
+  /**
+   * Choose the drawing resolution by measurement: time a frame at the
+   * sharpest and at the softest setting, and take the sharpest one that
+   * fits the frame budget. Run at startup and after a resize, so a weak
+   * graphics chip is on the right setting before play begins.
+   */
+  private calibrateResolution(): void {
+    const cfg = gameConfig.rendering.adaptive;
+    const sharpest = this.sharpestPixelRatio();
+    if (sharpest <= cfg.minScale) {
+      this.applyPixelRatio(this.resolution.calibrate(sharpest));
+      return;
+    }
+    this.render(0); // place the camera, so the timed frames show the real view
+    const time = (scale: number): { scale: number; frameMs: number } => {
+      this.applyPixelRatio(scale);
+      return { scale, frameMs: this.pipeline.measureFrameMs(cfg.calibrationFrames) };
+    };
+    const high = time(sharpest);
+    const low = time(cfg.minScale);
+    const chosen = this.resolution.calibrate(
+      fitRenderScale(low, high, cfg.budgetMs, cfg.minScale, sharpest),
+    );
+    this.applyPixelRatio(chosen);
+    // The clock must not count the measuring itself as one slow frame.
+    this.lastFrameAt = null;
+    console.info(
+      `Drift graphics: ${this.gpuName}; a full-sharpness frame takes ${high.frameMs.toFixed(1)} ms; ` +
+        `drawing at ${chosen.toFixed(2)}x` +
+        (isIntegratedGpu(this.gpuName) && chosen < sharpest
+          ? ' (integrated graphics: if this machine also has a dedicated graphics chip, ' +
+            'set the browser to use it in Windows Graphics settings)'
+          : ''),
+    );
+    this.refreshPerf();
+  }
+
+  /** Update the F2 readout: frame rate, drawing resolution, graphics chip. */
+  private refreshPerf(): void {
+    if (!this.showPerf) {
+      this.hud.setPerf(null);
+      return;
+    }
+    const canvas = this.renderer.domElement;
+    this.hud.setPerf(
+      // No rate until the first half second of frames has been counted.
+      `${this.fps > 0 ? `${Math.round(this.fps)} fps` : 'measuring'}\n` +
+        `${canvas.width}x${canvas.height} (${this.resolution.scale.toFixed(2)}x)\n` +
+        this.gpuName,
+    );
   }
 
   private handleResize(): void {

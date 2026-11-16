@@ -16,6 +16,7 @@ const CONTROLS: readonly (readonly [string, string])[] = [
   ['E', 'interact'],
   ['V', 'exterior view in flight'],
   ['Esc', 'pause / resume'],
+  ['F2', 'performance readout'],
 ];
 
 export class PauseMenu {

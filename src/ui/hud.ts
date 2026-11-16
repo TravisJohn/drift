@@ -1,6 +1,7 @@
 /**
- * Hud - the quiet in-game overlay: ship status line, interaction prompt
- * and the ship AI's subtitles (M5). Plain DOM over the canvas.
+ * Hud - the quiet in-game overlay: ship status line, interaction prompt,
+ * the ship AI's subtitles (M5) and an optional performance readout.
+ * Plain DOM over the canvas.
  */
 
 export class Hud {
@@ -8,6 +9,7 @@ export class Hud {
   private readonly status: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
   private readonly subtitle: HTMLDivElement;
+  private readonly perf: HTMLDivElement;
   private lastSubtitle: string | null = null;
 
   constructor(parent: HTMLElement = document.body) {
@@ -23,7 +25,10 @@ export class Hud {
     this.subtitle = document.createElement('div');
     this.subtitle.className = 'subtitle';
 
-    this.root.append(this.status, this.prompt, this.subtitle);
+    this.perf = document.createElement('div');
+    this.perf.className = 'perf';
+
+    this.root.append(this.status, this.prompt, this.subtitle, this.perf);
     parent.appendChild(this.root);
   }
 
@@ -52,6 +57,15 @@ export class Hud {
       this.subtitle.textContent = text;
       this.subtitle.classList.add('visible');
     }
+  }
+
+  /**
+   * Show the performance readout (frame rate, resolution, graphics chip);
+   * null hides it. It answers "is it slow because of my machine?".
+   */
+  setPerf(text: string | null): void {
+    this.perf.classList.toggle('visible', text !== null);
+    if (text !== null) this.perf.textContent = text;
   }
 
   dispose(): void {

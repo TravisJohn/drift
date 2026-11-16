@@ -210,10 +210,26 @@ export const gameConfig = {
      */
     adaptive: {
       targetFps: 60,
-      minScale: 0.6,
+      minScale: 0.5,
       windowFrames: 45,
-      holdSeconds: 6,
+      /** Seconds of steady running before it tries a sharper setting. */
+      holdSeconds: 20,
+      /**
+       * At startup (and after a resize) two frames are timed and the
+       * sharpest setting that draws within this many milliseconds is
+       * chosen outright. Under the 16.7 ms of a 60 fps frame on purpose:
+       * some views of the ship cost more than the one measured.
+       */
+      budgetMs: 11,
+      calibrationFrames: 8,
     },
+    /**
+     * Size of the image the glow is worked out on, relative to the glow
+     * pass's own default (which is already half the frame each way, so
+     * 0.5 here means a quarter). Smaller is much cheaper and a little
+     * softer.
+     */
+    bloomResolutionScale: 0.5,
     /** How strongly interior surfaces reflect their surroundings. */
     environmentIntensity: 0.22,
     /** Pixels per side of each generated hull-panel texture. */

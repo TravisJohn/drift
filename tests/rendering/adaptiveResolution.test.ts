@@ -74,6 +74,42 @@ describe('AdaptiveResolution (smooth on any graphics hardware)', () => {
     expect(r.scale).toBeGreaterThan(dropped);
   });
 
+  it('starts from a measured setting instead of creeping toward it', () => {
+    const r = new AdaptiveResolution(OPTIONS);
+    expect(r.calibrate(0.8)).toBe(0.8);
+    expect(r.scale).toBe(0.8);
+  });
+
+  it('never tries sharper than the measured limit: every failed try is a hitch', () => {
+    const r = new AdaptiveResolution(OPTIONS);
+    r.calibrate(0.8);
+    expect(feed(r, FAST, 2000)).toEqual([]);
+    expect(r.scale).toBe(0.8);
+  });
+
+  it('still lowers below a measured setting when a heavier view runs slow, then returns to it', () => {
+    const r = new AdaptiveResolution(OPTIONS);
+    r.calibrate(0.8);
+    feed(r, SLOW, 10);
+    expect(r.scale).toBeLessThan(0.8);
+    feed(r, FAST, 2000);
+    expect(r.scale).toBe(0.8);
+  });
+
+  it('keeps a measured setting inside the allowed range', () => {
+    const r = new AdaptiveResolution(OPTIONS);
+    expect(r.calibrate(5)).toBe(1);
+    expect(r.calibrate(0.1)).toBe(0.6);
+  });
+
+  it('a new measurement lifts an old ceiling (a resize onto a smaller window)', () => {
+    const r = new AdaptiveResolution(OPTIONS);
+    r.calibrate(0.7);
+    expect(r.calibrate(1)).toBe(1);
+    expect(feed(r, FAST, 600)).toEqual([]);
+    expect(r.scale).toBe(1);
+  });
+
   it('rejects impossible settings (fail loud)', () => {
     expect(() => new AdaptiveResolution({ ...OPTIONS, minScale: 0 })).toThrow();
     expect(() => new AdaptiveResolution({ ...OPTIONS, minScale: 2 })).toThrow();
