@@ -8,6 +8,7 @@ class FakeElement implements AudioElementLike {
   volume = 0;
   loop = false;
   currentTime = 0;
+  playbackRate = 1;
   playCalls = 0;
   pauseCalls = 0;
   /** Set to make play() reject with an error of this name. */
@@ -59,17 +60,22 @@ describe('AudioManager', () => {
   let elements: Map<string, FakeElement>;
   let manager: AudioManager;
   let warn: MockInstance<(...args: unknown[]) => void>;
+  let hooked: { url: string; category: string }[];
 
   const make = (manifest: readonly AudioSpec[] = MANIFEST): AudioManager => {
     elements = new Map();
+    hooked = [];
+    const urls = new Map<unknown, string>();
     return new AudioManager(
       manifest,
       (url) => {
         const el = new FakeElement();
         elements.set(url, el);
+        urls.set(el, url);
         return el;
       },
       () => 0, // rotations start on their first track
+      (element, category) => hooked.push({ url: urls.get(element) ?? '?', category }),
     );
   };
   const el = (url: string): FakeElement => {
@@ -313,6 +319,57 @@ describe('AudioManager', () => {
       manager.playLoop('cruise');
       expect(el('cruise/x.mp3').playCalls).toBe(1);
       expect(elements.has('music/a.mp3')).toBe(false);
+    });
+  });
+
+  describe('effects routing and engine response', () => {
+    const music = (key: string, loop = true): AudioSpec => ({
+      key,
+      folder: key,
+      fallbackFolder: loop ? 'music' : null,
+      loop,
+      volume: 0.5,
+      category: loop ? 'music' : 'sfx',
+    });
+
+    it('offers each element to the hook once, with its category (music gets the intercom)', () => {
+      manager = make([music('roam'), music('blip', false)]);
+      manager.setLibrary({ music: ['music/a.mp3'], blip: ['blip/a.wav'] });
+      manager.unlock();
+      manager.playLoop('roam');
+      manager.stopLoop('roam');
+      manager.playLoop('roam');
+      expect(hooked).toEqual([
+        { url: 'blip/a.wav', category: 'sfx' },
+        { url: 'music/a.mp3', category: 'music' },
+      ]);
+    });
+
+    it('setLoopRate changes speed and pitch at once (the engine spooling up)', () => {
+      manager.setLibrary({ hum: ['hum/a.mp3'] });
+      manager.unlock();
+      manager.playLoop('hum');
+      manager.setLoopRate('hum', 0.8);
+      manager.update(0.001);
+      expect(el('hum/a.mp3').playbackRate).toBeCloseTo(0.8, 6);
+      manager.setLoopRate('hum', 99);
+      manager.update(0.001);
+      expect(el('hum/a.mp3').playbackRate).toBe(4); // clamped to a sane range
+    });
+
+    it('categoryLevel follows the fade, and ignores sounds that have no files', () => {
+      manager = make([music('roam'), music('cruise')]);
+      manager.setLibrary({});
+      manager.unlock();
+      manager.playLoop('roam');
+      manager.update(FADE * 2);
+      expect(manager.categoryLevel('music')).toBe(0); // faded in, but silent
+      manager.setLibrary({ music: ['music/a.mp3'] });
+      manager.update(FADE / 2);
+      expect(manager.categoryLevel('music')).toBeCloseTo(0.5, 5);
+      manager.update(FADE);
+      expect(manager.categoryLevel('music')).toBe(1);
+      expect(manager.categoryLevel('ambience')).toBe(0);
     });
   });
 

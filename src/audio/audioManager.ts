@@ -19,13 +19,16 @@
  * - The element factory is injectable so tests can run without real media.
  * - A per-loop gain (0..1) lets gameplay scale a loop live, e.g. the drone
  *   hover following flight speed - gain changes are immediate, fades are
- *   not.
+ *   not. A per-loop rate does the same for speed and pitch (the engine).
+ * - Each element is offered to an optional hook as it is created, which is
+ *   how music gets its intercom treatment without the manager knowing.
  */
 import { gameConfig } from '../config/gameConfig';
 import {
   audioFolders,
   audioManifest,
   validateAudioManifest,
+  type AudioCategory,
   type AudioSpec,
 } from '../content/audioManifest';
 import { type AudioLibrary, resolveFolder, trackLabel } from './audioLibrary';
@@ -36,6 +39,8 @@ export interface AudioElementLike {
   volume: number;
   loop: boolean;
   currentTime: number;
+  /** Speed and pitch, 1 = as recorded. Absent on minimal test doubles. */
+  playbackRate?: number;
   play(): Promise<void> | void;
   pause(): void;
   addEventListener(type: 'error' | 'ended', listener: () => void): void;
@@ -43,9 +48,17 @@ export interface AudioElementLike {
 
 export type AudioElementFactory = (url: string) => AudioElementLike;
 
+/**
+ * Called once for each element the manager creates, so the caller can
+ * route it through an effect (the intercom treatment of music).
+ */
+export type AudioElementHook = (element: AudioElementLike, category: AudioCategory) => void;
+
 const defaultFactory: AudioElementFactory = (url) => {
   const el = new Audio(url);
   el.preload = 'auto';
+  // Let a rate change shift pitch too: an engine spooling up should rise.
+  el.preservesPitch = false;
   return el;
 };
 
@@ -58,6 +71,8 @@ interface Cue {
   target: number;
   current: number;
   gain: number;
+  /** Playback speed and pitch for this loop, 1 = as recorded. */
+  rate: number;
   warnedSilent: boolean;
 }
 
@@ -65,6 +80,7 @@ interface Cue {
 interface Bank {
   readonly folder: string;
   readonly loop: boolean;
+  readonly category: AudioCategory;
   readonly rotation: TrackRotation;
   readonly elements: Map<string, AudioElementLike>;
   /** Loop banks: the element sounding (or paused mid-track). */
@@ -92,6 +108,7 @@ export class AudioManager {
     manifest: readonly AudioSpec[] = audioManifest,
     private readonly factory: AudioElementFactory = defaultFactory,
     random: () => number = Math.random,
+    private readonly onElement: AudioElementHook = () => undefined,
   ) {
     const problems = validateAudioManifest(manifest);
     if (problems.length > 0) {
@@ -104,16 +121,16 @@ export class AudioManager {
         target: 0,
         current: 0,
         gain: 1,
+        rate: 1,
         warnedSilent: false,
       });
     }
     for (const folder of audioFolders(manifest)) {
-      const loop = manifest.some(
-        (s) => s.loop && (s.folder === folder || s.fallbackFolder === folder),
-      );
+      const feeders = manifest.filter((s) => s.folder === folder || s.fallbackFolder === folder);
       this.banks.set(folder, {
         folder,
-        loop,
+        loop: feeders.some((s) => s.loop),
+        category: feeders[0]?.category ?? 'sfx',
         rotation: new TrackRotation(random),
         elements: new Map(),
         el: null,
@@ -189,6 +206,28 @@ export class AudioManager {
     this.require(key, true).gain = Math.min(1, Math.max(0, gain));
   }
 
+  /**
+   * Change a loop's speed and pitch immediately (e.g. the engine rising
+   * as the ship gathers way). 1 = as recorded.
+   */
+  setLoopRate(key: string, rate: number): void {
+    this.require(key, true).rate = Math.min(4, Math.max(0.25, rate));
+  }
+
+  /**
+   * How loud a whole category is right now, 0..1 of its faded-in level.
+   * Silent sounds (no files) do not count.
+   */
+  categoryLevel(category: AudioCategory): number {
+    let level = 0;
+    for (const cue of this.cues.values()) {
+      if (cue.spec.loop && cue.spec.category === category && cue.folder !== null) {
+        level += cue.current;
+      }
+    }
+    return Math.min(1, level);
+  }
+
   /** Fire a one-shot at its manifest volume. Silent before unlock. */
   playOnce(key: string): void {
     const cue = this.require(key, false);
@@ -206,7 +245,7 @@ export class AudioManager {
   update(dt: number): void {
     const step = dt / Math.max(0.01, gameConfig.audio.fadeSeconds);
     /** Per folder: summed volume, and whether any cue is still audible. */
-    const mix = new Map<string, { volume: number; active: boolean }>();
+    const mix = new Map<string, { volume: number; active: boolean; rate: number }>();
 
     for (const cue of this.cues.values()) {
       if (!cue.spec.loop) continue;
@@ -216,7 +255,7 @@ export class AudioManager {
         cue.current = Math.max(cue.target, cue.current - step);
       }
       if (cue.folder === null) continue;
-      const entry = mix.get(cue.folder) ?? { volume: 0, active: false };
+      const entry = mix.get(cue.folder) ?? { volume: 0, active: false, rate: cue.rate };
       // Summing lets two keys on one voice hand over without a dip: while
       // one fades out and the other fades in, the total stays level.
       entry.volume += cue.current * cue.spec.volume * cue.gain;
@@ -228,6 +267,7 @@ export class AudioManager {
       if (!bank.loop || bank.el === null) continue;
       const entry = mix.get(bank.folder);
       bank.el.volume = Math.min(1, entry?.volume ?? 0);
+      if (entry && bank.el.playbackRate !== undefined) bank.el.playbackRate = entry.rate;
       if (bank.playing && !(entry?.active ?? false)) {
         bank.el.pause();
         bank.playing = false;
@@ -288,6 +328,7 @@ export class AudioManager {
     const el = this.factory(url);
     el.loop = false;
     el.volume = 0;
+    this.onElement(el, bank.category);
     el.addEventListener('error', () => this.handleFailure(bank, url, el));
     el.addEventListener('ended', () => this.handleEnded(bank, el));
     bank.elements.set(url, el);

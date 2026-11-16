@@ -502,3 +502,29 @@ Trade-offs and risks:
   needs the author's eyes in a normal browser window, where a larger
   window will make adaptive resolution do more work.
 - The exterior hull (cinematic shot) was not touched in this pass.
+
+## 2026-11-16 - Music over the intercom, engine that follows speed
+
+**Author request:** music should sound like a radio/intercom; the engine
+should make travel feel real. Author chose to supply engine and hum files
+themselves, so nothing is synthesised and the silent-when-missing rule is
+unchanged.
+
+- `audio/intercomEffect.ts` (new): Web Audio chain for music only -
+  band-limit (280 Hz to 3.4 kHz), a nasal presence peak, gentle speaker
+  overdrive, a little dry signal mixed back, and a static bed that follows
+  the music level. Other sounds stay full-range so the ship feels close
+  and the music feels piped in. Tuning in `gameConfig.audio.intercom`
+  (`enabled: false` turns it off).
+- `AudioManager` gained an element hook (called once per element with its
+  category - how music is routed without the manager knowing about
+  effects), `setLoopRate` (speed and pitch) and `categoryLevel`.
+- The engine loop (`amb_engine_cruise`) now follows the ship's speed:
+  quieter and lower-pitched at a standstill, rising to full at cruise
+  (`engineIdleGain`, `engineIdleRate`). It needs a file in its folder to
+  be heard.
+- Where Web Audio is missing the music plays unprocessed and says so once.
+
+Verified in-browser: audio context running, music playing through the
+chain, static level tracking the music fade. Not verified by ear - the
+effect's character is the author's call; all values are in the config.

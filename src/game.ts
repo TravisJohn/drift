@@ -42,6 +42,7 @@ import { PlaceholderPuzzle } from './learning/placeholderPuzzle';
 import { PuzzleOverlay } from './ui/puzzleOverlay';
 import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
+import { IntercomEffect } from './audio/intercomEffect';
 import { connectAudioLibrary } from './audio/audioLibrarySource';
 import type { RoomSpec } from './content/shipLayout';
 import { AppState } from './state/appState';
@@ -81,7 +82,17 @@ export class Game {
   private readonly puzzles = new PuzzleRegistry();
   private readonly puzzleOverlay = new PuzzleOverlay();
   private readonly narrative = new NarrativeDirector();
-  private readonly audio = new AudioManager();
+  private readonly intercom = new IntercomEffect();
+  // Music is piped through the intercom; every other sound stays direct.
+  private readonly audio = new AudioManager(
+    undefined,
+    undefined,
+    undefined,
+    (element, category) => {
+      if (category === 'music' && element instanceof HTMLMediaElement)
+        this.intercom.connect(element);
+    },
+  );
   private readonly cryoRoom: RoomSpec | null;
   private elapsed = 0;
   private cryoGain = 0;
@@ -101,6 +112,7 @@ export class Game {
   private readonly onCanvasClick = (): void => {
     // The first gesture also unlocks audio (browser autoplay rules, M6).
     this.audio.unlock();
+    this.intercom.resume();
     // Pointer lock enables mouse look; the browser exits it on Esc.
     if (document.pointerLockElement !== this.renderer.domElement) {
       // Can reject (e.g. right after Esc); a failed lock just leaves the
@@ -268,6 +280,7 @@ export class Game {
   /** The Begin click: a real user gesture, so it may unlock audio. */
   private beginSession(): void {
     this.audio.unlock();
+    this.intercom.resume();
     this.appState.start();
     this.events.emit('app:started');
     this.onCanvasClick(); // capture the pointer from the same gesture
@@ -284,6 +297,7 @@ export class Game {
     this.titleScreen.close();
     this.pauseMenu.close();
     this.audio.dispose();
+    this.intercom.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -435,6 +449,19 @@ export class Game {
       this.cryoGain += ((inside ? 1 : 0) - this.cryoGain) * blend;
       this.audio.setLoopGain('amb_cryo_bay', this.cryoGain);
     }
+
+    // The engine spools with the journey: louder and higher as speed builds.
+    const cfg = gameConfig.audio;
+    const way = this.travelView.driftSpeed;
+    this.audio.setLoopGain(
+      'amb_engine_cruise',
+      cfg.engineIdleGain + (1 - cfg.engineIdleGain) * way,
+    );
+    this.audio.setLoopRate(
+      'amb_engine_cruise',
+      cfg.engineIdleRate + (1 - cfg.engineIdleRate) * way,
+    );
+    this.intercom.setLevel(this.audio.categoryLevel('music'));
 
     this.audio.update(dt);
   }

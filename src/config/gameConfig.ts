@@ -59,6 +59,34 @@ export const gameConfig = {
     fadeSeconds: 2.5,
     /** Hover loop keeps this floor of its volume while idle. */
     hoverIdleGain: 0.3,
+    /**
+     * The engine loop follows the ship's speed: at a standstill it plays at
+     * this share of its volume and this share of its pitch, rising to full
+     * at cruise.
+     */
+    engineIdleGain: 0.35,
+    engineIdleRate: 0.78,
+    /**
+     * Music is played "over the intercom": band-limited like a small
+     * speaker, slightly overdriven, with faint static. Other sounds are
+     * left full-range so the ship itself feels close.
+     */
+    intercom: {
+      enabled: true,
+      /** Nothing below / above these frequencies gets through. */
+      highpassHz: 280,
+      lowpassHz: 3400,
+      /** The nasal "speaker" peak: where, and how many decibels. */
+      presenceHz: 1500,
+      presenceDb: 4,
+      /** Overdrive: 1 is nearly clean, 3 is a blown speaker. */
+      drive: 1.5,
+      /** Volume of the static bed while music plays. */
+      staticLevel: 0.012,
+      /** Share of the untouched music mixed back in, 0..1. */
+      dryMix: 0.12,
+      outputGain: 1,
+    },
   },
 
   /** Ship AI subtitles (M5). */
