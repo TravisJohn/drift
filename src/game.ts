@@ -44,6 +44,7 @@ import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
 import { IntercomEffect } from './audio/intercomEffect';
 import { connectAudioLibrary } from './audio/audioLibrarySource';
+import { connectArt } from './art/surfaceArt';
 import type { RoomSpec } from './content/shipLayout';
 import { AppState } from './state/appState';
 import { TitleScreen } from './ui/titleScreen';
@@ -160,6 +161,11 @@ export class Game {
 
     this.ship = buildShip(shipLayout); // throws on invalid layout content
     this.scene.add(this.ship.group);
+    // Author-supplied wall/floor/ceiling art, if any, replaces the generated look.
+    void connectArt(
+      (surface, art) => this.ship.applySurfaceArt(surface, art),
+      gameConfig.art.derivedNormalStrength,
+    );
     // Something for the metal to reflect (baked once, no image files).
     this.environment = createInteriorEnvironment(this.renderer);
     this.scene.environment = this.environment.texture;

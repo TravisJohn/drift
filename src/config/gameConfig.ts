@@ -162,6 +162,22 @@ export const gameConfig = {
     },
   },
 
+  /**
+   * Author-supplied art (public/art/, see ART_PROMPTS.md). Each value is
+   * per surface: wall, floor, ceiling.
+   */
+  art: {
+    /**
+     * World metres one repeat of the picture covers. The wall default is
+     * the ceiling height, so a wall picture runs floor to ceiling once.
+     */
+    tileSize: { wall: 3.2, floor: 2, ceiling: 2.4 },
+    /** How bright a supplied glow map shines; above 1 blooms. */
+    emissiveLevel: 1.6,
+    /** Relief strength when the normal map is derived from the picture. */
+    derivedNormalStrength: 2.5,
+  },
+
   /** Final image treatment: tone mapping and the glow around bright things. */
   rendering: {
     /**

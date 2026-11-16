@@ -8,7 +8,7 @@
  *   game whenever a file is added, replaced or deleted - no reload needed;
  * - build: writes the listing into the bundle next to the copied files.
  */
-import { mkdir, readdir, stat } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 // Explicit .ts extensions: Vite's native config loader requires them for
@@ -16,11 +16,10 @@ import type { Plugin } from 'vite';
 import {
   AUDIO_LIBRARY_EVENT,
   AUDIO_LIBRARY_URL,
-  type AudioFileInfo,
   type AudioLibrary,
-  buildAudioLibrary,
 } from '../src/audio/audioLibrary.ts';
 import { AUDIO_EXTENSIONS, audioFolders, audioManifest } from '../src/content/audioManifest.ts';
+import { type MediaScan, isInside, scanMediaDirectory } from './mediaScan.ts';
 
 /**
  * Copying several files fires a burst of watcher events, and a large file
@@ -28,58 +27,11 @@ import { AUDIO_EXTENSIONS, audioFolders, audioManifest } from '../src/content/au
  */
 const SETTLE_MS = 300;
 
-export interface AudioScan {
-  readonly library: AudioLibrary;
-  /** Audio files sitting directly in the audio folder, in no moment folder. */
-  readonly unsorted: readonly string[];
-}
+export type AudioScan = MediaScan;
 
-function isAudioFile(name: string): boolean {
-  return AUDIO_EXTENSIONS.includes(path.extname(name).slice(1).toLowerCase());
-}
-
-/** List every file one level down: audioDir/<folder>/<file>. */
-export async function scanAudioDirectory(audioDir: string): Promise<AudioScan> {
-  const files: AudioFileInfo[] = [];
-  const unsorted: string[] = [];
-
-  let entries;
-  try {
-    entries = await readdir(audioDir, { withFileTypes: true });
-  } catch (error) {
-    // No audio folder at all is a valid state: the game runs silent.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { library: {}, unsorted };
-    throw error;
-  }
-
-  for (const entry of entries) {
-    if (entry.isFile()) {
-      if (isAudioFile(entry.name)) unsorted.push(entry.name);
-      continue;
-    }
-    if (!entry.isDirectory()) continue;
-    const folderPath = path.join(audioDir, entry.name);
-    for (const file of await readdir(folderPath, { withFileTypes: true })) {
-      if (!file.isFile()) continue;
-      try {
-        const info = await stat(path.join(folderPath, file.name));
-        files.push({
-          folder: entry.name,
-          name: file.name,
-          version: `${Math.round(info.mtimeMs)}-${info.size}`,
-        });
-      } catch (error) {
-        // Deleted between listing and stat: it simply is not there any more.
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
-    }
-  }
-  return { library: buildAudioLibrary(files, AUDIO_EXTENSIONS), unsorted };
-}
-
-function isInside(parent: string, file: string): boolean {
-  const relative = path.relative(parent, file);
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+/** List every audio file one level down: audioDir/<folder>/<file>. */
+export function scanAudioDirectory(audioDir: string): Promise<AudioScan> {
+  return scanMediaDirectory(audioDir, AUDIO_EXTENSIONS, 'audio');
 }
 
 export function audioLibraryPlugin(): Plugin {

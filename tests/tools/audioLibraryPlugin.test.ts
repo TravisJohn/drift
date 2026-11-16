@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { scanAudioDirectory } from '../../tools/audioLibraryPlugin';
+import { scanMediaDirectory } from '../../tools/mediaScan';
 
 describe('scanAudioDirectory', () => {
   let dir: string;
@@ -59,5 +60,28 @@ describe('scanAudioDirectory', () => {
   it('a missing audio folder means an empty library, not a crash', async () => {
     const scan = await scanAudioDirectory(path.join(dir, 'nope'));
     expect(scan).toEqual({ library: {}, unsorted: [] });
+  });
+});
+
+describe('scanMediaDirectory (the same scan, for art)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'drift-art-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('lists images under the art root and ignores other files', async () => {
+    await mkdir(path.join(dir, 'wall'));
+    await writeFile(path.join(dir, 'wall', 'My Wall.PNG'), 'x');
+    await writeFile(path.join(dir, 'wall', 'wall_glow.webp'), 'x');
+    await writeFile(path.join(dir, 'wall', 'notes.txt'), 'x');
+    await writeFile(path.join(dir, 'wall', 'track.mp3'), 'x');
+    const { library } = await scanMediaDirectory(dir, ['png', 'jpg', 'jpeg', 'webp'], 'art');
+    expect(library.wall).toHaveLength(2);
+    expect(library.wall?.[0]).toMatch(/^art\/wall\/My%20Wall\.PNG\?v=/);
   });
 });

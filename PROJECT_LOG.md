@@ -568,3 +568,51 @@ Trade-offs:
   fixed text; there is no simulation behind them yet.
 - While docked the stars are still (D2: the ship never moves). The view
   comes alive during a journey.
+
+## 2026-11-16 - Drop-in art folders and prompts for outside AI tools
+
+**Author request:** make the ship more sci-fi; the walls are "a bit sad".
+Asked which direction to take, the author instead chose to have outside
+AI tools make the art and asked for prompts. This **reopens the earlier
+decision** "art is procedural, no downloaded asset packs": generated art
+supplied by the author is now welcome for surfaces. The built-in
+procedural look remains the fallback, so the game still needs no files.
+406 tests passing; lint, format, types and build clean.
+
+- `public/art/wall|floor|ceiling/`: drop one image in a folder (any file
+  name; png, jpg or webp) and it replaces that surface everywhere on the
+  ship. Optional second and third images are recognised by name: "normal"
+  for relief, "glow" or "emissive" for parts that should shine.
+- `content/artManifest.ts`: the surfaces, formats and the file-name rules
+  (pure, tested). `art/surfaceArt.ts`: loads the textures; when no relief
+  map is supplied, derives one from the picture's brightness (pure
+  function, tested), so painted seams still catch light.
+- `ShipWorld.applySurfaceArt`: swaps the maps on the existing material.
+  Baked lighting is untouched, so supplied art is lit and shadowed exactly
+  like the built-in panels. A wall picture runs floor to ceiling once and
+  repeats every 3.2 m; sizes are in `gameConfig.art.tileSize`.
+- `tools/artLibraryPlugin.ts` + `tools/mediaScan.ts`: the audio plugin's
+  folder scan, made shared. Serves `/art/library.json`, creates the
+  folders, reloads the page when art changes (dev), writes the listing
+  into a build.
+- `ART_PROMPTS.md` (project root): paste-ready prompts for the three
+  surfaces with the rules that make an image usable as a game texture, a
+  style block with two alternatives, how to make a glow map, sound prompts
+  for the eight empty audio folders, and how to check a result.
+
+Verified in-browser with two throwaway generated images (removed again):
+the picture appeared on every wall floor-to-ceiling, its glow strip
+bloomed, lighting and shadows were unchanged.
+
+Trade-offs and limits (also listed in ART_PROMPTS.md):
+- One picture per surface for the whole ship; per-room art would need the
+  walls split by room.
+- Not loadable yet: 3D models for props and the drone, the outer hull,
+  console screen pictures.
+- A supplied glow map adds one texture read per pixel on that surface
+  (about 1 ms a frame on integrated graphics). Pictures over 2048 px log
+  a warning.
+- No procedural sci-fi pass on the walls was done in this session beyond
+  the console readouts and the holo-table: the author's art decides the
+  look. Structural additions (ribs, per-room accent lighting, which cost
+  nothing per frame once baked) remain an option.

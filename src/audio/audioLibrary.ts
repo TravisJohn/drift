@@ -35,10 +35,15 @@ function hasAcceptedExtension(name: string, extensions: readonly string[]): bool
   return extensions.includes(name.slice(dot + 1).toLowerCase());
 }
 
-/** Group scanned files into a library, dropping non-audio files. */
+/**
+ * Group scanned files into a library, dropping files of other types.
+ * `root` is the URL prefix they are served under (art reuses this with
+ * its own root).
+ */
 export function buildAudioLibrary(
   files: readonly AudioFileInfo[],
   extensions: readonly string[],
+  root = 'audio',
 ): AudioLibrary {
   const folders: Record<string, string[]> = {};
   const sorted = [...files]
@@ -46,7 +51,7 @@ export function buildAudioLibrary(
     .sort((a, b) => a.name.localeCompare(b.name));
   for (const file of sorted) {
     // Author file names contain spaces and brackets; encode each segment.
-    const url = `audio/${encodeURIComponent(file.folder)}/${encodeURIComponent(file.name)}?v=${encodeURIComponent(file.version)}`;
+    const url = `${root}/${encodeURIComponent(file.folder)}/${encodeURIComponent(file.name)}?v=${encodeURIComponent(file.version)}`;
     (folders[file.folder] ??= []).push(url);
   }
   return folders;

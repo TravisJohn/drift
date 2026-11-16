@@ -1,9 +1,10 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
+import { artLibraryPlugin } from './tools/artLibraryPlugin.ts';
 import { audioLibraryPlugin } from './tools/audioLibraryPlugin.ts';
 
 export default defineConfig({
-  plugins: [audioLibraryPlugin()],
+  plugins: [audioLibraryPlugin(), artLibraryPlugin()],
   server: {
     port: 5173,
   },

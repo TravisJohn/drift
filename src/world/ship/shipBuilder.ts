@@ -24,6 +24,8 @@ import {
 import { validateLayout } from './validateLayout';
 import { buildPropVisual, type GlowPulse } from './propVisuals';
 import { gameConfig } from '../../config/gameConfig';
+import type { ArtSurface } from '../../content/artManifest';
+import type { SurfaceArt } from '../../art/surfaceArt';
 import {
   PANEL_FINISH,
   type PanelTextures,
@@ -211,6 +213,12 @@ export interface ShipWorld {
    * fixture): 1 is nominal. Shared with every baked-light material.
    */
   readonly lightWaver: { readonly value: number };
+  /**
+   * Replace a surface's generated look with author-supplied art. The
+   * baked lighting is untouched, so the art is lit exactly as the
+   * generated panels were.
+   */
+  applySurfaceArt(surface: ArtSurface, art: SurfaceArt): void;
   /** Animate breathing glows and light flicker. `elapsed` is seconds. */
   update(elapsed: number): void;
   dispose(): void;
@@ -302,6 +310,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   }
 
   const lit: THREE.Mesh[] = [];
+  const surfaceMaterials = new Map<ArtSurface, THREE.MeshStandardMaterial>();
   (Object.keys(structure) as SurfaceKind[]).forEach((kind, index) => {
     const surface = SURFACES[kind];
     const panels = createPanelTextures(kind, cfg.panelTextureSize, 101 + index);
@@ -321,6 +330,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     );
     group.add(mesh);
     lit.push(mesh);
+    surfaceMaterials.set(kind, mesh.material);
   });
 
   // --- Trim: baseboards, coves, frames, door lights, window glass ---
@@ -394,6 +404,26 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     colliders,
     spawn: layout.spawn,
     lightWaver,
+    applySurfaceArt(surface, art) {
+      const material = surfaceMaterials.get(surface);
+      if (!material) throw new Error(`Ship has no "${surface}" surface to dress`);
+      // Geometry UVs are in units of the generated texture's tile; scale
+      // the supplied picture to the tile size configured for art.
+      const repeat = SURFACES[surface].tileSize / gameConfig.art.tileSize[surface];
+      for (const texture of [art.map, art.normalMap, art.emissiveMap]) {
+        texture?.repeat.set(repeat, repeat);
+      }
+      material.map = art.map;
+      material.normalMap = art.normalMap;
+      // The picture carries its own colours: stop tinting it.
+      material.color.set(0xffffff);
+      if (art.emissiveMap) {
+        material.emissiveMap = art.emissiveMap;
+        material.emissive.set(0xffffff);
+        material.emissiveIntensity = gameConfig.art.emissiveLevel;
+      }
+      material.needsUpdate = true;
+    },
     update(elapsed: number) {
       for (const p of pulses) {
         p.material.emissiveIntensity =

@@ -246,6 +246,17 @@ Added by the visual pass; details and measurements are in PROJECT_LOG.md.
 - `world/space/starLook.ts`, `skyDome.ts`, `bodyMaterials.ts`: star look,
   distant sky and nebula, procedural planet/sun/ring shaders.
 
+Added later the same day:
+
+- `audio/intercomEffect.ts`: music routed through a Web Audio "intercom".
+- Ship dashboard: `travel/dashboardCamera.ts`, `world/ship/shipHologram.ts`,
+  `ui/dashboardModel.ts`, `ui/dashboardOverlay.ts`, `content/shipSystems.ts`.
+  It lists PuzzleRegistry modules: the entry point for AWS training.
+- `rendering/screenTextures.ts`: generated console readouts.
+- Author-supplied art: `content/artManifest.ts`, `art/surfaceArt.ts`,
+  `tools/artLibraryPlugin.ts`, `tools/mediaScan.ts`; prompts in
+  `ART_PROMPTS.md`. Folders under `public/art/`.
+
 Rule of thumb for new work: anything static should be baked at startup,
 not paid for per frame - the target includes integrated graphics.
 
