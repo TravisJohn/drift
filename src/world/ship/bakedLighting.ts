@@ -140,8 +140,13 @@ export function bakeVertexLight(
       const lx = light.position.x - px;
       const ly = light.position.y - py;
       const lz = light.position.z - pz;
-      const distance = Math.hypot(lx, ly, lz);
-      if (distance <= 0 || (light.distance > 0 && distance >= light.distance)) continue;
+      // Most lights are out of range of most vertices (the ribs' small
+      // glows above all): reject those before the square root.
+      const squared = lx * lx + ly * ly + lz * lz;
+      if (squared <= 0 || (light.distance > 0 && squared >= light.distance * light.distance)) {
+        continue;
+      }
+      const distance = Math.sqrt(squared);
       const facing = (nx * lx + ny * ly + nz * lz) / distance;
       if (facing <= 0) continue; // surface faces away from this light
       if (

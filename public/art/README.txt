@@ -7,6 +7,8 @@ ship. Empty folders are fine: the built-in look is used.
 
   wall      every wall. The picture runs floor to ceiling once and
             repeats sideways every 3.2 m. Bottom of the picture = floor.
+            The ship's ribs and light strips are built in front of it,
+            so the picture should not paint ribs of its own.
   floor     the deck. One picture covers 2 m x 2 m and repeats.
   ceiling   the ceiling. One picture covers 2.4 m x 2.4 m and repeats.
 

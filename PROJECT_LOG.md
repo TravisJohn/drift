@@ -662,3 +662,66 @@ Trade-offs and limits:
   normal browser.
 - Not verified: whether a normal browser on the author's machine gets the
   dedicated graphics chip. The F2 readout answers that.
+
+## 2026-11-16 - Sci-fi interior: frames, per-room light, bulkhead walls
+
+**Author request:** make it more beautiful; "the walls should look sci-fi
+and not sad". No art had been dropped into `public/art/`, so the built-in
+look was still big blank plates. This pass rebuilds that built-in look.
+Supplied art still replaces the wall picture if it is ever added.
+454 tests passing; lint, format, types and build clean.
+
+- `world/ship/frames.ts` (new, pure, tested): structural frames worked
+  out from the floor plan. A rib stands against the wall about every 2 m
+  with a strip of light set into its face; a beam crosses the ceiling at
+  the same positions, so the corridor reads as a run of portal frames. A
+  rib is left out wherever it would stand in or crowd a door or window.
+- Every room now has its own colour of light (`ROOM_ACCENT` in
+  `shipBuilder.ts`): bridge blue, corridor cyan, lab green, cargo amber,
+  cryo ice, engineering orange. It colours the rib strips, the guide
+  light along the foot of the walls (now one per wall face, so the two
+  sides of a wall can differ), and a small baked glow around each rib.
+  The cryo bay's strips breathe with the pods.
+- `rendering/panelTextures.ts`: the wall is now a designed bulkhead
+  instead of a 2 x 2 grid of plates. Dark kick band with louvred vents,
+  tall panels with cut corners, service strips with hatches, bolts and a
+  painted tag, header band with air grilles. The bands change at the
+  window sill and head, taken from the layout, so panelling and windows
+  line up. Because room light is baked and ignores the normal map, the
+  colour map carries its own top-down shading on panel edges.
+- Ceiling plates are larger with a framing groove (it read as office
+  tiles before).
+- New `gameConfig.interior` (frame spacing, light levels, glow strength
+  and reach) and `gameConfig.rendering.wallTextureSize` (1024).
+- `ART_PROMPTS.md` and `public/art/README.txt`: the wall prompt no longer
+  asks for painted ribs, since built ribs now stand in front of the wall.
+
+Cost, measured in the embedded preview (Intel UHD Graphics P630,
+1341x845):
+- Per frame: about 0.2 ms. Switching back and forth in one session
+  between the new look and an approximation of the old one (ribs and
+  strips hidden, 256 px wall texture), six rounds over four views:
+  13.81 ms against 13.55 ms. Single readings on this machine wander by
+  more than a millisecond, so this is within the noise. A first
+  before/after taken across two page loads read 3 to 4 ms worse and was
+  wrong for that reason.
+- Startup: building the ship takes about 550 ms, up from about 200 ms.
+  Half is the larger wall texture. Texture generation and the light bake
+  were tightened in this pass (no per-pixel allocations; lights out of
+  range are rejected before the square root); before that it was 820 ms.
+
+Verified by eye in every room from fixed viewpoints, before and after.
+
+Trade-offs and limits:
+- Ribs and beams are visual only, like the rest of the trim. They stand
+  6 to 10 cm proud of the wall and 8 cm below the ceiling, so the drone
+  can brush into them slightly.
+- Where a door or window takes a rib's place, the ceiling beam above
+  still runs, without a leg under it.
+- One wall design serves the whole ship and is mirrored on facing walls,
+  so it carries no lettering. Per-room wall designs would need the walls
+  split by room.
+- Engineering reads darker than before: its walls are mostly window, and
+  the kick and header bands are darker than the old plates.
+- Not checked: the look in motion at full frame rate in a normal browser.
+  The preview pane was hidden, so pictures were taken as still frames.

@@ -64,6 +64,13 @@ One picture covers a wall from floor to ceiling (3.2 m) and repeats
 sideways every 3.2 m. The bottom of the picture is the floor edge. Only
 the left and right edges need to match each other.
 
+The game stands a structural rib with a strip of coloured light against
+the wall about every 2 m, and runs beams across the ceiling. These are
+built, not painted, and stay in place over a supplied picture, so the
+picture should not contain ribs of its own. Windows sit between 28% and
+75% of the way up the wall; a picture whose horizontal bands change at
+those heights lines up with them.
+
 ```
 [STYLE BLOCK]
 
@@ -73,9 +80,9 @@ scuffed kick plate; a thin recessed horizontal light channel glowing
 cyan just above it; two large flat hull panels side by side with fine
 seams between them; a narrow horizontal service band at mid height with
 small flush access hatches and a row of tiny indicator lights; two more
-large panels above; a slim vent grille strip near the top. A raised
-vertical structural rib runs up the far left and far right edges, so
-that when the image repeats sideways the ribs join into one pillar.
+large panels above; a slim vent grille strip near the top. No vertical
+ribs or pillars and no glowing strips: the game builds its own ribs and
+light strips in front of the wall.
 
 [RULES BLOCK]
 ```

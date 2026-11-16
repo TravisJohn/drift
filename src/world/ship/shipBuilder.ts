@@ -4,7 +4,8 @@
  *
  * Meshes and colliders are generated from the same box list, so visuals and
  * collision cannot drift apart. Structure is merged into one panel-textured
- * mesh per surface kind, then dressed with trim (see trim.ts). Walls are built once per shared edge (with a
+ * mesh per surface kind, then dressed with trim (see trim.ts) and structural
+ * frames (see frames.ts). Walls are built once per shared edge (with a
  * door opening when one is declared) and per exterior span (with window
  * openings); windows are real holes in the hull - the space scene (M4) will
  * show through them.
@@ -40,6 +41,7 @@ import {
   worldVertices,
 } from './bakedLighting';
 import { type TrimBox, type TrimRole, buildTrimBoxes } from './trim';
+import { type FrameGlow, buildFrames } from './frames';
 
 /** One axis-aligned box with a material role. */
 export interface ShipBox {
@@ -60,8 +62,9 @@ const SURFACES: Record<
 > = {
   floor: { color: 0x596372, tileSize: 2, faces: 'top' },
   ceiling: { color: 0x4a5462, tileSize: 2.4, faces: 'bottom' },
-  // Wall tile = ceiling height: one belt seam at mid-height, none else.
-  wall: { color: 0x6c7786, tileSize: 3.2, faces: 'all' },
+  // Wall tile = ceiling height: the bulkhead runs floor to ceiling once.
+  // White, because the wall texture is already painted.
+  wall: { color: 0xffffff, tileSize: 3.2, faces: 'all' },
 };
 
 /** Per-room ceiling light colors - first mood pass, refined in M6. */
@@ -74,23 +77,46 @@ const ROOM_LIGHT: Record<string, number> = {
   engineering: 0xffb070,
 };
 
+/**
+ * Each room's own colour of light: its guide lights, the strips in its
+ * ribs and the glow they throw on the walls. Stronger than the ceiling
+ * light's tint on purpose - this is what tells the rooms apart.
+ */
+const ROOM_ACCENT: Record<string, number> = {
+  bridge: 0x4f9dff,
+  corridor: 0x5cc8e0,
+  lab: 0x58e0b0,
+  cargo: 0xffc04d,
+  cryo: 0x86ecff,
+  engineering: 0xff8a3d,
+};
+const DEFAULT_ACCENT = 0x5cc4dc;
+
 const ROOM_LIGHT_INTENSITY = 11;
 const AMBIENT_INTENSITY = 0.3;
 /** Emissive level of the ceiling strips: above 1 so they bloom. */
 const STRIP_GLOW = 1.8;
 
-function createTrimMaterial(role: TrimRole): THREE.Material {
+function createTrimMaterial(role: TrimRole, roomId: string | undefined): THREE.Material {
+  const accent = ROOM_ACCENT[roomId ?? ''] ?? DEFAULT_ACCENT;
   switch (role) {
     case 'baseboard':
     case 'cove':
     case 'frame':
+    case 'rib':
       return new THREE.MeshStandardMaterial({ color: 0x20252d, roughness: 0.45, metalness: 0.75 });
     case 'guideLight':
       // A faint line at ankle height: guides the eye down long rooms.
       return new THREE.MeshStandardMaterial({
         color: 0x0c1116,
-        emissive: 0x5cc4dc,
-        emissiveIntensity: 0.55,
+        emissive: accent,
+        emissiveIntensity: gameConfig.interior.guideLightLevel,
+      });
+    case 'accent':
+      return new THREE.MeshStandardMaterial({
+        color: 0x0c1116,
+        emissive: accent,
+        emissiveIntensity: gameConfig.interior.ribLightLevel,
       });
     case 'doorLight':
       return new THREE.MeshStandardMaterial({
@@ -260,6 +286,22 @@ export function buildRoomLights(layout: ShipLayout): BakeLight[] {
   return lights;
 }
 
+/**
+ * The glow each rib's light strip throws on the wall and floor around it:
+ * small, short-range lights in the room's colour, baked like the rest.
+ */
+export function buildAccentLights(glows: readonly FrameGlow[]): BakeLight[] {
+  const cfg = gameConfig.interior;
+  return glows.map((glow) => ({
+    position: glow.position,
+    color: lightColor(ROOM_ACCENT[glow.roomId] ?? DEFAULT_ACCENT, cfg.ribGlowIntensity),
+    distance: cfg.ribGlowReach,
+    decay: 2,
+    softRadius: 0.6,
+    wavers: false,
+  }));
+}
+
 /** Build the renderable ship. Throws on invalid layout content (fail loud). */
 export function buildShip(layout: ShipLayout): ShipWorld {
   const problems = validateLayout(layout);
@@ -273,7 +315,8 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   const textures: PanelTextures[] = [];
   const pulses: GlowPulse[] = [];
   const lightWaver = { value: 1 };
-  const roomLights = buildRoomLights(layout);
+  const frames = buildFrames(layout, gameConfig.interior.frameSpacing);
+  const roomLights = [...buildRoomLights(layout), ...buildAccentLights(frames.glows)];
 
   /** Light a mesh from the room lights, shadowed by the ship's own boxes. */
   const patched = new Set<THREE.Material>();
@@ -313,7 +356,16 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   const surfaceMaterials = new Map<ArtSurface, THREE.MeshStandardMaterial>();
   (Object.keys(structure) as SurfaceKind[]).forEach((kind, index) => {
     const surface = SURFACES[kind];
-    const panels = createPanelTextures(kind, cfg.panelTextureSize, 101 + index);
+    const panels = createPanelTextures(
+      kind,
+      kind === 'wall' ? cfg.wallTextureSize : cfg.panelTextureSize,
+      101 + index,
+      // The wall's belt lines follow the window sill and head.
+      {
+        sill: layout.windowBottom / SURFACES.wall.tileSize,
+        head: layout.windowTop / SURFACES.wall.tileSize,
+      },
+    );
     textures.push(panels);
     const mesh = new THREE.Mesh(
       buildBoxesGeometry(structure[kind], surface.tileSize, {
@@ -333,20 +385,42 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     surfaceMaterials.set(kind, mesh.material);
   });
 
-  // --- Trim: baseboards, coves, frames, door lights, window glass ---
-  const trimByRole = new Map<TrimRole, TrimBox[]>();
-  for (const box of buildTrimBoxes(layout, structure.wall)) {
-    const list = trimByRole.get(box.role) ?? [];
-    list.push(box);
-    trimByRole.set(box.role, list);
+  // --- Trim and frames: baseboards, coves, door and window frames, ribs,
+  // beams, lights, glass. One mesh per look; coloured lights are per room.
+  const BAKED_TRIM: readonly TrimRole[] = ['baseboard', 'cove', 'frame', 'rib'];
+  const PER_ROOM_TRIM: readonly TrimRole[] = ['guideLight', 'accent'];
+  interface TrimGroup {
+    readonly role: TrimRole;
+    readonly roomId: string | undefined;
+    readonly boxes: TrimBox[];
   }
-  for (const [role, boxes] of trimByRole) {
+  const trimGroups = new Map<string, TrimGroup>();
+  for (const box of [...buildTrimBoxes(layout, structure.wall), ...frames.boxes]) {
+    const roomId = PER_ROOM_TRIM.includes(box.role) ? box.roomId : undefined;
+    const key = `${box.role}|${roomId ?? ''}`;
+    const entry: TrimGroup = trimGroups.get(key) ?? { role: box.role, roomId, boxes: [] };
+    entry.boxes.push(box);
+    trimGroups.set(key, entry);
+  }
+  for (const { role, roomId, boxes } of trimGroups.values()) {
+    const material = createTrimMaterial(role, roomId);
     const mesh = new THREE.Mesh(
       buildBoxesGeometry(boxes, 1, { maxCell: cfg.lightCellSize * 2 }),
-      createTrimMaterial(role),
+      material,
     );
+    mesh.name = roomId ? `trim:${role}:${roomId}` : `trim:${role}`;
     group.add(mesh);
-    if (role === 'baseboard' || role === 'cove' || role === 'frame') lit.push(mesh);
+    if (BAKED_TRIM.includes(role)) lit.push(mesh);
+    if (role === 'accent' && roomId === 'cryo') {
+      // The cryo bay's rib lights breathe with the pods.
+      pulses.push({
+        material: material as THREE.MeshStandardMaterial,
+        base: gameConfig.interior.ribLightLevel,
+        amplitude: 0.3,
+        frequency: 0.16,
+        phase: 0.8,
+      });
+    }
   }
   for (const mesh of lit) bake(mesh);
 

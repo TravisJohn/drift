@@ -13,50 +13,119 @@ import {
   useBakedLight,
 } from '../../src/world/ship/bakedLighting';
 import { buildBoxesGeometry } from '../../src/world/ship/boxesGeometry';
-import { buildRoomLights, buildShip, buildShipBoxes } from '../../src/world/ship/shipBuilder';
+import { gameConfig } from '../../src/config/gameConfig';
+import { buildFrames } from '../../src/world/ship/frames';
+import {
+  buildAccentLights,
+  buildRoomLights,
+  buildShip,
+  buildShipBoxes,
+} from '../../src/world/ship/shipBuilder';
 import { buildTrimBoxes } from '../../src/world/ship/trim';
 
-describe('generatePanelTextureData (walls that read as plates, not flat colour)', () => {
-  const SIZE = 64;
+describe('generatePanelTextureData (a bulkhead wall, not flat colour)', () => {
+  const SIZE = 256;
   const wall = generatePanelTextureData('wall', SIZE, 7);
-  const pixel = (bytes: Uint8Array, x: number, y: number): number => bytes[(y * SIZE + x) * 4] ?? 0;
+  /** Brightness (0..255) of the wall at tile coordinates u, v. */
+  const tone = (data: { color: Uint8Array; size: number }, u: number, v: number): number => {
+    const i = (Math.floor(v * data.size) * data.size + Math.floor(u * data.size)) * 4;
+    return ((data.color[i] ?? 0) + (data.color[i + 1] ?? 0) + (data.color[i + 2] ?? 0)) / 3;
+  };
+  // Landmarks of the default design: a tall panel spans u 0..0.375 in the
+  // main band (v 0.28..0.75); a plain plate spans u 0.25..0.5 in the kick
+  // band below it.
+  const PANEL = { u: 0.19, v: 0.55 };
+  const KICK_PLATE = { u: 0.42, v: 0.2 };
 
   it('produces RGBA maps of the requested size', () => {
     expect(wall.color).toHaveLength(SIZE * SIZE * 4);
     expect(wall.normal).toHaveLength(SIZE * SIZE * 4);
   });
 
-  it('seams are darker than the plates between them', () => {
-    // The wall has 2 x 2 plates: a seam runs along the tile edge, and the
-    // middle of a plate sits a quarter of the way in.
-    const seam = pixel(wall.color, 0, SIZE / 4);
-    const plate = pixel(wall.color, SIZE / 4, SIZE / 4);
-    expect(seam).toBeLessThan(plate * 0.85);
+  it('the joint between two panels is darker than the panels', () => {
+    const joint = tone(wall, 0.375, PANEL.v);
+    expect(joint).toBeLessThan(tone(wall, PANEL.u, PANEL.v) * 0.7);
   });
 
-  it('plates are flat and seams are not (the normal map carries relief)', () => {
-    // Finer than the other checks: a seam is only a few pixels wide.
-    const FINE = 256;
+  it('the kick band at the foot of the wall is darker than the panels above it', () => {
+    expect(tone(wall, KICK_PLATE.u, KICK_PLATE.v)).toBeLessThan(tone(wall, PANEL.u, PANEL.v) * 0.7);
+  });
+
+  it('the band lines follow the window sill and head it is given', () => {
+    // v = 0.33 is tall panel by default; raise the sill and it is kick band.
+    const raised = generatePanelTextureData('wall', SIZE, 7, { sill: 0.4, head: 0.8 });
+    expect(tone(raised, KICK_PLATE.u, 0.33)).toBeLessThan(tone(wall, PANEL.u, 0.33) * 0.7);
+    // The belt between bands is a dark line exactly at the sill.
+    expect(tone(raised, PANEL.u, 0.4)).toBeLessThan(tone(raised, PANEL.u, 0.6) * 0.7);
+    expect(tone(wall, PANEL.u, 0.28)).toBeLessThan(tone(wall, PANEL.u, 0.6) * 0.7);
+  });
+
+  it('panel faces are flat and their edges are not (the normal map carries relief)', () => {
+    const blue = (u: number, v: number): number =>
+      wall.normal[(Math.floor(v * SIZE) * SIZE + Math.floor(u * SIZE)) * 4 + 2] ?? 0;
+    expect(blue(PANEL.u, PANEL.v)).toBeGreaterThan(250); // facing straight out
+    const atJoint = [-2, -1, 0, 1, 2].map((dx) => blue(0.375 + dx / SIZE, PANEL.v));
+    expect(Math.min(...atJoint)).toBeLessThan(235); // tilted into the joint
+  });
+
+  it('is lit from above: a panel edge facing the ceiling is lighter than one facing the floor', () => {
+    const FINE = 512;
     const fine = generatePanelTextureData('wall', FINE, 7);
-    const blue = (x: number, y: number): number => fine.normal[(y * FINE + x) * 4 + 2] ?? 0;
-    const row = FINE / 4; // through the middle of a plate
-    expect(blue(FINE / 4, row)).toBeGreaterThan(250); // facing straight out
-    const besideSeam = [1, 2, 3, 4].map((x) => blue(x, row));
-    expect(Math.min(...besideSeam)).toBeLessThan(235); // tilted into the seam
+    const average = (from: number, to: number): number => {
+      let sum = 0;
+      let count = 0;
+      for (let v = from; v <= to; v += 0.5 / FINE) {
+        sum += tone(fine, PANEL.u, v);
+        count++;
+      }
+      return sum / count;
+    };
+    // The same sloped edge at the panel's top and at its foot: identical
+    // but for which way it faces.
+    const topEdge = average(0.74, 0.746);
+    const bottomEdge = average(0.284, 0.29);
+    expect(topEdge).toBeGreaterThan(bottomEdge * 1.2);
+  });
+
+  it('carries painted marks; floors and ceilings stay grey for their material to tint', () => {
+    const orange = (data: Uint8Array): number => {
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if ((data[i] ?? 0) > (data[i + 2] ?? 0) * 2 && (data[i] ?? 0) > 120) count++;
+      }
+      return count;
+    };
+    expect(orange(wall.color)).toBeGreaterThan(4);
+    expect(orange(generatePanelTextureData('floor', SIZE, 7).color)).toBe(0);
+    expect(orange(generatePanelTextureData('ceiling', SIZE, 7).color)).toBe(0);
+  });
+
+  it('repeats without a visible join (left edge meets right, top meets bottom)', () => {
+    let worst = 0;
+    for (let i = 0; i < SIZE; i++) {
+      const left = tone(wall, 0.5 / SIZE, (i + 0.5) / SIZE);
+      const right = tone(wall, 1 - 0.5 / SIZE, (i + 0.5) / SIZE);
+      const bottom = tone(wall, (i + 0.5) / SIZE, 0.5 / SIZE);
+      const top = tone(wall, (i + 0.5) / SIZE, 1 - 0.5 / SIZE);
+      worst = Math.max(worst, Math.abs(left - right), Math.abs(top - bottom));
+    }
+    expect(worst).toBeLessThan(40);
   });
 
   it('is deterministic, and different surfaces get different patterns', () => {
-    expect(Array.from(generatePanelTextureData('wall', SIZE, 7).color)).toEqual(
-      Array.from(wall.color),
+    expect(Array.from(generatePanelTextureData('wall', 64, 7).color)).toEqual(
+      Array.from(generatePanelTextureData('wall', 64, 7).color),
     );
     expect(Array.from(generatePanelTextureData('ceiling', SIZE, 7).color)).not.toEqual(
       Array.from(wall.color),
     );
   });
 
-  it('rejects a nonsensical size (fail loud)', () => {
+  it('rejects a nonsensical size or band layout (fail loud)', () => {
     expect(() => generatePanelTextureData('wall', 4, 1)).toThrow();
     expect(() => generatePanelTextureData('wall', 10.5, 1)).toThrow();
+    expect(() => generatePanelTextureData('wall', 64, 1, { sill: 0.8, head: 0.3 })).toThrow();
+    expect(() => generatePanelTextureData('wall', 64, 1, { sill: 0, head: 0.75 })).toThrow();
   });
 });
 
@@ -135,9 +204,24 @@ describe('buildTrimBoxes', () => {
     expect(count('frame')).toBe(shipLayout.windows.length * 4 + shipLayout.doors.length * 3);
   });
 
-  it('runs a baseboard and guide light along the foot of the walls', () => {
+  it('runs a baseboard along the foot of the walls', () => {
     expect(count('baseboard')).toBeGreaterThan(shipLayout.rooms.length);
-    expect(count('guideLight')).toBe(count('baseboard'));
+  });
+
+  it('runs a guide light along each face that looks into a room, in that room', () => {
+    const guides = trim.filter((p) => p.role === 'guideLight');
+    // Inner walls have a room on both faces, so there are more guide
+    // lights than baseboards; the outside of the hull has none.
+    expect(guides.length).toBeGreaterThan(count('baseboard'));
+    expect(guides.length).toBeLessThan(count('baseboard') * 2);
+    for (const guide of guides) {
+      const room = shipLayout.rooms.find((r) => r.id === guide.roomId);
+      if (!room) throw new Error('guide light without a room');
+      expect(guide.center.x).toBeGreaterThan(room.minX);
+      expect(guide.center.x).toBeLessThan(room.maxX);
+      expect(guide.center.z).toBeGreaterThan(room.minZ);
+      expect(guide.center.z).toBeLessThan(room.maxZ);
+    }
   });
 
   it('stays within a few centimetres of the walls (it is not a collider)', () => {
@@ -277,6 +361,40 @@ describe('the lit ship', () => {
     expect(lights.length).toBe(shipLayout.rooms.length + 2);
     expect(lights.filter((l) => l.wavers).length).toBe(1); // engineering only
     for (const l of lights) expect(l.position.y).toBeLessThan(shipLayout.ceilingHeight);
+  });
+
+  it("adds a small glow for every rib light, in its room's own colour", () => {
+    const frames = buildFrames(shipLayout, gameConfig.interior.frameSpacing);
+    const glows = buildAccentLights(frames.glows);
+    const roomLights = buildRoomLights(shipLayout);
+    expect(glows).toHaveLength(frames.glows.length);
+    const shortestRoomLight = Math.min(...roomLights.map((l) => l.distance));
+    for (const glow of glows) {
+      expect(glow.distance).toBeLessThan(shortestRoomLight);
+      expect(glow.wavers).toBe(false);
+    }
+    const colourOf = (roomId: string): readonly number[] => {
+      const index = frames.glows.findIndex((g) => g.roomId === roomId);
+      return glows[index]?.color ?? [];
+    };
+    // Engineering glows warm, the cryo bay cold.
+    const [warmR = 0, , warmB = 0] = colourOf('engineering');
+    const [coldR = 0, , coldB = 0] = colourOf('cryo');
+    expect(warmR).toBeGreaterThan(warmB * 2);
+    expect(coldB).toBeGreaterThan(coldR * 2);
+  });
+
+  it('gives each room its own colour of rib light', () => {
+    const ship = buildShip(shipLayout);
+    const colours = new Set<number>();
+    ship.group.traverse((obj) => {
+      if (!obj.name.startsWith('trim:accent:')) return;
+      const material = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
+      expect(material.emissiveIntensity).toBeGreaterThan(1); // bright enough to bloom
+      colours.add(material.emissive.getHex());
+    });
+    expect(colours.size).toBe(shipLayout.rooms.length);
+    ship.dispose();
   });
 
   it('bakes light onto the structure, and leaves some of it in shadow', () => {

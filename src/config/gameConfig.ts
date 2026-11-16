@@ -178,6 +178,23 @@ export const gameConfig = {
     derivedNormalStrength: 2.5,
   },
 
+  /** The built look of the ship's interior: frames and coloured light. */
+  interior: {
+    /**
+     * Metres between structural frames (a rib up each wall and a beam
+     * across the ceiling). The nearest spacing that divides a room evenly
+     * is used. Smaller = more ribs.
+     */
+    frameSpacing: 2,
+    /** Brightness of the light strip in each rib; above 1 blooms. */
+    ribLightLevel: 1.5,
+    /** Brightness of the line of light along the foot of the walls. */
+    guideLightLevel: 0.6,
+    /** Strength and reach (metres) of the glow a rib throws on the wall. */
+    ribGlowIntensity: 2,
+    ribGlowReach: 2.6,
+  },
+
   /** Final image treatment: tone mapping and the glow around bright things. */
   rendering: {
     /**
@@ -232,8 +249,14 @@ export const gameConfig = {
     bloomResolutionScale: 0.5,
     /** How strongly interior surfaces reflect their surroundings. */
     environmentIntensity: 0.22,
-    /** Pixels per side of each generated hull-panel texture. */
+    /** Pixels per side of the generated floor and ceiling textures. */
     panelTextureSize: 256,
+    /**
+     * Pixels per side of the generated wall texture. Larger than the
+     * others because one repeat covers a whole wall, floor to ceiling,
+     * and carries fine detail. Costs startup time and memory, not frames.
+     */
+    wallTextureSize: 1024,
   },
 
   /** Exterior cinematic camera (M4), orbiting the ship during travel. */

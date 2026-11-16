@@ -8,16 +8,31 @@
  * of it becomes a collider, and all of it stays within a few centimetres
  * of surfaces that already are.
  */
-import type { ShipLayout } from '../../content/shipLayout';
+import type { RoomId, ShipLayout } from '../../content/shipLayout';
 import { type Vec3, vec3 } from '../../physics/vec3';
 import { sharedEdge, sideGeometry } from './layoutGeometry';
 
-export type TrimRole = 'baseboard' | 'cove' | 'frame' | 'guideLight' | 'doorLight' | 'glass';
+export type TrimRole =
+  | 'baseboard'
+  | 'cove'
+  | 'frame'
+  | 'guideLight'
+  | 'doorLight'
+  | 'glass'
+  /** Structural ribs and ceiling beams (see frames.ts). */
+  | 'rib'
+  /** The light strip set into a rib. */
+  | 'accent';
 
 export interface TrimBox {
   readonly center: Vec3;
   readonly size: Vec3;
   readonly role: TrimRole;
+  /**
+   * The room a piece belongs to, where that decides its look: coloured
+   * lights take the colour of the room they shine into.
+   */
+  readonly roomId?: RoomId;
 }
 
 /** A wall piece as the ship builder emits it. */
@@ -38,6 +53,14 @@ const DOOR_LIGHT_HEIGHT = 0.03;
 const GLASS_THICKNESS = 0.02;
 /** Wall pieces shorter than this get no baseboard (door-side slivers). */
 const MIN_RUN = 0.2;
+/** How far off a wall face to look when asking which room it faces. */
+const ROOM_PROBE = 0.2;
+
+/** The room containing a point of the deck, if any. */
+function roomAt(layout: ShipLayout, x: number, z: number): RoomId | null {
+  const room = layout.rooms.find((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
+  return room ? room.id : null;
+}
 
 /**
  * A box in a wall's own terms - `along` the wall, `up`, and `depth`
@@ -83,17 +106,28 @@ function wallRunTrim(wall: WallBox, layout: ShipLayout): TrimBox[] {
         t + 2 * PROUD,
         'baseboard',
       ),
-      onWall(
-        axis,
-        at,
-        along,
-        BASEBOARD_HEIGHT + GUIDE_HEIGHT / 2,
-        length,
-        GUIDE_HEIGHT,
-        t + PROUD,
-        'guideLight',
-      ),
     );
+    // One guide light per face, in the colour of the room it faces. The
+    // outside of the hull faces no room and gets none.
+    for (const side of [1, -1]) {
+      const face = at + (side * t) / 2;
+      const probe = face + side * ROOM_PROBE;
+      const roomId = axis === 'x' ? roomAt(layout, along, probe) : roomAt(layout, probe, along);
+      if (roomId === null) continue;
+      trim.push({
+        ...onWall(
+          axis,
+          face,
+          along,
+          BASEBOARD_HEIGHT + GUIDE_HEIGHT / 2,
+          length,
+          GUIDE_HEIGHT,
+          PROUD,
+          'guideLight',
+        ),
+        roomId,
+      });
+    }
   }
   if (Math.abs(top - layout.ceilingHeight) < EPS) {
     trim.push(
