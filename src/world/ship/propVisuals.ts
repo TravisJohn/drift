@@ -8,6 +8,7 @@
  * world animates them each frame.
  */
 import * as THREE from 'three';
+import { screenTexture } from '../../rendering/screenTextures';
 import type { PropKind } from '../../content/shipLayout';
 import type { Vec3 } from '../../physics/vec3';
 
@@ -29,6 +30,12 @@ export interface PropVisual {
 const CRYO_GLOW = 0x7fd4e8;
 const SCREEN_GLOW = 0x8fe0ff;
 const REACTOR_GLOW = 0xffa050;
+const HOLO_GLOW = 0x5fd8ff;
+/**
+ * Emissive level of displays. Above 1 on purpose: a screen is mostly dark
+ * with a few lit elements, and those should be bright enough to bloom.
+ */
+const SCREEN_LEVEL = 2.2;
 
 const metal = (color: number, roughness = 0.75, metalness = 0.35): THREE.MeshStandardMaterial =>
   new THREE.MeshStandardMaterial({ color, roughness, metalness });
@@ -93,11 +100,13 @@ function buildConsole(size: Vec3, phase: number): PropVisual {
 
   addBox(group, metal(0x3b4652, 0.7, 0.4), sx, sy * 0.55, sz, 0, -sy * 0.225, 0);
 
-  // Angled screen, lit from within; faint idle blink.
+  // Angled screen showing a readout; only the drawn elements glow. Each
+  // console gets one of a few different readouts (phase steps by 1.7).
   const screen = new THREE.MeshStandardMaterial({
     color: 0x0a1218,
     emissive: SCREEN_GLOW,
-    emissiveIntensity: 0.55,
+    emissiveMap: screenTexture('readout', Math.round(phase / 1.7)),
+    emissiveIntensity: SCREEN_LEVEL,
     roughness: 0.3,
   });
   const face = addBox(group, screen, sx * 0.88, sy * 0.42, sz * 0.14, 0, sy * 0.22, sz * 0.12);
@@ -108,7 +117,7 @@ function buildConsole(size: Vec3, phase: number): PropVisual {
 
   return {
     group,
-    pulses: [{ material: screen, base: 0.55, amplitude: 0.1, frequency: 1.1, phase }],
+    pulses: [{ material: screen, base: SCREEN_LEVEL, amplitude: 0.25, frequency: 1.1, phase }],
   };
 }
 
@@ -187,6 +196,39 @@ function buildSeat(size: Vec3): PropVisual {
   return { group, pulses: [] };
 }
 
+/** The dashboard's table: a dark plinth under a softly glowing projector pad. */
+function buildHolotable(size: Vec3, phase: number): PropVisual {
+  const group = new THREE.Group();
+  const { x: sx, y: sy, z: sz } = size;
+
+  // Narrow plinth under a wider top: reads as a table, not a crate.
+  addBox(group, metal(0x2a323c, 0.6, 0.5), sx * 0.62, sy * 0.78, sz * 0.62, 0, -sy * 0.11, 0);
+  addBox(group, metal(0x3d4854, 0.5, 0.55), sx, sy * 0.14, sz, 0, sy * 0.43, 0);
+
+  // The projector pad the hologram rises from.
+  const pad = new THREE.MeshStandardMaterial({
+    color: 0x06141c,
+    emissive: HOLO_GLOW,
+    emissiveMap: screenTexture('grid'),
+    emissiveIntensity: SCREEN_LEVEL,
+    roughness: 0.25,
+  });
+  addBox(group, pad, sx * 0.82, 0.012, sz * 0.74, 0, sy * 0.5 + 0.006, 0);
+
+  // Four corner emitters.
+  const emitter = metal(0x1c232b, 0.4, 0.7);
+  for (const cx of [-1, 1]) {
+    for (const cz of [-1, 1]) {
+      addBox(group, emitter, 0.07, 0.05, 0.07, cx * sx * 0.44, sy * 0.5 + 0.025, cz * sz * 0.4);
+    }
+  }
+
+  return {
+    group,
+    pulses: [{ material: pad, base: SCREEN_LEVEL, amplitude: 0.4, frequency: 0.3, phase }],
+  };
+}
+
 /** Build the visual assembly for one prop. `phase` de-syncs pulse timing. */
 export function buildPropVisual(kind: PropKind, size: Vec3, phase: number): PropVisual {
   switch (kind) {
@@ -200,5 +242,7 @@ export function buildPropVisual(kind: PropKind, size: Vec3, phase: number): Prop
       return buildCrate(size);
     case 'seat':
       return buildSeat(size);
+    case 'holotable':
+      return buildHolotable(size, phase);
   }
 }

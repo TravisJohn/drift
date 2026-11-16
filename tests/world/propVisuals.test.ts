@@ -4,7 +4,7 @@ import type { PropKind } from '../../src/content/shipLayout';
 import { vec3 } from '../../src/physics/vec3';
 
 const SIZE = vec3(1.2, 1.4, 2.0);
-const KINDS: PropKind[] = ['pod', 'console', 'machine', 'crate', 'seat'];
+const KINDS: PropKind[] = ['pod', 'console', 'machine', 'crate', 'seat', 'holotable'];
 
 describe('buildPropVisual', () => {
   it('every prop kind builds a non-empty assembly', () => {
@@ -18,6 +18,7 @@ describe('buildPropVisual', () => {
     expect(buildPropVisual('pod', SIZE, 0).pulses).toHaveLength(1);
     expect(buildPropVisual('console', SIZE, 0).pulses).toHaveLength(1);
     expect(buildPropVisual('machine', SIZE, 0).pulses).toHaveLength(1);
+    expect(buildPropVisual('holotable', SIZE, 0).pulses).toHaveLength(1);
     expect(buildPropVisual('crate', SIZE, 0).pulses).toHaveLength(0);
     expect(buildPropVisual('seat', SIZE, 0).pulses).toHaveLength(0);
   });

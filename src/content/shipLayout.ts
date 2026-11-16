@@ -46,7 +46,7 @@ export interface WindowSpec {
   readonly width: number;
 }
 
-export type PropKind = 'crate' | 'console' | 'pod' | 'machine' | 'seat';
+export type PropKind = 'crate' | 'console' | 'pod' | 'machine' | 'seat' | 'holotable';
 
 export interface PropSpec {
   /** Optional stable id for props that become interactable later (M3+). */
@@ -120,6 +120,14 @@ export const shipLayout: ShipLayout = {
     { roomId: 'bridge', kind: 'seat', center: vec3(0, 0.35, -13.4), size: vec3(0.7, 0.7, 0.7) },
     { roomId: 'bridge', kind: 'console', center: vec3(-3.4, 0.5, -14.8), size: vec3(1.6, 1, 0.6) },
     { roomId: 'bridge', kind: 'console', center: vec3(3.4, 0.5, -14.8), size: vec3(1.6, 1, 0.6) },
+    // The ship dashboard: a holo-table behind the helm seat.
+    {
+      id: 'dashboard',
+      roomId: 'bridge',
+      kind: 'holotable',
+      center: vec3(0, 0.45, -11.8),
+      size: vec3(1.8, 0.9, 1.0),
+    },
 
     // Science lab: work tables and a crate.
     { roomId: 'lab', kind: 'console', center: vec3(-6.5, 0.5, -5), size: vec3(1.8, 1, 0.9) },

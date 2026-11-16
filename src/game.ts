@@ -48,6 +48,11 @@ import type { RoomSpec } from './content/shipLayout';
 import { AppState } from './state/appState';
 import { TitleScreen } from './ui/titleScreen';
 import { PauseMenu } from './ui/pauseMenu';
+import { DashboardOverlay } from './ui/dashboardOverlay';
+import { type DashboardData, buildDashboardData } from './ui/dashboardModel';
+import { type HologramPlacement, ShipHologram } from './world/ship/shipHologram';
+import { dashboardPose } from './travel/dashboardCamera';
+import { vec3 } from './physics/vec3';
 
 const IDLE_INPUT = { moveX: 0, moveZ: 0, moveY: 0 } as const;
 
@@ -101,6 +106,15 @@ export class Game {
   private readonly appState = new AppState();
   private readonly titleScreen = new TitleScreen();
   private readonly pauseMenu = new PauseMenu();
+
+  // --- Ship dashboard: bridge holo-table, forward view, ship hologram ---
+  private readonly dashboard = new DashboardOverlay();
+  private readonly hologram = new ShipHologram(shipLayout);
+  private readonly bridgeRoom: RoomSpec;
+  private readonly hologramAtTable: HologramPlacement;
+  private readonly hologramInView: HologramPlacement;
+  private dashboardView: CameraPose | null = null;
+  private dashboardRefresh = 0;
   /** True when any modal overlay was open at the end of the last step. */
   private lastOverlayOpen = false;
   private lastFrameAt: number | null = null;
@@ -215,6 +229,44 @@ export class Game {
       onInteract: () => this.openTerminal('terminal-lab'),
     });
 
+    // --- The ship dashboard: a holo-table on the bridge ---
+    const bridge = shipLayout.rooms.find((r) => r.id === 'bridge');
+    const tableProp = shipLayout.props.find((p) => p.id === 'dashboard');
+    if (!bridge || !tableProp) {
+      throw new Error('Ship layout needs a "bridge" room and a prop with id "dashboard"');
+    }
+    this.bridgeRoom = bridge;
+    const holo = gameConfig.dashboard;
+    this.hologramAtTable = {
+      position: vec3(
+        tableProp.center.x,
+        tableProp.center.y + tableProp.size.y / 2 + holo.tableHologram.lift,
+        tableProp.center.z,
+      ),
+      scale: holo.tableHologram.scale,
+      tilt: holo.tableHologram.tilt,
+    };
+    this.hologramInView = {
+      position: vec3(
+        (bridge.minX + bridge.maxX) / 2,
+        holo.viewHologram.height,
+        bridge.minZ + (bridge.maxZ - bridge.minZ) * holo.viewHologram.forward,
+      ),
+      scale: holo.viewHologram.scale,
+      tilt: holo.viewHologram.tilt,
+    };
+    this.hologram.setPlacement(this.hologramAtTable);
+    this.scene.add(this.hologram.group);
+    this.interactables.push({
+      id: 'dashboard',
+      position: tableProp.center,
+      radius: gameConfig.interaction.dashboardRadius,
+      promptText: '[E] Dashboard — ship overview',
+      onInteract: () => this.openDashboard(),
+    });
+    this.events.on('dashboard:opened', () => this.narrative.trigger('dashboardOpened'));
+    this.events.on('player:modeChanged', () => this.updateHint());
+
     // The ship AI reacts to the journey; the director decides what it says.
     this.events.on('app:started', () => this.narrative.trigger('started'));
     this.events.on('travel:departed', ({ destinationId }) =>
@@ -296,6 +348,8 @@ export class Game {
     this.puzzleOverlay.close();
     this.titleScreen.close();
     this.pauseMenu.close();
+    this.dashboard.close();
+    this.hologram.dispose();
     this.audio.dispose();
     this.intercom.dispose();
     this.hud.dispose();
@@ -338,13 +392,18 @@ export class Game {
     const viewPressed = this.input.consumePress('KeyV');
     const escPressed = this.input.consumePress('Escape');
     const overlayWasOpen = this.lastOverlayOpen;
-    this.lastOverlayOpen = this.menu.isOpen || this.puzzleOverlay.isOpen || this.pauseMenu.isOpen;
+    this.lastOverlayOpen =
+      this.menu.isOpen ||
+      this.puzzleOverlay.isOpen ||
+      this.pauseMenu.isOpen ||
+      this.dashboard.isOpen;
 
     // Title / pause: time stands still, but the ship keeps breathing and
     // audio fades keep moving so nothing pops when the player returns.
     if (!this.appState.isPlaying) {
       this.elapsed += dt;
       this.ship.update(this.elapsed);
+      this.hologram.update(this.elapsed);
       this.audio.update(dt);
       this.input.consumeLookDelta();
       return;
@@ -372,11 +431,22 @@ export class Game {
     // M6: breathing glows, light waver, and the soundscape.
     this.elapsed += dt;
     this.ship.update(this.elapsed);
+    this.hologram.update(this.elapsed);
+    this.hologram.setMarker(this.drone.snapshot.position);
     this.updateAudio(dt);
 
     // M4: space keeps drifting whatever the player is doing.
     this.travelView = computeTravelView(this.shipSnapshot());
     this.spaceScene.update(dt, this.travelView);
+
+    if (this.playerMode.mode === 'atDashboard') {
+      this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
+      this.dashboardRefresh += dt;
+      if (this.dashboardRefresh >= gameConfig.dashboard.refreshSeconds) {
+        this.dashboardRefresh = 0;
+        this.dashboard.update(this.dashboardData());
+      }
+    }
 
     // The exterior shot ends itself when the journey does.
     if (this.playerMode.mode === 'cinematic' && this.shipState.phase === 'docked') {
@@ -504,12 +574,7 @@ export class Game {
       return;
     }
     this.events.emit('player:modeChanged', this.playerMode.enterHelm());
-    const focusChange = this.interaction.clear();
-    if (focusChange?.blurred) {
-      this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
-    }
-    this.hud.setPrompt(null);
-    document.exitPointerLock();
+    this.releaseControls();
 
     this.audio.playOnce('sfx_ui_blip');
     const choices = locations.filter((l) => l.id !== this.shipState.locationId);
@@ -524,18 +589,67 @@ export class Game {
     });
   }
 
-  /** Open the training terminal overlay (M5, D5). */
-  private openTerminal(terminalId: string): void {
-    this.events.emit('player:modeChanged', this.playerMode.enterTerminal());
+  /** Hand the screen to an overlay: drop focus, prompt and mouse capture. */
+  private releaseControls(): void {
     const focusChange = this.interaction.clear();
     if (focusChange?.blurred) {
       this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
     }
     this.hud.setPrompt(null);
     document.exitPointerLock();
+  }
+
+  /** What the dashboard shows right now, from live game state. */
+  private dashboardData(): DashboardData {
+    const destinationId = this.shipState.destinationId;
+    return buildDashboardData({
+      rooms: shipLayout.rooms,
+      podCount: shipLayout.props.filter((p) => p.kind === 'pod').length,
+      phase: this.shipState.phase,
+      progress: this.shipState.progress,
+      locationName: getLocation(this.shipState.locationId).name,
+      destinationName: destinationId ? getLocation(destinationId).name : null,
+      // Every registered module appears here: the AWS training entry point.
+      training: this.puzzles.ids().map((id) => ({ id, title: this.puzzles.get(id).title })),
+    });
+  }
+
+  /** Open the ship dashboard at the bridge holo-table. */
+  private openDashboard(): void {
+    this.events.emit('player:modeChanged', this.playerMode.enterDashboard());
+    this.releaseControls();
+    this.audio.playOnce('sfx_ui_blip');
+    this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
+    this.dashboardRefresh = 0;
+    this.hologram.setPlacement(this.hologramInView);
+    this.events.emit('dashboard:opened');
+
+    this.dashboard.open(this.dashboardData(), {
+      onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
+      onTraining: (moduleId) => {
+        this.closeDashboard();
+        this.openTerminal('dashboard', moduleId);
+      },
+      onClose: () => this.closeDashboard(),
+    });
+  }
+
+  /** Return from the dashboard view to the drone. */
+  private closeDashboard(): void {
+    this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+    this.dashboardView = null;
+    this.hologram.setHighlight(null);
+    this.hologram.setPlacement(this.hologramAtTable);
+    this.events.emit('dashboard:closed');
+  }
+
+  /** Open the training overlay on one module (M5, D5). */
+  private openTerminal(terminalId: string, moduleId = 'placeholder'): void {
+    this.events.emit('player:modeChanged', this.playerMode.enterTerminal());
+    this.releaseControls();
     this.events.emit('terminal:opened', { terminalId });
 
-    this.puzzleOverlay.open(this.puzzles.get('placeholder'), {
+    this.puzzleOverlay.open(this.puzzles.get(moduleId), {
       onComplete: () => this.narrative.trigger('terminalComplete'),
       onClose: () => {
         this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
@@ -590,18 +704,25 @@ export class Game {
       return;
     }
 
-    // Camera tracks the interpolated visual position for judder-free follow.
-    const pose = this.followCamera.update(
-      1 / gameConfig.simulation.updateHz,
-      {
-        x: this.droneVisual.group.position.x,
-        y: this.droneVisual.group.position.y,
-        z: this.droneVisual.group.position.z,
-      },
-      this.ship.colliders,
-    );
-    this.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-    this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
+    if (this.dashboardView !== null) {
+      // Dashboard: a fixed view from the bridge, looking ahead.
+      const { position, lookAt } = this.dashboardView;
+      this.camera.position.set(position.x, position.y, position.z);
+      this.camera.lookAt(lookAt.x, lookAt.y, lookAt.z);
+    } else {
+      // Camera tracks the interpolated visual position for judder-free follow.
+      const pose = this.followCamera.update(
+        1 / gameConfig.simulation.updateHz,
+        {
+          x: this.droneVisual.group.position.x,
+          y: this.droneVisual.group.position.y,
+          z: this.droneVisual.group.position.z,
+        },
+        this.ship.colliders,
+      );
+      this.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+      this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
+    }
 
     // Layered render (D2): space from the origin with the interior camera's
     // rotation, then depth cleared and the interior drawn on top - so space
@@ -630,6 +751,7 @@ export class Game {
     const hint = document.getElementById('hint');
     if (!hint) return;
     const locked = document.pointerLockElement === this.renderer.domElement;
-    hint.style.opacity = locked ? '0' : '1';
+    // The hint is about flying; it only belongs on screen while roaming.
+    hint.style.opacity = locked || !this.playerMode.isRoaming ? '0' : '1';
   }
 }

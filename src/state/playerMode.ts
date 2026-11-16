@@ -6,10 +6,11 @@
  * transitions throw (programming errors, not content errors).
  *
  * Modes: roaming (default), atHelm (destination menu open),
- * atTerminal (puzzle overlay, M5), cinematic (exterior travel view, M4).
+ * atTerminal (puzzle overlay, M5), cinematic (exterior travel view, M4),
+ * atDashboard (the bridge holo-table's ship overview).
  */
 
-export type PlayerModeId = 'roaming' | 'atHelm' | 'atTerminal' | 'cinematic';
+export type PlayerModeId = 'roaming' | 'atHelm' | 'atTerminal' | 'cinematic' | 'atDashboard';
 
 export interface PlayerModeChange {
   readonly from: PlayerModeId;
@@ -33,6 +34,10 @@ export class PlayerMode {
 
   enterTerminal(): PlayerModeChange {
     return this.transition('atTerminal', ['roaming']);
+  }
+
+  enterDashboard(): PlayerModeChange {
+    return this.transition('atDashboard', ['roaming']);
   }
 
   enterCinematic(): PlayerModeChange {

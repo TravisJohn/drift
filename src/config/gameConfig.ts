@@ -51,6 +51,31 @@ export const gameConfig = {
   interaction: {
     helmRadius: 2.2,
     terminalRadius: 2.0,
+    dashboardRadius: 1.9,
+  },
+
+  /** Ship dashboard: the bridge holo-table and its forward view. */
+  dashboard: {
+    /** Camera height while the dashboard is open. */
+    eyeHeight: 1.9,
+    /**
+     * How far back from the viewport the camera stands (share of bridge
+     * depth). Close enough that the viewport spans the whole screen.
+     */
+    standBack: 0.3,
+    /** Downward tilt of the view, radians: centres the viewport in frame. */
+    pitchDown: 0.07,
+    /** Metres of slow camera sway. */
+    sway: 0.04,
+    /** Seconds between refreshes of the live readouts. */
+    refreshSeconds: 0.25,
+    /** The hologram at rest: metres above the table top, and its size. */
+    tableHologram: { lift: 0.5, scale: 0.03, tilt: 0 },
+    /**
+     * The hologram while the dashboard is open: height, distance from the
+     * viewport (share of bridge depth), size, and lean toward the viewer.
+     */
+    viewHologram: { height: 1.5, forward: 0.115, scale: 0.022, tilt: 0.9 },
   },
 
   /** Audio behavior (M6). Files themselves are author-supplied (PRD). */

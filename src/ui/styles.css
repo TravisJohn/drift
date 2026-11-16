@@ -319,3 +319,157 @@
 #pause .controls .action {
   color: #7d93a8;
 }
+
+/* Ship dashboard - holographic panels either side of the forward view.
+   The 3D hologram of the ship floats between them, drawn by the game. */
+#dashboard {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  perspective: 1100px;
+  font-family: system-ui, sans-serif;
+  color: #bfefff;
+  user-select: none;
+}
+
+#dashboard .title {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #9fe6ff;
+  text-shadow: 0 0 12px rgba(95, 215, 255, 0.7);
+}
+
+#dashboard .holo {
+  position: absolute;
+  top: 50%;
+  width: min(300px, 27vw);
+  padding: 18px 20px 16px;
+  pointer-events: auto;
+  /* A faint glow plus scanlines: reads as projected light, not a window. */
+  background:
+    repeating-linear-gradient(0deg, rgba(120, 225, 255, 0.07) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgba(60, 190, 230, 0.14), rgba(20, 90, 130, 0.07));
+  border: 1px solid rgba(110, 220, 255, 0.45);
+  box-shadow:
+    0 0 26px rgba(70, 200, 255, 0.18),
+    inset 0 0 22px rgba(70, 200, 255, 0.08);
+  animation: dashboard-in 0.45s ease-out both;
+}
+
+/* Each panel is angled toward the viewer, like a curved display. */
+#dashboard .holo.left {
+  left: 4vw;
+  transform: translateY(-50%) rotateY(16deg);
+  transform-origin: left center;
+}
+
+#dashboard .holo.right {
+  right: 4vw;
+  transform: translateY(-50%) rotateY(-16deg);
+  transform-origin: right center;
+}
+
+#dashboard h3 {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #7fdcff;
+  text-shadow: 0 0 10px rgba(95, 215, 255, 0.6);
+  border-bottom: 1px solid rgba(110, 220, 255, 0.3);
+}
+
+#dashboard h3:not(:first-child) {
+  margin-top: 16px;
+}
+
+#dashboard .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+}
+
+#dashboard .row .label {
+  color: #6fa9c0;
+}
+
+#dashboard .row .value {
+  text-align: right;
+}
+
+#dashboard .row .value.active {
+  color: #ffd58a;
+  text-shadow: 0 0 10px rgba(255, 190, 90, 0.6);
+}
+
+#dashboard .row .value.idle {
+  color: #5f8ba0;
+}
+
+#dashboard .item {
+  padding: 6px 9px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+#dashboard .item.selected {
+  color: #ffe2ad;
+  border-color: rgba(255, 205, 120, 0.7);
+  background: rgba(255, 190, 90, 0.1);
+}
+
+#dashboard .item.training {
+  border-color: rgba(110, 220, 255, 0.4);
+}
+
+#dashboard .item.training::before {
+  content: '▸ ';
+}
+
+#dashboard .item.training:hover {
+  background: rgba(110, 220, 255, 0.16);
+}
+
+#dashboard .detail {
+  margin-top: 8px;
+  min-height: 2.9em;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #86bcd2;
+}
+
+#dashboard .footer {
+  position: absolute;
+  bottom: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #6fa9c0;
+}
+
+@keyframes dashboard-in {
+  from {
+    opacity: 0;
+    filter: brightness(2.2);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+  }
+}

@@ -14,6 +14,7 @@ export type NarrativeTrigger =
   | 'arrived'
   | 'helmLocked'
   | 'terminalOpened'
+  | 'dashboardOpened'
   | 'terminalComplete';
 
 export interface AiLine {
@@ -48,6 +49,10 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
   terminalOpened: [
     { text: 'Running your certification drills again? The crew would be proud.' },
     { text: 'The archive is slow tonight. Take your time.' },
+  ],
+  dashboardOpened: [
+    { text: 'There she is. The whole ship, drawn in light.' },
+    { text: 'Everything is where we left it. Look as long as you like.' },
   ],
   terminalComplete: [
     { text: 'Logged. One drill closer to that certification of yours.' },

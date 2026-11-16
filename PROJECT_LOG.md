@@ -528,3 +528,43 @@ unchanged.
 Verified in-browser: audio context running, music playing through the
 chain, static level tracking the music fade. Not verified by ear - the
 effect's character is the author's call; all values are in the config.
+
+## 2026-11-16 - Ship dashboard: bridge holo-table, forward view, hologram
+
+**Author request:** a dashboard the drone can use, showing travel through
+space with holographic detail about the ship, to become the entry point
+for AWS training later. Choices made by the author in session: a new
+holo-table on the bridge (helm and lab terminal unchanged), and a forward
+view from the bridge rather than an outside view. 389 tests passing.
+
+- New prop kind `holotable`, placed behind the helm seat (`id:
+  'dashboard'`), with its own interactable and prompt.
+- New player mode `atDashboard`; events `dashboard:opened` / `:closed`;
+  two new ship-AI lines.
+- `travel/dashboardCamera.ts` (pure): a fixed view from the bridge looking
+  ahead through the main viewport, with a few centimetres of sway. Stars
+  come toward the viewer during travel. The interior is still drawn, so it
+  is a view *from* the ship.
+- `world/ship/shipHologram.ts`: the ship as glowing outlines, built from
+  the layout so it cannot disagree with the real ship. It floats small
+  over the table, and large in front of the view while the dashboard is
+  open. The selected compartment lights up; a marker shows the drone.
+- `ui/dashboardModel.ts` (pure) + `ui/dashboardOverlay.ts`: holographic
+  panels - journey and systems (live), compartments (W/S or arrows), and
+  training. `content/shipSystems.ts` holds the words.
+- **Training entry point:** the dashboard lists every module in the
+  PuzzleRegistry and launches it in the existing overlay (T, Enter or
+  click). Registering a real AWS module makes it appear here with no
+  other change. `openTerminal` now takes the module id.
+- `rendering/screenTextures.ts`: generated display content. Every console
+  screen now shows a readout (rows, bar chart, trace) instead of a flat
+  glowing slab; the holo-table shows a projector grid.
+- The controls hint now hides whenever an overlay is open.
+
+Trade-offs:
+- Vessel name "RV Drift" and the compartment readouts are invented
+  content; they live in `content/shipSystems.ts` for the author to edit.
+- Systems rows other than journey, autopilot, reactor and pod count are
+  fixed text; there is no simulation behind them yet.
+- While docked the stars are still (D2: the ship never moves). The view
+  comes alive during a journey.

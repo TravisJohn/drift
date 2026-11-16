@@ -31,7 +31,7 @@ export interface GameEvents {
   'ship:phaseChanged': { from: string; to: string; destinationId: string | null };
 
   // --- Player mode (M3) ---
-  /** The player switched mode (roaming/atHelm/atTerminal/cinematic). */
+  /** The player switched mode (roaming/atHelm/atTerminal/cinematic/atDashboard). */
   'player:modeChanged': { from: string; to: string };
 
   // --- Interaction (M3+) ---
@@ -45,6 +45,12 @@ export interface GameEvents {
   'terminal:opened': { terminalId: string };
   /** A terminal overlay was closed. */
   'terminal:closed': { terminalId: string };
+
+  // --- Ship dashboard (bridge holo-table) ---
+  /** The dashboard view was opened. */
+  'dashboard:opened': void;
+  /** The dashboard view was closed. */
+  'dashboard:closed': void;
 }
 
 export type GameEventName = keyof GameEvents;
