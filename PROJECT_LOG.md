@@ -841,3 +841,72 @@ Constraints kept:
 Not checked: the drone in motion at full frame rate in a normal browser.
 Movement and thruster tilt were checked with synthetic key presses and
 the numbers read back; pictures are still frames from the hidden pane.
+
+## 2026-11-18 - Experiment: Star Wars-style exterior and a real ship hum (branch `experiment/star-hull`)
+
+**Author request:** after approving the new drone, change the ship's
+outside to a "Star Wars vibe" (outside only, not the interior), and make
+the humming louder and more realistic. Branched from
+`experiment/new-drone`, so it carries the new drone too. 525 tests
+passing (33 new); lint, format, types and build clean. Not merged.
+
+### Exterior
+
+The cinematic view (V during a journey) showed the ship as plain dark
+boxes. It is now an original ship in the weathered "used universe" style
+those films are known for. It does not copy any real film ship.
+
+- **Shape from the layout** (`exterior/hullPlan.ts`, pure): rooms that
+  cross the centre line form a lofted, chamfered spine, wide at the
+  bridge and engine room and sloping in at the corridor, with a tapered
+  prow and an engine face. Side rooms become bolted-on modules. Added on
+  top: a raised bridge canopy, a dorsal ridge, a keel, radiator housings
+  on the stern flanks and a comms dish on the starboard module. A test
+  checks every room corner lies inside the hull.
+- **Surface:** a generated plating texture (many plate sizes from
+  repeated random cuts, a few darker service panels and faded
+  replacement plates, seams with a lit edge, grime and streaks), and
+  about 180 pieces of surface detail (plates, stacked boxes, pipe runs)
+  scattered over the hull tops.
+- **Lights:** the real windows glow on the outside in their room's light,
+  split into panes; rows of small portholes (about half lit) give scale;
+  the canopy has glazing; red port and green starboard lights swell
+  slowly and white strobes double-flash.
+- **Engines:** three main nozzles and two small ones with ion-blue cores
+  and soft additive plumes; brightness follows the journey's engine
+  output, as before.
+- A faint cool fill light, part of the exterior only, keeps the shadowed
+  flank readable. The cinematic orbit pulled back from 30 m to 46 m (and
+  9 m to 12 m high) so the larger ship fits the frame.
+- Cost, measured in one page by showing and hiding the ship six times:
+  3.51 ms against 2.64 ms a frame, about 0.9 ms, in a view that skips the
+  interior (about 14 ms) entirely. Building it adds about 50 ms at
+  startup. Seven meshes plus five light bulbs.
+
+### Hum
+
+`public/audio/amb_ship_hum` is empty, so the ship hum has been silent all
+along; turning it up would have changed nothing. `audio/shipHum.ts` now
+synthesizes one live with Web Audio, no file involved:
+- electrical: a 55 Hz hum with harmonics, two detuned copies beating
+  slowly so it never sounds like a test tone;
+- air: deep filtered brown noise with a slow breathing swell
+  (ventilation);
+- rumble: sub-bass tone plus very low noise, quiet when docked and rising
+  with the engines during a journey.
+It grows louder toward the engine room. Levels in
+`gameConfig.audio.shipHum`; `enabled: false` turns it off.
+
+Flagged against the hard constraints: the game used to be fully silent
+with no audio files. It now always hums. The rule itself still holds -
+a missing file still logs one warning and plays nothing - and the hum is
+code, not a committed audio file. If the author wants silence without
+files, set `shipHum.enabled` to false.
+
+Also: `mulberry32` moved to `core/random.ts` (starfield re-exports it)
+and the blink shape to `rendering/pulse.ts`, shared by the drone beacon
+and the running lights.
+
+Not checked: the hum by ear (the Web Audio graph was confirmed running
+in the page with the expected levels, but nobody has listened to it),
+and the exterior in motion at full frame rate in a normal browser.

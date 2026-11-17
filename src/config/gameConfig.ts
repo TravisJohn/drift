@@ -137,6 +137,21 @@ export const gameConfig = {
      * speaker, slightly overdriven, with faint static. Other sounds are
      * left full-range so the ship itself feels close.
      */
+    /**
+     * The ship's own hum, synthesized live (audio/shipHum.ts): electrical
+     * hum, ventilation air and engine rumble. Plays alongside any files in
+     * public/audio/amb_ship_hum; set `enabled: false` to rely on files only.
+     */
+    shipHum: {
+      enabled: true,
+      level: 0.55,
+      baseHz: 55,
+      electricalLevel: 0.22,
+      airLevel: 0.5,
+      rumbleIdle: 0.25,
+      rumbleCruise: 0.85,
+      engineRoomBoost: 0.8,
+    },
     intercom: {
       enabled: true,
       /** Nothing below / above these frequencies gets through. */
@@ -300,10 +315,41 @@ export const gameConfig = {
     wallTextureSize: 1024,
   },
 
+  /**
+   * The ship seen from outside (world/space/shipExterior.ts and
+   * world/space/exterior/): a plated, well-used working hull.
+   */
+  exterior: {
+    /** Metres one repeat of the plating texture covers. */
+    hullTileSize: 6,
+    /** Pixels per side of the generated plating texture. */
+    textureSize: 512,
+    textureSeed: 2207,
+    /** Seed for which portholes are lit and where surface detail sits. */
+    hullSeed: 4127,
+    /** Pieces of surface detail per square metre of flat hull top. */
+    detailPerSquareMetre: 0.9,
+    /** Engine glow: a pale ion blue. Core brightness idle and at full burn. */
+    engineColor: 0x9fd6ff,
+    engineIdle: 0.6,
+    enginePeak: 7,
+    /** Brightness of the lit windows and portholes; above 1 blooms. */
+    windowGlow: 1.2,
+    /** Navigation lights: red to port, green to starboard, white strobes. */
+    portColor: 0xff3a2e,
+    starboardColor: 0x3dff86,
+    /** Port and starboard lights swell slowly once per period. */
+    navPeriod: 3.4,
+    navSwell: 1.4,
+    /** Strobes give a quick double flash once per period. */
+    strobePeriod: 1.9,
+    strobeFlash: 0.07,
+  },
+
   /** Exterior cinematic camera (M4), orbiting the ship during travel. */
   cinematic: {
-    orbitRadius: 30,
-    orbitHeight: 9,
+    orbitRadius: 46,
+    orbitHeight: 12,
     /** Slow orbit, radians per second. */
     yawRate: 0.07,
     /** Gentle vertical breathing of the orbit height. */

@@ -71,6 +71,7 @@ export class SpaceScene {
     this.bodies.update(this.elapsed);
     this.bodies.apply(view);
     this.exterior.setEngineIntensity(view.engineIntensity);
+    if (this.exterior.group.visible) this.exterior.update(this.elapsed);
   }
 
   /** Show the hull only while the cinematic exterior camera is live. */

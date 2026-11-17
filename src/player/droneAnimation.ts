@@ -10,6 +10,7 @@
  */
 import { gameConfig } from '../config/gameConfig';
 import type { Vec3 } from '../physics/vec3';
+import { flashLevel } from '../rendering/pulse';
 
 const look = gameConfig.droneLook;
 
@@ -63,8 +64,7 @@ export function beaconLevel(
   period: number = look.beaconPeriod,
   flash: number = look.beaconFlash,
 ): number {
-  const phase = ((t % period) + period) % period;
-  return phase < flash ? Math.sin((Math.PI * phase) / flash) : 0;
+  return flashLevel(t, period, flash);
 }
 
 /** How hard the thrusters are working, 0 idle to 1 at full speed. */

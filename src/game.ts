@@ -44,6 +44,7 @@ import { PuzzleOverlay } from './ui/puzzleOverlay';
 import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
 import { IntercomEffect } from './audio/intercomEffect';
+import { ShipHum } from './audio/shipHum';
 import { connectAudioLibrary } from './audio/audioLibrarySource';
 import { connectArt } from './art/surfaceArt';
 import type { RoomSpec } from './content/shipLayout';
@@ -97,6 +98,8 @@ export class Game {
   private readonly puzzleOverlay = new PuzzleOverlay();
   private readonly narrative = new NarrativeDirector();
   private readonly intercom = new IntercomEffect();
+  /** The ship's own synthesized hum: electrical, air, engine rumble. */
+  private readonly hum = new ShipHum();
   // Music is piped through the intercom; every other sound stays direct.
   private readonly audio = new AudioManager(
     undefined,
@@ -108,6 +111,9 @@ export class Game {
     },
   );
   private readonly cryoRoom: RoomSpec | null;
+  /** Bow and stern of the deck plan, for where the drone is along the ship. */
+  private readonly shipBowZ = Math.min(...shipLayout.rooms.map((r) => r.minZ));
+  private readonly shipSternZ = Math.max(...shipLayout.rooms.map((r) => r.maxZ));
   private elapsed = 0;
   private cryoGain = 0;
 
@@ -142,6 +148,7 @@ export class Game {
     // The first gesture also unlocks audio (browser autoplay rules, M6).
     this.audio.unlock();
     this.intercom.resume();
+    this.hum.resume();
   };
   /** A hand on the view while it is being dragged round. */
   private readonly onLookChange = (looking: boolean): void => {
@@ -355,6 +362,7 @@ export class Game {
   private beginSession(): void {
     this.audio.unlock();
     this.intercom.resume();
+    this.hum.resume();
     this.appState.start();
     this.events.emit('app:started');
   }
@@ -373,6 +381,7 @@ export class Game {
     this.hologram.dispose();
     this.audio.dispose();
     this.intercom.dispose();
+    this.hum.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -561,6 +570,9 @@ export class Game {
       cfg.engineIdleRate + (1 - cfg.engineIdleRate) * way,
     );
     this.intercom.setLevel(this.audio.categoryLevel('music'));
+    // The hum grows toward the engine room (0 at the bow, 1 at the stern).
+    const nearEngine = (position.z - this.shipBowZ) / (this.shipSternZ - this.shipBowZ);
+    this.hum.update({ engine: way, nearEngine });
 
     this.audio.update(dt);
   }

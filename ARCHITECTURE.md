@@ -259,6 +259,17 @@ Added later the same day:
   `tools/artLibraryPlugin.ts`, `tools/mediaScan.ts`; prompts in
   `ART_PROMPTS.md`. Folders under `public/art/`.
 
+Added 2026-11-18 (experiment branches, not yet on main):
+
+- Drone: `player/droneModel.ts` (geometry), `player/droneAnimation.ts`
+  (blink, beacon, thruster tilt; pure).
+- Ship exterior: `world/space/exterior/hullPlan.ts` (hull shape derived
+  from the room layout; pure), `hullGeometry.ts` (loft, chamfered blocks,
+  surface detail), `hullTexture.ts` (generated plating). `shipExterior.ts`
+  assembles them.
+- `audio/shipHum.ts`: the ship hum synthesized live with Web Audio.
+- Shared: `core/random.ts` (seeded random), `rendering/pulse.ts` (blink timing).
+
 Rule of thumb for new work: anything static should be baked at startup,
 not paid for per frame - the target includes integrated graphics.
 
