@@ -797,3 +797,47 @@ experiments that can be thrown away.
   switching.
 - Risk noted: the repository has no remote, so every branch and tag
   exists only on this one disk. A private remote would be the backup.
+
+## 2026-11-18 - Experiment: new drone model (branch `experiment/new-drone`)
+
+**Author request:** branch from the checkpoint and change the drone, as
+a test of what the new model (Claude Opus) can do. Cut from
+`checkpoint-2026-11-18`. 492 tests passing (24 new); lint, format,
+types and build clean. Not merged into `main`.
+
+The old drone was a grey squashed sphere with a ring and a dot of light.
+The new one is a small "surveyor" maintenance drone with some character,
+in keeping with the PRD's lonely, quiet tone:
+
+- **Hull:** a squat two-tone body, painted off-white over a gunmetal
+  belly, with an amber service stripe, a top hatch and side vents.
+- **Face:** a dark glass visor across the nose with one glowing eye. It
+  blinks at irregular moments (sometimes a quick double), slides into
+  turns so the drone looks where it is going, and wanders slowly when
+  the drone is still, as if looking around the empty room.
+- **Thrusters:** four ducted fans on struts at the diagonals, glowing
+  inside. They tilt so their exhaust points away from the direction of
+  travel and glow brighter with speed; a hover ring under the belly
+  shares the glow.
+- **Antenna** with a red beacon that flashes once every 2.8 s, and a
+  tool arm folded under the chin.
+
+Code: `player/droneModel.ts` builds the geometry, `player/droneAnimation.ts`
+holds the motion rules as pure functions (tested without a renderer),
+`player/droneVisual.ts` applies them each frame. All colours and timings
+are in a new `droneLook` section of `gameConfig.ts`. `game.ts` now passes
+the frame clock to the drone.
+
+Constraints kept:
+- Looks never change collision: a test checks every vertex stays inside
+  the 0.35 m collision sphere, including with the thrusters at full tilt.
+- Still exactly two lights on the drone (hover glow, now under the belly,
+  and the headlight, now at the eye). Lights cost every lit surface.
+- Static parts sharing a material are merged: 16 meshes, about 6,000
+  triangles. Measured in one page on the integrated-graphics target by
+  hiding and showing the drone six times: 14.18 ms against 14.00 ms a
+  frame, about 0.2 ms, within the noise.
+
+Not checked: the drone in motion at full frame rate in a normal browser.
+Movement and thruster tilt were checked with synthetic key presses and
+the numbers read back; pictures are still frames from the hidden pane.

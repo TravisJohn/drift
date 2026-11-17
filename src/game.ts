@@ -722,7 +722,7 @@ export class Game {
     this.lastFrameAt = now;
 
     const snapshot = this.drone.snapshot;
-    this.droneVisual.apply(snapshot, alpha);
+    this.droneVisual.apply(snapshot, alpha, now / 1000);
 
     // Cinematic: only the space scene, from the orbiting exterior camera.
     if (this.cinematicPose !== null) {

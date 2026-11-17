@@ -1,15 +1,33 @@
 /**
- * DroneVisual - placeholder look for the maintenance drone (replaced by a
- * CC0 model in M6). A rounded body with a sensor "eye" and a soft cyan
- * glow light, nose pointing -Z to match DroneController's yaw convention.
+ * DroneVisual - the maintenance drone on screen.
+ *
+ * Puts the model from droneModel.ts where the controller says the drone
+ * is, and brings it to life each frame with the values from
+ * droneAnimation.ts: the eye blinks and glances into turns, the thrusters
+ * tilt and glow harder with speed, and the antenna beacon flashes.
+ * Nose points -Z to match DroneController's yaw convention.
  */
 import * as THREE from 'three';
+import { gameConfig } from '../config/gameConfig';
 import type { DroneSnapshot } from './droneController';
+import {
+  beaconLevel,
+  blinkAmount,
+  exhaustIntensity,
+  eyeOffset,
+  thrustLevel,
+  thrusterTilt,
+} from './droneAnimation';
+import { type DroneModel, buildDroneModel } from './droneModel';
 import { lerp } from '../physics/vec3';
 import { disposeObject3D } from '../rendering/dispose';
 
 /** Height above the deck at which the ground shadow has faded out. */
 const SHADOW_FADE_HEIGHT = 2.6;
+/** How far a blink squashes the eye: a little light always shows. */
+const BLINK_DEPTH = 0.92;
+/** Speed (m/s) below which the drone counts as still, for the idle gaze. */
+const IDLE_SPEED = 0.6;
 
 const SHADOW_VERTEX = /* glsl */ `
   varying vec2 vUv;
@@ -48,48 +66,26 @@ export class DroneVisual {
    */
   readonly groundShadow: THREE.Mesh;
   private readonly groundShadowMaterial: THREE.ShaderMaterial;
+  private readonly model: DroneModel;
   private readonly glow: THREE.PointLight;
+  private readonly glowBase: number;
 
   constructor() {
-    this.group = new THREE.Group();
+    this.model = buildDroneModel();
+    this.group = this.model.root;
 
-    const body = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 24, 16),
-      new THREE.MeshStandardMaterial({ color: 0x9aa7b4, roughness: 0.5, metalness: 0.55 }),
-    );
-    body.scale.set(1, 0.75, 1.15);
-    this.group.add(body);
-
-    // Sensor eye on the nose (-Z).
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.06, 16, 12),
-      new THREE.MeshStandardMaterial({
-        color: 0x111418,
-        emissive: 0x33e0ff,
-        emissiveIntensity: 1.6,
-        roughness: 0.3,
-      }),
-    );
-    eye.position.set(0, 0.02, -0.22);
-    this.group.add(eye);
-
-    // Thin equator ring, slightly metallic.
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.26, 0.025, 10, 32),
-      new THREE.MeshStandardMaterial({ color: 0x6b7683, roughness: 0.35, metalness: 0.7 }),
-    );
-    ring.rotation.x = Math.PI / 2;
-    this.group.add(ring);
-
-    // Soft glow so the drone reads in dim rooms and lights nearby walls.
-    this.glow = new THREE.PointLight(0x55d5ff, 0.9, 4, 2);
-    this.glow.position.set(0, -0.05, 0);
+    // Hover glow under the belly: lights the deck beneath the drone and
+    // brightens with thrust. Two lights in all, as before the new model -
+    // every light adds cost to every lit surface in the ship.
+    this.glowBase = 0.9;
+    this.glow = new THREE.PointLight(gameConfig.droneLook.exhaustColor, this.glowBase, 4, 2);
+    this.glow.position.set(0, -0.2, 0);
     this.group.add(this.glow);
 
-    // Headlight (M6): a small forward pool of light - the drone's own
-    // company in dark corners. Target parented so it steers with the nose.
+    // Headlight from the eye: a small forward pool of light - the drone's
+    // own company in dark corners. Target parented so it steers with the nose.
     const headlight = new THREE.SpotLight(0xbfe8ff, 6, 9, 0.5, 0.55, 1.2);
-    headlight.position.set(0, 0, -0.18);
+    headlight.position.copy(this.model.eyeRest);
     headlight.target.position.set(0, -0.6, -4);
     this.group.add(headlight, headlight.target);
 
@@ -107,14 +103,39 @@ export class DroneVisual {
     this.groundShadow.rotation.x = -Math.PI / 2;
   }
 
-  /** Apply controller state; `alpha` interpolates between fixed steps. */
-  apply(snapshot: DroneSnapshot, alpha: number): void {
+  /**
+   * Apply controller state; `alpha` interpolates between fixed steps and
+   * `time` (seconds, any steady clock) drives blinking and the beacon.
+   */
+  apply(snapshot: DroneSnapshot, alpha: number, time: number): void {
     const p = lerp(snapshot.prevPosition, snapshot.position, alpha);
     this.group.position.set(p.x, p.y + snapshot.bobOffset, p.z);
     this.group.rotation.set(snapshot.leanPitch, snapshot.yaw, snapshot.leanRoll, 'YXZ');
     // Just above the deck (y = 0) so it never fights the floor for depth.
     this.groundShadow.position.set(p.x, 0.012, p.z);
     this.groundShadowMaterial.uniforms.uStrength!.value = groundShadowStrength(p.y);
+
+    this.animateParts(snapshot, time);
+  }
+
+  private animateParts(snapshot: DroneSnapshot, time: number): void {
+    const { model } = this;
+    const level = thrustLevel(snapshot.velocity);
+
+    const tilt = thrusterTilt(snapshot.velocity, snapshot.yaw);
+    for (const thruster of model.thrusters) thruster.rotation.set(tilt.pitch, 0, tilt.roll);
+    model.exhaustMaterial.emissiveIntensity = exhaustIntensity(level);
+    this.glow.intensity = this.glowBase * (0.8 + 0.5 * level);
+
+    const speed = level * gameConfig.drone.maxSpeed;
+    const idle = Math.max(0, 1 - speed / IDLE_SPEED);
+    const offset = eyeOffset(time, snapshot.leanRoll, idle);
+    model.eye.position.set(model.eyeRest.x + offset.x, model.eyeRest.y + offset.y, model.eyeRest.z);
+    model.eye.scale.y = 1 - BLINK_DEPTH * blinkAmount(time);
+
+    const look = gameConfig.droneLook;
+    model.beaconMaterial.emissiveIntensity =
+      look.beaconRest + (look.beaconPeak - look.beaconRest) * beaconLevel(time);
   }
 
   dispose(): void {

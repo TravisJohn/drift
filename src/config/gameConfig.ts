@@ -36,6 +36,47 @@ export const gameConfig = {
     leanSmoothing: 6,
   },
 
+  /**
+   * How the drone looks and moves its parts (player/droneModel.ts,
+   * droneAnimation.ts). Looks only: none of this changes collision, and
+   * every part stays inside `drone.radius`.
+   */
+  droneLook: {
+    /** Painted upper shell, gunmetal belly and fittings, service stripe. */
+    hullColor: 0xd9d3c5,
+    metalColor: 0x353b44,
+    accentColor: 0xf0a23a,
+    /** The single eye in the visor; above 1 it blooms. */
+    eyeColor: 0x4be3ff,
+    eyeIntensity: 2.4,
+    /** Glow inside the four ducted thrusters and the ring under the belly. */
+    exhaustColor: 0x48c6ff,
+    exhaustIdle: 1.0,
+    exhaustMax: 2.6,
+    /** Radians a thruster tilts per m/s of travel, and its limit. */
+    thrusterTiltPerSpeed: 0.11,
+    thrusterTiltMax: 0.38,
+    /** The antenna's slow beacon: one short flash per period. */
+    beaconColor: 0xff4636,
+    beaconPeriod: 2.8,
+    beaconFlash: 0.16,
+    beaconPeak: 3.2,
+    beaconRest: 0.12,
+    blink: {
+      /** One blink falls somewhere inside each window of this length. */
+      cycleSeconds: 4.6,
+      /** Seconds from open to shut to open again. */
+      durationSeconds: 0.17,
+      /** Share of blinks that come as a quick double. */
+      doubleChance: 0.22,
+      seed: 7,
+    },
+    /** Metres the eye slides across the visor when banking into a turn. */
+    glanceDistance: 0.016,
+    /** Metres of slow idle wander in the eye while the drone is still. */
+    idleGazeDistance: 0.008,
+  },
+
   /** Autopilot travel timings (seconds). */
   travel: {
     departDuration: 5,

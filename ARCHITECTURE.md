@@ -126,7 +126,9 @@ drift/  (project root: D:\WEB PROJECTS\game_app_poc)
         celestialBodies.ts   planets/star/nebula for destinations
     player/
       droneController.ts     hover movement: acceleration, damping, bob, tilt
-      droneVisual.ts         model + hover light + thruster glow
+      droneVisual.ts         places the model, runs its animation, lights + ground shadow
+      droneModel.ts          the drone's geometry: hull, visor eye, thrusters, antenna
+      droneAnimation.ts      blink, beacon, thruster tilt and glow, eye glance (pure)
       followCamera.ts        orbit camera with wall-avoidance
     interaction/
       interactable.ts        Interactable interface
