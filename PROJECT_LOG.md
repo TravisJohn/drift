@@ -776,3 +776,24 @@ in a normal browser and confirmed it works as described. Committed as it
 stands; `lookStyle` and `lookSensitivity` unchanged. Handover note: work
 continues on Claude Opus from here, following the same PRD, architecture
 and log.
+
+## 2026-11-18 - Branching: checkpoints and experiment branches
+
+**Author request:** keep what works safe, and try other looks as
+experiments that can be thrown away.
+
+- `main` holds only work the author has seen and approved. Every
+  milestone and polish pass still ends with passing tests and a commit.
+- **Checkpoints** are git tags on `main`, named `checkpoint-YYYY-MM-DD`
+  (a `-b`, `-c` suffix for a second one the same day). Each is a fixed
+  point the game can always be put back to. First one:
+  `checkpoint-2026-11-18`, right after the mouse look was approved.
+- **Experiments** live on branches named `experiment/<short-name>`, cut
+  from `main`. Kept: merged into `main`, then a new checkpoint. Dropped:
+  the branch is deleted (or kept unmerged for reference); `main` never
+  sees it.
+- Untracked files (the author's music, any art dropped into
+  `public/art`) are not part of any branch and stay in place when
+  switching.
+- Risk noted: the repository has no remote, so every branch and tag
+  exists only on this one disk. A private remote would be the backup.
