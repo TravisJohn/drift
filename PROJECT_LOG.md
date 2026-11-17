@@ -795,5 +795,6 @@ experiments that can be thrown away.
 - Untracked files (the author's music, any art dropped into
   `public/art`) are not part of any branch and stay in place when
   switching.
-- Risk noted: the repository has no remote, so every branch and tag
-  exists only on this one disk. A private remote would be the backup.
+- Backup: a private GitHub repository, TravisJohn/drift (origin),
+  holds `main` and every checkpoint tag. Pushed after each commit to
+  `main`; experiment branches are pushed only when worth keeping.
