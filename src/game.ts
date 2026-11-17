@@ -82,6 +82,8 @@ export class Game {
   private readonly resolution: AdaptiveResolution;
   private readonly gpuName: string;
   private showPerf = false;
+  /** True once the player has dragged the view: they know how, hide the hint. */
+  private hasLooked = false;
   private resizeTimer: number | undefined;
   private readonly cinematicCamera = new CinematicCamera();
   private cinematicPose: CameraPose | null = null;
@@ -140,16 +142,11 @@ export class Game {
     // The first gesture also unlocks audio (browser autoplay rules, M6).
     this.audio.unlock();
     this.intercom.resume();
-    // Pointer lock enables mouse look; the browser exits it on Esc.
-    if (document.pointerLockElement !== this.renderer.domElement) {
-      // Can reject (e.g. right after Esc); a failed lock just leaves the
-      // hint visible, so a warn is enough.
-      Promise.resolve(this.renderer.domElement.requestPointerLock()).catch((error: unknown) => {
-        console.warn('Drift: pointer lock request failed', error);
-      });
-    }
   };
-  private readonly onPointerLockChange = (): void => this.updateHint();
+  /** A hand on the view while it is being dragged round. */
+  private readonly onLookChange = (looking: boolean): void => {
+    this.renderer.domElement.style.cursor = looking ? 'grabbing' : '';
+  };
 
   constructor(private readonly container: HTMLElement) {
     // No canvas anti-aliasing: the frame is drawn offscreen and smoothed
@@ -203,10 +200,10 @@ export class Game {
     this.scene.add(this.droneVisual.group, this.droneVisual.groundShadow);
 
     this.followCamera = new FollowCamera(0, 0.35);
-    this.input = new InputManager(() => document.pointerLockElement === this.renderer.domElement);
-    this.input.attach(window);
+    this.input = new InputManager({ onLookChange: this.onLookChange });
+    // Looking starts with a right-button press on the view itself.
+    this.input.attach(window, this.renderer.domElement);
     this.renderer.domElement.addEventListener('click', this.onCanvasClick);
-    document.addEventListener('pointerlockchange', this.onPointerLockChange);
 
     // --- M3: journey state, HUD, and the helm interactable ---
     this.shipState = new ShipState(START_LOCATION_ID, {
@@ -360,14 +357,12 @@ export class Game {
     this.intercom.resume();
     this.appState.start();
     this.events.emit('app:started');
-    this.onCanvasClick(); // capture the pointer from the same gesture
   }
 
   dispose(): void {
     this.loop.stop();
     window.removeEventListener('resize', this.onResize);
     window.clearTimeout(this.resizeTimer);
-    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
     this.input.detach();
     this.menu.close();
@@ -494,7 +489,12 @@ export class Game {
     }
 
     if (this.playerMode.isRoaming) {
-      this.followCamera.applyLook(this.input.consumeLookDelta());
+      const look = this.input.consumeLookDelta();
+      this.followCamera.applyLook(look);
+      if (!this.hasLooked && (look.dx !== 0 || look.dy !== 0)) {
+        this.hasLooked = true;
+        this.updateHint();
+      }
       const actions = this.input.sample();
       this.drone.update(dt, actions, this.followCamera.yaw, this.ship.colliders);
 
@@ -522,7 +522,6 @@ export class Game {
   private openPause(): void {
     this.appState.pause();
     this.events.emit('app:paused');
-    document.exitPointerLock();
     this.pauseMenu.open({
       onResume: () => {
         this.appState.resume();
@@ -619,14 +618,13 @@ export class Game {
     });
   }
 
-  /** Hand the screen to an overlay: drop focus, prompt and mouse capture. */
+  /** Hand the screen to an overlay: drop focus and prompt. */
   private releaseControls(): void {
     const focusChange = this.interaction.clear();
     if (focusChange?.blurred) {
       this.events.emit('interact:blurred', { interactableId: focusChange.blurred.id });
     }
     this.hud.setPrompt(null);
-    document.exitPointerLock();
   }
 
   /** What the dashboard shows right now, from live game state. */
@@ -847,12 +845,11 @@ export class Game {
     this.spaceScene.setViewport(height * pixelRatio, this.spaceCamera.fov);
   }
 
-  /** Show the controls hint only while the pointer is not locked. */
+  /** Show the controls hint until the player has looked around once. */
   private updateHint(): void {
     const hint = document.getElementById('hint');
     if (!hint) return;
-    const locked = document.pointerLockElement === this.renderer.domElement;
     // The hint is about flying; it only belongs on screen while roaming.
-    hint.style.opacity = locked || !this.playerMode.isRoaming ? '0' : '1';
+    hint.style.opacity = this.hasLooked || !this.playerMode.isRoaming ? '0' : '1';
   }
 }

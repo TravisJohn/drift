@@ -725,3 +725,54 @@ Trade-offs and limits:
   the kick and header bands are darker than the old plates.
 - Not checked: the look in motion at full frame rate in a normal browser.
   The preview pane was hidden, so pictures were taken as still frames.
+
+## 2026-11-16 - Mouse look: hold the right button and drag
+
+**Author request:** look around by holding the right mouse button and
+dragging, while WASD keeps moving the drone. Drag left-to-right to see
+what is on the left, right-to-left for the right, top-to-bottom for the
+ceiling, bottom-to-top for the floor. 468 tests passing; lint, format,
+types and build clean.
+
+- This **replaces** click-to-capture. The game no longer takes the mouse
+  pointer away: it stays free, so menus and panels can be clicked at any
+  time.
+- `core/input.ts`: a look drag starts with a right-button press on the
+  game view and ends on release, on losing focus, or when a movement
+  arrives with the button no longer held (released outside the browser
+  window). The left button does nothing here. The browser's right-click
+  menu is suppressed over the view.
+- `player/followCamera.ts`: a look style decides which way the view turns
+  for a drag. `grab` (the default, as requested) moves the scene with the
+  mouse; `turn` is the opposite, the view following the mouse. Set in
+  `gameConfig.camera.lookStyle`.
+- Tuning in `gameConfig.camera`: `lookSensitivity` 0.0023 to 0.005 (half
+  a turn in about 600 px of drag; a drag cannot run past the screen edge
+  the way a captured mouse could) and `pitchMin` -0.5 to -1.1, so the
+  view can tip far enough up to see the ceiling overhead.
+- The pointer shows a closed hand while dragging. The controls hint and
+  the pause menu name the new control; the hint hides after the first
+  look instead of after the first click.
+
+Verified in the embedded preview by sending the game right-button press,
+drag and release events: the view turned left, right, up and down as
+described, stopped on release, ignored movement without the button, and
+a real right click opened no browser menu.
+
+Trade-offs and limits:
+- The view stays where it is left, and WASD stays relative to the view
+  (unchanged): after looking behind, W flies that way. A look that
+  springs back on release was not built.
+- Looking straight up puts the camera under the drone, so the drone sits
+  in the middle of the picture. That is the third-person camera, not a
+  fault of the drag.
+- Not checked: a real right-button drag by hand. The preview tooling can
+  only left-drag, so the drag was driven by synthetic events. It needs a
+  try in a normal browser, including on a laptop trackpad, where a
+  right-button drag is awkward.
+
+**2026-11-18 - Approved.** The author tried the right-button drag by hand
+in a normal browser and confirmed it works as described. Committed as it
+stands; `lookStyle` and `lookSensitivity` unchanged. Handover note: work
+continues on Claude Opus from here, following the same PRD, architecture
+and log.

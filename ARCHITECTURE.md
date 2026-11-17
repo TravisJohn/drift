@@ -104,7 +104,7 @@ drift/  (project root: D:\WEB PROJECTS\game_app_poc)
     core/
       loop.ts                fixed-timestep loop
       events.ts              typed event bus + event catalog
-      input.ts               keyboard/mouse, pointer lock, action mapping
+      input.ts               keyboard/mouse, right-drag look, action mapping
       assets.ts              GLTF/texture loading with progress + error reporting
     state/
       appState.ts

@@ -1,20 +1,30 @@
-import { describe, expect, it } from 'vitest';
-import { InputManager } from '../../src/core/input';
+import { describe, expect, it, vi } from 'vitest';
+import { InputManager, type InputOptions } from '../../src/core/input';
 
 function key(type: 'keydown' | 'keyup', code: string): KeyboardEvent {
   return new KeyboardEvent(type, { code });
 }
 
-function mouse(movementX: number, movementY: number): MouseEvent {
-  const e = new MouseEvent('mousemove');
+const LEFT = 0;
+const RIGHT = 2;
+/** MouseEvent.buttons while only the right button is held. */
+const RIGHT_HELD = 2;
+
+/** Mouse movement; `buttons` says which buttons are held during it. */
+function mouse(movementX: number, movementY: number, buttons = RIGHT_HELD): MouseEvent {
+  const e = new MouseEvent('mousemove', { buttons });
   // jsdom doesn't populate movementX/Y from the init dict; define directly.
   Object.defineProperty(e, 'movementX', { value: movementX });
   Object.defineProperty(e, 'movementY', { value: movementY });
   return e;
 }
 
-function makeAttached(isLookActive?: () => boolean) {
-  const input = new InputManager(isLookActive);
+function button(type: 'mousedown' | 'mouseup', which: number): MouseEvent {
+  return new MouseEvent(type, { button: which, bubbles: true, cancelable: true });
+}
+
+function makeAttached(options?: InputOptions) {
+  const input = new InputManager(options);
   input.attach(window);
   return input;
 }
@@ -115,9 +125,19 @@ describe('InputManager consumePress (edge detection)', () => {
   });
 });
 
-describe('InputManager mouse look', () => {
-  it('accumulates deltas across events and resets on consume', () => {
+describe('InputManager look drag (hold the right mouse button)', () => {
+  it('ignores mouse movement until the right button is held', () => {
     const input = makeAttached();
+    window.dispatchEvent(mouse(10, 10, 0));
+    expect(input.isLooking).toBe(false);
+    expect(input.consumeLookDelta()).toEqual({ dx: 0, dy: 0 });
+    input.detach();
+  });
+
+  it('accumulates the drag across events and resets on consume', () => {
+    const input = makeAttached();
+    window.dispatchEvent(button('mousedown', RIGHT));
+    expect(input.isLooking).toBe(true);
     window.dispatchEvent(mouse(4, -2));
     window.dispatchEvent(mouse(3, 1));
     expect(input.consumeLookDelta()).toEqual({ dx: 7, dy: -1 });
@@ -125,14 +145,102 @@ describe('InputManager mouse look', () => {
     input.detach();
   });
 
-  it('ignores mouse movement while look is inactive (pointer not locked)', () => {
-    let locked = false;
-    const input = makeAttached(() => locked);
-    window.dispatchEvent(mouse(10, 10));
+  it('stops looking when the button is released', () => {
+    const input = makeAttached();
+    window.dispatchEvent(button('mousedown', RIGHT));
+    window.dispatchEvent(button('mouseup', RIGHT));
+    window.dispatchEvent(mouse(9, 9, 0));
+    expect(input.isLooking).toBe(false);
     expect(input.consumeLookDelta()).toEqual({ dx: 0, dy: 0 });
-    locked = true;
-    window.dispatchEvent(mouse(5, 5));
-    expect(input.consumeLookDelta()).toEqual({ dx: 5, dy: 5 });
     input.detach();
+  });
+
+  it('the left button does not look: it stays free for clicking', () => {
+    const input = makeAttached();
+    window.dispatchEvent(button('mousedown', LEFT));
+    window.dispatchEvent(mouse(9, 9, 1));
+    expect(input.isLooking).toBe(false);
+    expect(input.consumeLookDelta()).toEqual({ dx: 0, dy: 0 });
+    // Nor does letting the left button go end a look in progress.
+    window.dispatchEvent(button('mousedown', RIGHT));
+    window.dispatchEvent(button('mouseup', LEFT));
+    expect(input.isLooking).toBe(true);
+    input.detach();
+  });
+
+  it('a drag only starts on the game view, but carries on outside it', () => {
+    const view = document.createElement('canvas');
+    const menu = document.createElement('div');
+    document.body.append(view, menu);
+    const input = new InputManager();
+    input.attach(window, view);
+
+    menu.dispatchEvent(button('mousedown', RIGHT)); // a right click on a menu
+    expect(input.isLooking).toBe(false);
+
+    view.dispatchEvent(button('mousedown', RIGHT));
+    expect(input.isLooking).toBe(true);
+    window.dispatchEvent(mouse(5, 5)); // the pointer has left the view
+    expect(input.consumeLookDelta()).toEqual({ dx: 5, dy: 5 });
+    window.dispatchEvent(button('mouseup', RIGHT)); // released anywhere
+    expect(input.isLooking).toBe(false);
+
+    input.detach();
+    view.remove();
+    menu.remove();
+  });
+
+  it('ends the look if the button was let go where no release reached us', () => {
+    const input = makeAttached();
+    window.dispatchEvent(button('mousedown', RIGHT));
+    // Released outside the browser window: the next movement arrives with
+    // no button held.
+    window.dispatchEvent(mouse(50, 50, 0));
+    expect(input.isLooking).toBe(false);
+    expect(input.consumeLookDelta()).toEqual({ dx: 0, dy: 0 });
+    input.detach();
+  });
+
+  it('window blur ends the look (no view stuck turning)', () => {
+    const input = makeAttached();
+    window.dispatchEvent(button('mousedown', RIGHT));
+    window.dispatchEvent(new Event('blur'));
+    expect(input.isLooking).toBe(false);
+    input.detach();
+  });
+
+  it('keeps the right click from opening the browser menu over the view', () => {
+    const view = document.createElement('canvas');
+    document.body.append(view);
+    const input = new InputManager();
+    input.attach(window, view);
+    const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    view.dispatchEvent(menu);
+    expect(menu.defaultPrevented).toBe(true);
+    input.detach();
+    // Once detached the game no longer interferes.
+    const later = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    view.dispatchEvent(later);
+    expect(later.defaultPrevented).toBe(false);
+    view.remove();
+  });
+
+  it('reports when looking starts and ends, once each', () => {
+    const onLookChange = vi.fn();
+    const input = makeAttached({ onLookChange });
+    window.dispatchEvent(button('mousedown', RIGHT));
+    window.dispatchEvent(button('mousedown', RIGHT)); // already looking
+    window.dispatchEvent(button('mouseup', RIGHT));
+    expect(onLookChange.mock.calls).toEqual([[true], [false]]);
+    input.detach();
+  });
+
+  it('detaching mid-drag ends the look', () => {
+    const onLookChange = vi.fn();
+    const input = makeAttached({ onLookChange });
+    window.dispatchEvent(button('mousedown', RIGHT));
+    input.detach();
+    expect(input.isLooking).toBe(false);
+    expect(onLookChange).toHaveBeenLastCalledWith(false);
   });
 });

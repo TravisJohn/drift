@@ -5,11 +5,21 @@
  * accumulated mouse input, pulls in toward the target when a wall would
  * block the view (segment-vs-AABB, D1 colliders), and smooths motion
  * exponentially. game.ts copies the result onto the Three.js camera.
+ *
+ * Looking is a drag with the right mouse button held (see core/input.ts).
+ * Which way the view turns for a given drag is the look style:
+ * - 'grab': as if you had taken hold of the scene. Drag right and the
+ *   scene comes with it, showing what was on your left; drag down to see
+ *   the ceiling, up to see the floor.
+ * - 'turn': the view follows the mouse instead. Drag right to look right,
+ *   down to look down.
  */
 import { gameConfig } from '../config/gameConfig';
 import type { LookDelta } from '../core/input';
 import { type BoxCollider, segmentEntersBoxAt } from '../physics/colliders';
 import { type Vec3, add, lerp, sub, vec3 } from '../physics/vec3';
+
+export type LookStyle = 'grab' | 'turn';
 
 export interface CameraPose {
   readonly position: Vec3;
@@ -23,7 +33,11 @@ export class FollowCamera {
   private pitch: number;
   private smoothedPosition: Vec3 | null = null;
 
-  constructor(initialYaw = 0, initialPitch = 0.35) {
+  constructor(
+    initialYaw = 0,
+    initialPitch = 0.35,
+    private readonly lookStyle: LookStyle = gameConfig.camera.lookStyle,
+  ) {
     this._yaw = initialYaw;
     this.pitch = this.clampPitch(initialPitch);
   }
@@ -33,10 +47,14 @@ export class FollowCamera {
     return this._yaw;
   }
 
-  /** Apply accumulated mouse movement (called once per fixed update). */
+  /** Apply an accumulated look drag (called once per fixed update). */
   applyLook(delta: LookDelta): void {
-    this._yaw -= delta.dx * this.cfg.lookSensitivity;
-    this.pitch = this.clampPitch(this.pitch + delta.dy * this.cfg.lookSensitivity);
+    // 'turn' swings the view the way the mouse went; 'grab' the other way.
+    const sense = (this.lookStyle === 'grab' ? -1 : 1) * this.cfg.lookSensitivity;
+    // A larger yaw looks further left; a larger pitch lifts the camera,
+    // which tips the view down.
+    this._yaw -= delta.dx * sense;
+    this.pitch = this.clampPitch(this.pitch + delta.dy * sense);
   }
 
   /**

@@ -276,8 +276,21 @@ export const gameConfig = {
     minDistance: 0.6,
     /** The camera looks at a point this far above the drone's center. */
     eyeHeight: 0.45,
-    lookSensitivity: 0.0023,
-    pitchMin: -0.5,
+    /**
+     * Looking around is a drag with the right mouse button held.
+     * 'grab': the scene comes with the mouse - drag right to see what is
+     * on your left, drag down to see the ceiling. 'turn': the view follows
+     * the mouse instead - drag right to look right, down to look down.
+     */
+    lookStyle: 'grab' as 'grab' | 'turn',
+    /** Radians the view turns per pixel dragged: half a turn in ~600 px. */
+    lookSensitivity: 0.005,
+    /**
+     * How far the view can tip, in radians of camera height around the
+     * drone: the minimum is the camera low, looking up at the ceiling;
+     * the maximum is the camera high, looking down at the floor.
+     */
+    pitchMin: -1.1,
     pitchMax: 1.25,
     /** Gap kept between the camera and an occluding wall. */
     collisionMargin: 0.25,

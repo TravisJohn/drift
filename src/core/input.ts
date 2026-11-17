@@ -5,11 +5,12 @@
  * per logic step. Mouse look deltas accumulate between steps and are
  * consumed (read-and-reset) so none are lost and none are double-counted.
  *
- * Bindings (M1):
- *   W/S or arrows  - forward/back (relative to camera yaw)
- *   A/D or arrows  - strafe left/right
- *   Space / Shift  - ascend / descend
- *   Mouse (locked) - orbit the camera
+ * Bindings:
+ *   W/S or arrows       - forward/back (relative to camera yaw)
+ *   A/D or arrows       - strafe left/right
+ *   Space / Shift       - ascend / descend
+ *   Right mouse + drag  - look around (the pointer stays free otherwise,
+ *                         so menus and panels can be clicked at any time)
  */
 
 export interface InputActions {
@@ -26,7 +27,17 @@ export interface LookDelta {
   readonly dy: number;
 }
 
+export interface InputOptions {
+  /** Told when a look drag starts (true) and when it ends (false). */
+  readonly onLookChange?: (looking: boolean) => void;
+}
+
 type Target = Pick<Window, 'addEventListener' | 'removeEventListener'>;
+
+/** MouseEvent.button of the button that is held to look: the right one. */
+const LOOK_BUTTON = 2;
+/** The same button's bit in MouseEvent.buttons. */
+const LOOK_BUTTON_MASK = 2;
 
 export class InputManager {
   private readonly pressed = new Set<string>();
@@ -34,33 +45,46 @@ export class InputManager {
   private readonly justPressed = new Set<string>();
   private lookDx = 0;
   private lookDy = 0;
+  private looking = false;
   private target: Target | null = null;
+  private lookSurface: Target | null = null;
 
-  /** When set, mouse deltas only accumulate while this returns true. */
-  private readonly isLookActive: () => boolean;
+  constructor(private readonly options: InputOptions = {}) {}
 
-  constructor(isLookActive: () => boolean = () => true) {
-    this.isLookActive = isLookActive;
-  }
-
-  attach(target: Target = window): void {
+  /**
+   * Start listening. Keys and mouse movement are read from `target`; a
+   * look drag can only begin on `lookSurface` (the game view), so a right
+   * click on a menu lying over it does nothing.
+   */
+  attach(target: Target = window, lookSurface: Target = target): void {
     if (this.target) this.detach();
     this.target = target;
+    this.lookSurface = lookSurface;
     target.addEventListener('keydown', this.onKeyDown);
     target.addEventListener('keyup', this.onKeyUp);
+    // Movement and release are read from the whole window, so a drag that
+    // wanders off the game view keeps working and always ends.
     target.addEventListener('mousemove', this.onMouseMove);
+    target.addEventListener('mouseup', this.onMouseUp);
     target.addEventListener('blur', this.onBlur);
+    lookSurface.addEventListener('mousedown', this.onMouseDown);
+    lookSurface.addEventListener('contextmenu', this.onContextMenu);
   }
 
   detach(): void {
-    if (!this.target) return;
+    if (!this.target || !this.lookSurface) return;
     this.target.removeEventListener('keydown', this.onKeyDown);
     this.target.removeEventListener('keyup', this.onKeyUp);
     this.target.removeEventListener('mousemove', this.onMouseMove);
+    this.target.removeEventListener('mouseup', this.onMouseUp);
     this.target.removeEventListener('blur', this.onBlur);
+    this.lookSurface.removeEventListener('mousedown', this.onMouseDown);
+    this.lookSurface.removeEventListener('contextmenu', this.onContextMenu);
     this.target = null;
+    this.lookSurface = null;
     this.pressed.clear();
     this.justPressed.clear();
+    this.setLooking(false);
   }
 
   /** Current movement axes; sampled once per fixed update. */
@@ -92,12 +116,23 @@ export class InputManager {
     return was;
   }
 
-  /** Accumulated mouse movement since the last call; resets on read. */
+  /** True while the look button is held after being pressed on the view. */
+  get isLooking(): boolean {
+    return this.looking;
+  }
+
+  /** Accumulated look-drag movement since the last call; resets on read. */
   consumeLookDelta(): LookDelta {
     const delta = { dx: this.lookDx, dy: this.lookDy };
     this.lookDx = 0;
     this.lookDy = 0;
     return delta;
+  }
+
+  private setLooking(looking: boolean): void {
+    if (this.looking === looking) return;
+    this.looking = looking;
+    this.options.onLookChange?.(looking);
   }
 
   private readonly onKeyDown = (event: Event): void => {
@@ -112,16 +147,36 @@ export class InputManager {
     this.pressed.delete((event as KeyboardEvent).code);
   };
 
+  private readonly onMouseDown = (event: Event): void => {
+    if ((event as MouseEvent).button === LOOK_BUTTON) this.setLooking(true);
+  };
+
+  private readonly onMouseUp = (event: Event): void => {
+    if ((event as MouseEvent).button === LOOK_BUTTON) this.setLooking(false);
+  };
+
   private readonly onMouseMove = (event: Event): void => {
-    if (!this.isLookActive()) return;
+    if (!this.looking) return;
     const e = event as MouseEvent;
+    // The button can be let go where no release reaches us (outside the
+    // browser window): the next movement shows it is up, and looking ends.
+    if ((e.buttons & LOOK_BUTTON_MASK) === 0) {
+      this.setLooking(false);
+      return;
+    }
     this.lookDx += e.movementX;
     this.lookDy += e.movementY;
+  };
+
+  /** The right button looks around; it must not also open the browser's menu. */
+  private readonly onContextMenu = (event: Event): void => {
+    event.preventDefault();
   };
 
   /** Losing focus releases all keys, or they'd stay stuck "down". */
   private readonly onBlur = (): void => {
     this.pressed.clear();
     this.justPressed.clear();
+    this.setLooking(false);
   };
 }

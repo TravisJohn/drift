@@ -12,7 +12,7 @@ export interface PauseMenuCallbacks {
 const CONTROLS: readonly (readonly [string, string])[] = [
   ['WASD', 'move'],
   ['Space / Shift', 'up & down'],
-  ['Mouse', 'look (click to capture)'],
+  ['Right mouse + drag', 'look around'],
   ['E', 'interact'],
   ['V', 'exterior view in flight'],
   ['Esc', 'pause / resume'],
