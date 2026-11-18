@@ -29,3 +29,21 @@ describe('destinations content', () => {
     expect(() => getLocation('nowhere')).toThrow(/Unknown location/);
   });
 });
+
+describe('destinations on the star chart', () => {
+  it('every place sits on the chart, and no two overlap', () => {
+    for (const loc of locations) {
+      expect(loc.chart.x).toBeGreaterThanOrEqual(0);
+      expect(loc.chart.x).toBeLessThanOrEqual(1);
+      expect(loc.chart.y).toBeGreaterThanOrEqual(0);
+      expect(loc.chart.y).toBeLessThanOrEqual(1);
+    }
+    for (const a of locations) {
+      for (const b of locations) {
+        if (a.id !== b.id) {
+          expect(Math.hypot(a.chart.x - b.chart.x, a.chart.y - b.chart.y)).toBeGreaterThan(0.15);
+        }
+      }
+    }
+  });
+});

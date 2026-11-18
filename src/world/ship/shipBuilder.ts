@@ -77,6 +77,11 @@ const ROOM_LIGHT: Record<string, number> = {
   engineering: 0xffb070,
 };
 
+/** The colour of a room's ceiling light (the exterior's windows glow with it). */
+export function roomLightColor(roomId: string): number {
+  return ROOM_LIGHT[roomId] ?? 0xcfd8e3;
+}
+
 /**
  * Each room's own colour of light: its guide lights, the strips in its
  * ribs and the glow they throw on the walls. Stronger than the ceiling

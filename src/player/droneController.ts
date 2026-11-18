@@ -17,6 +17,7 @@ import { gameConfig } from '../config/gameConfig';
 import type { InputActions } from '../core/input';
 import type { BoxCollider } from '../physics/colliders';
 import { resolveSphere } from '../physics/sphereCollision';
+import { type TetherBox, applyTether } from '../physics/tether';
 import { type Vec3, add, scale, vec3 } from '../physics/vec3';
 
 /** Shortest signed difference from angle `a` to `b`, in (-PI, PI]. */
@@ -42,6 +43,8 @@ export interface DroneSnapshot {
   readonly leanRoll: number;
   /** Idle hover offset, applied to the visual's Y only (not collision). */
   readonly bobOffset: number;
+  /** How close to its tether limit the drone is: 0 free, 1 at the limit. */
+  readonly tetherStrain: number;
 }
 
 export class DroneController {
@@ -55,8 +58,13 @@ export class DroneController {
   private leanRoll = 0;
   private bobPhase = 0;
   private bobOffset = 0;
+  private tetherStrain = 0;
 
-  constructor(startPosition: Vec3) {
+  /** `tether`: the hull's bounding box, which the drone may not stray far from. */
+  constructor(
+    startPosition: Vec3,
+    private readonly tether: TetherBox | null = null,
+  ) {
     this.position = startPosition;
     this.prevPosition = startPosition;
   }
@@ -70,6 +78,7 @@ export class DroneController {
       leanPitch: this.leanPitch,
       leanRoll: this.leanRoll,
       bobOffset: this.bobOffset,
+      tetherStrain: this.tetherStrain,
     };
   }
 
@@ -122,6 +131,14 @@ export class DroneController {
     );
     this.position = resolved.position;
     this.velocity = resolved.velocity;
+
+    // --- Stay within reach of the ship ---
+    if (this.tether) {
+      const held = applyTether(this.position, this.velocity, this.tether, this.cfg.tether, dt);
+      this.position = held.position;
+      this.velocity = held.velocity;
+      this.tetherStrain = held.strain;
+    }
 
     // --- Facing: turn toward the direction of travel ---
     const hSpeed = Math.hypot(this.velocity.x, this.velocity.z);

@@ -8,19 +8,11 @@
  */
 import * as THREE from 'three';
 import { gameConfig } from '../../config/gameConfig';
+import { mulberry32 } from '../../core/random';
 import { createStarAttributes, createStarGeometry, createStarMaterial } from './starLook';
 
-/** Small deterministic PRNG (mulberry32) so the sky is the same every run. */
-export function mulberry32(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+/** Re-exported: the seeded random source now lives in core/random.ts. */
+export { mulberry32 };
 
 /**
  * Generate star positions in a cube of half-size `extent`, keeping a clear

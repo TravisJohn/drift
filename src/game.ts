@@ -44,6 +44,10 @@ import { PuzzleOverlay } from './ui/puzzleOverlay';
 import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
 import { IntercomEffect } from './audio/intercomEffect';
+import { ShipHum } from './audio/shipHum';
+import { WarningBeep } from './audio/warningBeep';
+import { WarningBeat } from './player/warningBeat';
+import { chooseView } from './rendering/viewMode';
 import { connectAudioLibrary } from './audio/audioLibrarySource';
 import { connectArt } from './art/surfaceArt';
 import type { RoomSpec } from './content/shipLayout';
@@ -87,6 +91,10 @@ export class Game {
   private resizeTimer: number | undefined;
   private readonly cinematicCamera = new CinematicCamera();
   private cinematicPose: CameraPose | null = null;
+  /** True while the follow camera is out in space, beyond the hull. */
+  private droneOutside = false;
+  /** True once the tether warning has been spoken for this excursion. */
+  private tetherWarned = false;
   private travelView: TravelView;
   private readonly playerMode = new PlayerMode();
   private readonly interaction = new InteractionSystem();
@@ -97,6 +105,11 @@ export class Game {
   private readonly puzzleOverlay = new PuzzleOverlay();
   private readonly narrative = new NarrativeDirector();
   private readonly intercom = new IntercomEffect();
+  /** The ship's own synthesized hum: electrical, air, engine rumble. */
+  private readonly hum = new ShipHum();
+  /** The drone's tether alarm: one beat drives the beep and the antenna flash. */
+  private readonly warningBeep = new WarningBeep();
+  private readonly warningBeat = new WarningBeat();
   // Music is piped through the intercom; every other sound stays direct.
   private readonly audio = new AudioManager(
     undefined,
@@ -108,6 +121,9 @@ export class Game {
     },
   );
   private readonly cryoRoom: RoomSpec | null;
+  /** Bow and stern of the deck plan, for where the drone is along the ship. */
+  private readonly shipBowZ = Math.min(...shipLayout.rooms.map((r) => r.minZ));
+  private readonly shipSternZ = Math.max(...shipLayout.rooms.map((r) => r.maxZ));
   private elapsed = 0;
   private cryoGain = 0;
 
@@ -142,6 +158,8 @@ export class Game {
     // The first gesture also unlocks audio (browser autoplay rules, M6).
     this.audio.unlock();
     this.intercom.resume();
+    this.hum.resume();
+    this.warningBeep.resume();
   };
   /** A hand on the view while it is being dragged round. */
   private readonly onLookChange = (looking: boolean): void => {
@@ -195,7 +213,8 @@ export class Game {
       { scene: this.scene, camera: this.camera },
     );
 
-    this.drone = new DroneController(this.ship.spawn);
+    // Out in space the drone is kept within reach of the hull's box.
+    this.drone = new DroneController(this.ship.spawn, this.spaceScene.hullBounds());
     this.droneVisual = new DroneVisual();
     this.scene.add(this.droneVisual.group, this.droneVisual.groundShadow);
 
@@ -282,7 +301,7 @@ export class Game {
       id: 'dashboard',
       position: tableProp.center,
       radius: gameConfig.interaction.dashboardRadius,
-      promptText: '[E] Dashboard — ship overview',
+      promptText: '[E] Command deck — navigation, cameras, ship',
       onInteract: () => this.openDashboard(),
     });
     this.events.on('dashboard:opened', () => this.narrative.trigger('dashboardOpened'));
@@ -355,6 +374,8 @@ export class Game {
   private beginSession(): void {
     this.audio.unlock();
     this.intercom.resume();
+    this.hum.resume();
+    this.warningBeep.resume();
     this.appState.start();
     this.events.emit('app:started');
   }
@@ -373,6 +394,8 @@ export class Game {
     this.hologram.dispose();
     this.audio.dispose();
     this.intercom.dispose();
+    this.hum.dispose();
+    this.warningBeep.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -446,9 +469,12 @@ export class Game {
       this.events.emit('ship:phaseChanged', change);
       if (change.to === 'docked' && change.destinationId) {
         this.events.emit('travel:arrived', { destinationId: change.destinationId });
+        // The exterior shot of a journey ends when the journey does.
+        if (this.playerMode.mode === 'cinematic') this.exitCinematic();
       }
     }
     this.refreshStatus();
+    this.updateTether(dt);
 
     // M5: the ship AI's subtitle (null = silence).
     this.hud.setSubtitle(this.narrative.update(dt));
@@ -473,18 +499,13 @@ export class Game {
       }
     }
 
-    // The exterior shot ends itself when the journey does.
-    if (this.playerMode.mode === 'cinematic' && this.shipState.phase === 'docked') {
-      this.exitCinematic();
-    }
-
     if (this.playerMode.mode === 'cinematic') {
       if (viewPressed) {
         this.exitCinematic();
       } else {
         this.cinematicPose = this.cinematicCamera.update(dt);
       }
-    } else if (viewPressed && this.playerMode.isRoaming && this.shipState.phase !== 'docked') {
+    } else if (viewPressed && this.playerMode.isRoaming) {
       this.enterCinematic();
     }
 
@@ -561,6 +582,9 @@ export class Game {
       cfg.engineIdleRate + (1 - cfg.engineIdleRate) * way,
     );
     this.intercom.setLevel(this.audio.categoryLevel('music'));
+    // The hum grows toward the engine room (0 at the bow, 1 at the stern).
+    const nearEngine = (position.z - this.shipBowZ) / (this.shipSternZ - this.shipBowZ);
+    this.hum.update({ engine: way, nearEngine, outside: this.droneOutside });
 
     this.audio.update(dt);
   }
@@ -574,14 +598,14 @@ export class Game {
     }
     this.cinematicCamera.reset();
     this.cinematicPose = this.cinematicCamera.update(0);
-    this.spaceScene.setExteriorVisible(true);
+    this.updateExteriorVisibility();
     this.hud.setPrompt('[V] Return inside');
   }
 
   private exitCinematic(): void {
     this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
     this.cinematicPose = null;
-    this.spaceScene.setExteriorVisible(false);
+    this.updateExteriorVisibility();
     this.hud.setPrompt(null);
   }
 
@@ -635,8 +659,10 @@ export class Game {
       podCount: shipLayout.props.filter((p) => p.kind === 'pod').length,
       phase: this.shipState.phase,
       progress: this.shipState.progress,
-      locationName: getLocation(this.shipState.locationId).name,
-      destinationName: destinationId ? getLocation(destinationId).name : null,
+      places: locations,
+      locationId: this.shipState.locationId,
+      destinationId: destinationId ?? null,
+      cruiseScale: gameConfig.travel.cruiseScale,
       // Every registered module appears here: the AWS training entry point.
       training: this.puzzles.ids().map((id) => ({ id, title: this.puzzles.get(id).title })),
     });
@@ -654,6 +680,11 @@ export class Game {
 
     this.dashboard.open(this.dashboardData(), {
       onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
+      onSetCourse: (destinationId) => this.setCourseFromDashboard(destinationId),
+      onExteriorView: () => {
+        this.closeDashboard();
+        this.enterCinematic();
+      },
       onTraining: (moduleId) => {
         this.closeDashboard();
         this.openTerminal('dashboard', moduleId);
@@ -663,6 +694,17 @@ export class Game {
   }
 
   /** Return from the dashboard view to the drone. */
+  /**
+   * Engage a course from the dashboard's navigation tab: the same request
+   * the helm makes. The dashboard stays open and shows the departure.
+   */
+  private setCourseFromDashboard(destinationId: string): void {
+    if (this.shipState.phase !== 'docked') return; // course locked underway
+    this.audio.playOnce('sfx_ui_blip');
+    this.events.emit('travel:requested', { destinationId });
+    this.dashboard.update(this.dashboardData());
+  }
+
   private closeDashboard(): void {
     this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
     this.dashboardView = null;
@@ -722,7 +764,7 @@ export class Game {
     this.lastFrameAt = now;
 
     const snapshot = this.drone.snapshot;
-    this.droneVisual.apply(snapshot, alpha);
+    this.droneVisual.apply(snapshot, alpha, now / 1000, this.warningBeat.flash);
 
     // Cinematic: only the space scene, from the orbiting exterior camera.
     if (this.cinematicPose !== null) {
@@ -753,12 +795,62 @@ export class Game {
       this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
     }
 
+    const view = chooseView({
+      cinematic: false,
+      dashboard: this.dashboardView !== null,
+      cameraInsideHull: this.spaceScene.hullContains(this.camera.position),
+    });
+    this.setDroneOutside(view === 'exterior');
+    if (view === 'exterior') {
+      // Out in space: the ship from outside, the same hull the V shot shows,
+      // with the drone beside it. Nothing of the interior is drawn.
+      this.spaceCamera.position.copy(this.camera.position);
+      this.spaceCamera.quaternion.copy(this.camera.quaternion);
+      this.pipeline.render(false);
+      return;
+    }
+
     // Layered render (D2): space from the origin with the interior camera's
     // rotation, then depth cleared and the interior drawn on top - so space
     // is only visible through the real window openings.
     this.spaceCamera.position.set(0, 0, 0);
     this.spaceCamera.quaternion.copy(this.camera.quaternion);
     this.pipeline.render(true);
+  }
+
+  /**
+   * Move the drone between the interior and the space scene as its camera
+   * leaves or re-enters the ship. Outside, it is drawn and lit with the
+   * hull (its headlight falls on the plating); its deck shadow is hidden,
+   * as there is no deck under it.
+   */
+  private setDroneOutside(outside: boolean): void {
+    if (outside === this.droneOutside) return;
+    this.droneOutside = outside;
+    (outside ? this.spaceScene.scene : this.scene).add(this.droneVisual.group);
+    this.droneVisual.groundShadow.visible = !outside;
+    this.updateExteriorVisibility();
+  }
+
+  /**
+   * The tether alarm: the drone beeps (and its antenna flashes) faster the
+   * nearer it is to the limit. The ship AI speaks once when the strain is
+   * serious, and may speak again only after the drone has come back.
+   */
+  private updateTether(dt: number): void {
+    const strain = this.drone.snapshot.tetherStrain;
+    if (this.warningBeat.update(dt, strain)) this.warningBeep.beep(strain);
+    if (!this.tetherWarned && strain >= gameConfig.drone.tether.speakAtStrain) {
+      this.tetherWarned = true;
+      this.narrative.trigger('tetherWarning');
+    } else if (strain === 0) {
+      this.tetherWarned = false;
+    }
+  }
+
+  /** The hull is drawn whenever the ship is seen from outside. */
+  private updateExteriorVisibility(): void {
+    this.spaceScene.setExteriorVisible(this.cinematicPose !== null || this.droneOutside);
   }
 
   /** The sharpest pixel ratio this screen can show, within the game's cap. */

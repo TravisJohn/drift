@@ -127,3 +127,28 @@ describe('DroneController movement', () => {
     expect(drone.snapshot.position).not.toEqual(before);
   });
 });
+
+describe('DroneController tether (the drone cannot fly off into the void)', () => {
+  const box = { min: vec3(-1, 0, -1), max: vec3(1, 3, 1) };
+
+  it('never goes further than maxDistance from the hull, however long you hold forward', () => {
+    const drone = new DroneController(vec3(0, 1, 0), box);
+    run(drone, 60 * 20, FORWARD);
+    const z = drone.snapshot.position.z;
+    expect(z).toBeGreaterThanOrEqual(-1 - gameConfig.drone.tether.maxDistance - 1e-9);
+    expect(drone.snapshot.tetherStrain).toBe(1);
+  });
+
+  it('drifts back inside the hard limit once you let go', () => {
+    const drone = new DroneController(vec3(0, 1, 0), box);
+    run(drone, 60 * 20, FORWARD);
+    run(drone, 60 * 5, IDLE);
+    expect(drone.snapshot.tetherStrain).toBeLessThan(1);
+  });
+
+  it('reports no strain without a tether (inside the ship nothing changes)', () => {
+    const drone = new DroneController(vec3(0, 1, 0));
+    run(drone, 60 * 5, FORWARD);
+    expect(drone.snapshot.tetherStrain).toBe(0);
+  });
+});

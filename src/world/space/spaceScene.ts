@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import type { LocationSpec } from '../../content/destinations';
 import type { ShipLayout } from '../../content/shipLayout';
+import type { Vec3 } from '../../physics/vec3';
 import type { TravelView } from '../../travel/travelDirector';
 import { Starfield } from './starfield';
 import { SkyDome } from './skyDome';
@@ -71,11 +72,25 @@ export class SpaceScene {
     this.bodies.update(this.elapsed);
     this.bodies.apply(view);
     this.exterior.setEngineIntensity(view.engineIntensity);
+    if (this.exterior.group.visible) this.exterior.update(this.elapsed);
   }
 
-  /** Show the hull only while the cinematic exterior camera is live. */
+  /**
+   * Show the hull only while it is seen from outside: the cinematic shot,
+   * or the drone's camera out in space.
+   */
   setExteriorVisible(visible: boolean): void {
     this.exterior.group.visible = visible;
+  }
+
+  /** The box around the whole hull (the drone's tether is measured from it). */
+  hullBounds(): { min: Vec3; max: Vec3 } {
+    return this.exterior.bounds();
+  }
+
+  /** True when `point` (ship coordinates) is inside the hull. */
+  hullContains(point: Vec3): boolean {
+    return this.exterior.contains(point);
   }
 
   dispose(): void {

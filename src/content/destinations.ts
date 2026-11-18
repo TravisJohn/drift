@@ -27,6 +27,8 @@ export interface LocationSpec {
   readonly accentColor: number;
   /** The celestial body seen while docked here (M4). */
   readonly body: BodySpec;
+  /** Where it sits on the dashboard's star chart: 0..1 across and down. */
+  readonly chart: { readonly x: number; readonly y: number };
 }
 
 export const locations: readonly LocationSpec[] = [
@@ -37,6 +39,7 @@ export const locations: readonly LocationSpec[] = [
     travelTime: 75,
     accentColor: 0x8fa3b8,
     body: { kind: 'station', radius: 15 },
+    chart: { x: 0.2, y: 0.6 },
   },
   {
     id: 'aurelia',
@@ -45,6 +48,7 @@ export const locations: readonly LocationSpec[] = [
     travelTime: 90,
     accentColor: 0x7fd4e8,
     body: { kind: 'ringed', radius: 30 },
+    chart: { x: 0.76, y: 0.26 },
   },
   {
     id: 'cinder',
@@ -53,6 +57,7 @@ export const locations: readonly LocationSpec[] = [
     travelTime: 70,
     accentColor: 0xe8865a,
     body: { kind: 'sun', radius: 34 },
+    chart: { x: 0.7, y: 0.78 },
   },
 ];
 
@@ -77,6 +82,10 @@ export function validateLocations(): string[] {
     if (loc.travelTime <= 0) problems.push(`location "${loc.id}" has non-positive travelTime`);
     if (!loc.name.trim()) problems.push(`location "${loc.id}" has an empty name`);
     if (loc.body.radius <= 0) problems.push(`location "${loc.id}" body has non-positive radius`);
+    const { x, y } = loc.chart;
+    if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) {
+      problems.push(`location "${loc.id}" chart position is off the chart`);
+    }
   }
   if (locations.length < 2) problems.push('need at least 2 locations for travel to exist');
   if (!ids.has(START_LOCATION_ID)) problems.push(`start location "${START_LOCATION_ID}" missing`);

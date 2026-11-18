@@ -342,96 +342,221 @@
   color: #7d93a8;
 }
 
-/* Ship dashboard - holographic panels either side of the forward view.
-   The 3D hologram of the ship floats between them, drawn by the game. */
+/* Command deck - the holographic dashboard at the bridge holo-table.
+   The 3D hologram of the ship floats in the middle, drawn by the game; a
+   status column stands to its left and the tabbed command panel to its
+   right. Everything is light: cyan glass, scanlines, corner brackets. */
 #dashboard {
+  --holo: 127, 220, 255; /* the projector's cyan, as r, g, b */
+  --holo-text: #c6f1ff;
+  --holo-dim: #6fa9c0;
+  --holo-faint: rgba(var(--holo), 0.32);
+  --warm: #ffd58a; /* things in motion: course, autopilot */
+  --mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
   position: fixed;
   inset: 0;
   pointer-events: none;
-  perspective: 1100px;
+  perspective: 1200px;
   font-family: system-ui, sans-serif;
-  color: #bfefff;
+  color: var(--holo-text);
   user-select: none;
 }
 
-#dashboard .title {
+/* --- Header: name and tabs --- */
+#dashboard .header {
   position: absolute;
-  top: 46px;
+  top: 30px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 13px;
-  letter-spacing: 0.42em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: #9fe6ff;
-  text-shadow: 0 0 12px rgba(95, 215, 255, 0.7);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  pointer-events: auto;
+  animation: holo-flicker 0.6s ease-out both;
 }
 
+#dashboard .title {
+  font-size: 12px;
+  letter-spacing: 0.46em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #a9ebff;
+  text-shadow: 0 0 14px rgba(var(--holo), 0.75);
+}
+
+#dashboard .tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--holo-faint);
+  background: rgba(20, 70, 100, 0.22);
+  box-shadow: 0 0 22px rgba(var(--holo), 0.12);
+}
+
+#dashboard .tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--holo-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+#dashboard .tab .key {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  border: 1px solid var(--holo-faint);
+}
+
+#dashboard .tab:hover {
+  color: var(--holo-text);
+  background: rgba(var(--holo), 0.08);
+}
+
+#dashboard .tab.active {
+  color: #eafaff;
+  border-color: rgba(var(--holo), 0.65);
+  background: rgba(var(--holo), 0.14);
+  text-shadow: 0 0 10px rgba(var(--holo), 0.8);
+  box-shadow: inset 0 -2px 0 rgba(var(--holo), 0.9);
+}
+
+#dashboard .tab:focus-visible {
+  outline: 1px solid #eafaff;
+  outline-offset: 2px;
+}
+
+/* --- Holo panels: glass, scanlines, corner brackets, a passing scan --- */
 #dashboard .holo {
   position: absolute;
-  top: 50%;
-  width: min(300px, 27vw);
+  top: 55%;
   padding: 18px 20px 16px;
   pointer-events: auto;
-  /* A faint glow plus scanlines: reads as projected light, not a window. */
   background:
-    repeating-linear-gradient(0deg, rgba(120, 225, 255, 0.07) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, rgba(60, 190, 230, 0.14), rgba(20, 90, 130, 0.07));
-  border: 1px solid rgba(110, 220, 255, 0.45);
+    repeating-linear-gradient(0deg, rgba(var(--holo), 0.06) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgba(60, 190, 230, 0.15), rgba(20, 90, 130, 0.06));
+  border: 1px solid rgba(var(--holo), 0.38);
   box-shadow:
-    0 0 26px rgba(70, 200, 255, 0.18),
-    inset 0 0 22px rgba(70, 200, 255, 0.08);
-  animation: dashboard-in 0.45s ease-out both;
+    0 0 30px rgba(var(--holo), 0.16),
+    inset 0 0 26px rgba(var(--holo), 0.08);
+  animation: holo-flicker 0.6s ease-out both;
+}
+
+#dashboard .holo::before {
+  /* Corner brackets, just outside the glass. */
+  content: '';
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  --c: rgba(var(--holo), 0.95);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 16px 2px,
+    linear-gradient(var(--c), var(--c)) top left / 2px 16px,
+    linear-gradient(var(--c), var(--c)) top right / 16px 2px,
+    linear-gradient(var(--c), var(--c)) top right / 2px 16px,
+    linear-gradient(var(--c), var(--c)) bottom left / 16px 2px,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 16px,
+    linear-gradient(var(--c), var(--c)) bottom right / 16px 2px,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 16px;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 0 4px rgba(var(--holo), 0.8));
+}
+
+#dashboard .holo::after {
+  /* A faint bright band sweeping down the glass now and then. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(var(--holo), 0.12) 48%,
+    rgba(var(--holo), 0.02) 52%,
+    transparent 100%
+  );
+  background-size: 100% 220%;
+  animation: holo-scan 5.5s linear infinite;
 }
 
 /* Each panel is angled toward the viewer, like a curved display. */
 #dashboard .holo.left {
-  left: 4vw;
-  transform: translateY(-50%) rotateY(16deg);
+  left: 3vw;
+  width: min(270px, 24vw);
+  transform: translateY(-50%) rotateY(14deg);
   transform-origin: left center;
 }
 
 #dashboard .holo.right {
-  right: 4vw;
-  transform: translateY(-50%) rotateY(-16deg);
+  right: 3vw;
+  width: min(380px, 34vw);
+  max-height: 68vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--holo), 0.4) transparent;
+  transform: translateY(-50%) rotateY(-12deg);
   transform-origin: right center;
+  animation-delay: 0.08s;
 }
 
 #dashboard h3 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   padding-bottom: 6px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.34em;
+  letter-spacing: 0.36em;
   text-transform: uppercase;
   color: #7fdcff;
-  text-shadow: 0 0 10px rgba(95, 215, 255, 0.6);
-  border-bottom: 1px solid rgba(110, 220, 255, 0.3);
+  text-shadow: 0 0 10px rgba(var(--holo), 0.6);
+  border-bottom: 1px solid rgba(var(--holo), 0.28);
 }
 
 #dashboard h3:not(:first-child) {
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
+#dashboard .tab-panel {
+  animation: holo-in 0.28s ease-out both;
+}
+
+/* --- Status rows --- */
 #dashboard .row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 3px 0;
-  font-size: 13px;
+  padding: 4px 0;
+  font-size: 12.5px;
   letter-spacing: 0.05em;
+  border-bottom: 1px dashed rgba(var(--holo), 0.1);
 }
 
 #dashboard .row .label {
-  color: #6fa9c0;
+  color: var(--holo-dim);
 }
 
 #dashboard .row .value {
   text-align: right;
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 #dashboard .row .value.active {
-  color: #ffd58a;
+  color: var(--warm);
   text-shadow: 0 0 10px rgba(255, 190, 90, 0.6);
 }
 
@@ -439,59 +564,314 @@
   color: #5f8ba0;
 }
 
+/* --- Lists: destinations, cameras, compartments, training --- */
 #dashboard .item {
-  padding: 6px 9px;
+  position: relative;
+  padding: 8px 10px;
+  margin-bottom: 4px;
   font-size: 13px;
-  letter-spacing: 0.08em;
-  border: 1px solid transparent;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(var(--holo), 0.14);
+  background: rgba(var(--holo), 0.03);
   cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+#dashboard .item:hover {
+  background: rgba(var(--holo), 0.09);
 }
 
 #dashboard .item.selected {
-  color: #ffe2ad;
-  border-color: rgba(255, 205, 120, 0.7);
-  background: rgba(255, 190, 90, 0.1);
+  color: #eafaff;
+  border-color: rgba(var(--holo), 0.75);
+  background: rgba(var(--holo), 0.13);
+  box-shadow:
+    0 0 16px rgba(var(--holo), 0.22),
+    inset 3px 0 0 rgba(var(--holo), 0.95);
 }
 
-#dashboard .item.training {
-  border-color: rgba(110, 220, 255, 0.4);
+#dashboard .item.destination {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+#dashboard .item.destination.selected {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--accent) 35%, transparent),
+    inset 3px 0 0 var(--accent);
+}
+
+#dashboard .item.locked {
+  cursor: default;
+  opacity: 0.45;
+}
+
+#dashboard .item.locked.selected {
+  opacity: 1;
+}
+
+#dashboard .dest-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+#dashboard .dest-name {
+  font-size: 13.5px;
+  letter-spacing: 0.1em;
+}
+
+#dashboard .eta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--holo-dim);
+}
+
+#dashboard .eta.live {
+  color: #8dffc2;
+  text-shadow: 0 0 8px rgba(120, 255, 180, 0.7);
+  animation: holo-blink 1.6s steps(2, start) infinite;
+}
+
+#dashboard .dest-blurb {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #86bcd2;
+}
+
+#dashboard .cta {
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #a9ebff;
 }
 
 #dashboard .item.training::before {
   content: '▸ ';
 }
 
-#dashboard .item.training:hover {
-  background: rgba(110, 220, 255, 0.16);
-}
-
 #dashboard .detail {
   margin-top: 8px;
   min-height: 2.9em;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: #86bcd2;
+}
+
+#dashboard .empty {
+  font-size: 12px;
+  color: var(--holo-dim);
+}
+
+/* --- Navigation: star chart, status, engage --- */
+#dashboard .chart-frame {
+  position: relative;
+  border: 1px solid rgba(var(--holo), 0.2);
+  background: radial-gradient(ellipse at 30% 60%, rgba(var(--holo), 0.1), transparent 70%);
+}
+
+#dashboard .star-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+#dashboard .star-chart .grid line,
+#dashboard .star-chart .grid .range {
+  fill: none;
+  stroke: rgba(var(--holo), 0.08);
+  stroke-width: 1;
+}
+
+#dashboard .star-chart .grid .range {
+  stroke: rgba(var(--holo), 0.14);
+  stroke-dasharray: 2 5;
+}
+
+#dashboard .star-chart .specks circle {
+  fill: rgba(200, 235, 255, 0.55);
+}
+
+#dashboard .star-chart .route {
+  stroke: rgba(var(--holo), 0.85);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 5;
+  animation: holo-route 1.2s linear infinite;
+}
+
+#dashboard .star-chart .route.locked {
+  stroke: var(--warm);
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 3px rgba(255, 190, 90, 0.9));
+  animation: none;
+}
+
+#dashboard .star-chart .place .body {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+#dashboard .star-chart .place .ring {
+  fill: none;
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: holo-pulse 2.2s ease-in-out infinite;
+}
+
+#dashboard .star-chart .place .label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  fill: #a9d8ea;
+}
+
+#dashboard .star-chart .place.other .label {
+  fill: #6f97aa;
+}
+
+#dashboard .star-chart .ship-marker path {
+  fill: #fff2d6;
+  filter: drop-shadow(0 0 3px rgba(255, 220, 160, 0.95));
+}
+
+#dashboard .nav-status {
+  margin: 8px 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--holo-dim);
+}
+
+#dashboard .nav-status.active {
+  color: var(--warm);
+}
+
+#dashboard .engage {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  font: inherit;
+  font-size: 11.5px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #eafaff;
+  background: rgba(var(--holo), 0.16);
+  border: 1px solid rgba(var(--holo), 0.8);
+  box-shadow: 0 0 18px rgba(var(--holo), 0.25);
+  text-shadow: 0 0 10px rgba(var(--holo), 0.9);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+
+#dashboard .engage:hover:not(:disabled) {
+  background: rgba(var(--holo), 0.28);
+  box-shadow: 0 0 26px rgba(var(--holo), 0.45);
+}
+
+#dashboard .engage:disabled {
+  cursor: default;
+  color: var(--warm);
+  border-color: rgba(255, 205, 120, 0.5);
+  background: rgba(255, 190, 90, 0.07);
+  box-shadow: none;
+  text-shadow: 0 0 10px rgba(255, 190, 90, 0.6);
+}
+
+#dashboard .engage:focus-visible {
+  outline: 1px solid #eafaff;
+  outline-offset: 2px;
 }
 
 #dashboard .footer {
   position: absolute;
-  bottom: 58px;
+  bottom: 54px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 11px;
-  letter-spacing: 0.16em;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: #6fa9c0;
+  color: var(--holo-dim);
 }
 
-@keyframes dashboard-in {
+@keyframes holo-flicker {
+  0% {
+    opacity: 0;
+    filter: brightness(2.4);
+  }
+  20% {
+    opacity: 0.7;
+  }
+  28% {
+    opacity: 0.2;
+  }
+  45% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+@keyframes holo-in {
   from {
     opacity: 0;
-    filter: brightness(2.2);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    filter: none;
+    transform: none;
+  }
+}
+
+@keyframes holo-scan {
+  from {
+    background-position: 0 120%;
+  }
+  to {
+    background-position: 0 -120%;
+  }
+}
+
+@keyframes holo-route {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+@keyframes holo-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes holo-blink {
+  to {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #dashboard *,
+  #dashboard *::before,
+  #dashboard *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

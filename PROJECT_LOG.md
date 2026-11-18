@@ -798,3 +798,251 @@ experiments that can be thrown away.
 - Backup: a private GitHub repository, TravisJohn/drift (origin),
   holds `main` and every checkpoint tag. Pushed after each commit to
   `main`; experiment branches are pushed only when worth keeping.
+
+## 2026-11-18 - Experiment: new drone model (branch `experiment/new-drone`)
+
+**Author request:** branch from the checkpoint and change the drone, as
+a test of what the new model (Claude Opus) can do. Cut from
+`checkpoint-2026-11-18`. 492 tests passing (24 new); lint, format,
+types and build clean. Not merged into `main`.
+
+The old drone was a grey squashed sphere with a ring and a dot of light.
+The new one is a small "surveyor" maintenance drone with some character,
+in keeping with the PRD's lonely, quiet tone:
+
+- **Hull:** a squat two-tone body, painted off-white over a gunmetal
+  belly, with an amber service stripe, a top hatch and side vents.
+- **Face:** a dark glass visor across the nose with one glowing eye. It
+  blinks at irregular moments (sometimes a quick double), slides into
+  turns so the drone looks where it is going, and wanders slowly when
+  the drone is still, as if looking around the empty room.
+- **Thrusters:** four ducted fans on struts at the diagonals, glowing
+  inside. They tilt so their exhaust points away from the direction of
+  travel and glow brighter with speed; a hover ring under the belly
+  shares the glow.
+- **Antenna** with a red beacon that flashes once every 2.8 s, and a
+  tool arm folded under the chin.
+
+Code: `player/droneModel.ts` builds the geometry, `player/droneAnimation.ts`
+holds the motion rules as pure functions (tested without a renderer),
+`player/droneVisual.ts` applies them each frame. All colours and timings
+are in a new `droneLook` section of `gameConfig.ts`. `game.ts` now passes
+the frame clock to the drone.
+
+Constraints kept:
+- Looks never change collision: a test checks every vertex stays inside
+  the 0.35 m collision sphere, including with the thrusters at full tilt.
+- Still exactly two lights on the drone (hover glow, now under the belly,
+  and the headlight, now at the eye). Lights cost every lit surface.
+- Static parts sharing a material are merged: 16 meshes, about 6,000
+  triangles. Measured in one page on the integrated-graphics target by
+  hiding and showing the drone six times: 14.18 ms against 14.00 ms a
+  frame, about 0.2 ms, within the noise.
+
+Not checked: the drone in motion at full frame rate in a normal browser.
+Movement and thruster tilt were checked with synthetic key presses and
+the numbers read back; pictures are still frames from the hidden pane.
+
+## 2026-11-18 - Experiment: Star Wars-style exterior and a real ship hum (branch `experiment/star-hull`)
+
+**Author request:** after approving the new drone, change the ship's
+outside to a "Star Wars vibe" (outside only, not the interior), and make
+the humming louder and more realistic. Branched from
+`experiment/new-drone`, so it carries the new drone too. 525 tests
+passing (33 new); lint, format, types and build clean. Not merged.
+
+### Exterior
+
+The cinematic view (V during a journey) showed the ship as plain dark
+boxes. It is now an original ship in the weathered "used universe" style
+those films are known for. It does not copy any real film ship.
+
+- **Shape from the layout** (`exterior/hullPlan.ts`, pure): rooms that
+  cross the centre line form a lofted, chamfered spine, wide at the
+  bridge and engine room and sloping in at the corridor, with a tapered
+  prow and an engine face. Side rooms become bolted-on modules. Added on
+  top: a raised bridge canopy, a dorsal ridge, a keel, radiator housings
+  on the stern flanks and a comms dish on the starboard module. A test
+  checks every room corner lies inside the hull.
+- **Surface:** a generated plating texture (many plate sizes from
+  repeated random cuts, a few darker service panels and faded
+  replacement plates, seams with a lit edge, grime and streaks), and
+  about 180 pieces of surface detail (plates, stacked boxes, pipe runs)
+  scattered over the hull tops.
+- **Lights:** the real windows glow on the outside in their room's light,
+  split into panes; rows of small portholes (about half lit) give scale;
+  the canopy has glazing; red port and green starboard lights swell
+  slowly and white strobes double-flash.
+- **Engines:** three main nozzles and two small ones with ion-blue cores
+  and soft additive plumes; brightness follows the journey's engine
+  output, as before.
+- A faint cool fill light, part of the exterior only, keeps the shadowed
+  flank readable. The cinematic orbit pulled back from 30 m to 46 m (and
+  9 m to 12 m high) so the larger ship fits the frame.
+- Cost, measured in one page by showing and hiding the ship six times:
+  3.51 ms against 2.64 ms a frame, about 0.9 ms, in a view that skips the
+  interior (about 14 ms) entirely. Building it adds about 50 ms at
+  startup. Seven meshes plus five light bulbs.
+
+### Hum
+
+`public/audio/amb_ship_hum` is empty, so the ship hum has been silent all
+along; turning it up would have changed nothing. `audio/shipHum.ts` now
+synthesizes one live with Web Audio, no file involved:
+- electrical: a 55 Hz hum with harmonics, two detuned copies beating
+  slowly so it never sounds like a test tone;
+- air: deep filtered brown noise with a slow breathing swell
+  (ventilation);
+- rumble: sub-bass tone plus very low noise, quiet when docked and rising
+  with the engines during a journey.
+It grows louder toward the engine room. Levels in
+`gameConfig.audio.shipHum`; `enabled: false` turns it off.
+
+Flagged against the hard constraints: the game used to be fully silent
+with no audio files. It now always hums. The rule itself still holds -
+a missing file still logs one warning and plays nothing - and the hum is
+code, not a committed audio file. If the author wants silence without
+files, set `shipHum.enabled` to false.
+
+Also: `mulberry32` moved to `core/random.ts` (starfield re-exports it)
+and the blink shape to `rendering/pulse.ts`, shared by the drone beacon
+and the running lights.
+
+Not checked: the hum by ear (the Web Audio graph was confirmed running
+in the page with the expected levels, but nobody has listened to it),
+and the exterior in motion at full frame rate in a normal browser.
+
+## 2026-11-18 - Going outside shows the same ship (branch `experiment/star-hull`)
+
+**Author report:** the new exterior only appeared with V. The author
+also flies the drone out of the ship and likes doing so, but out there
+the ship looked like the old open-topped rooms. Inside and outside must
+agree.
+
+How the drone gets out: window openings have glass for looks but no
+collider, so the drone can fly through any window. Kept as a feature.
+
+- `rendering/viewMode.ts` (pure): each frame is 'cinematic', 'dashboard',
+  'interior' or 'exterior'. The follow camera's position decides: inside
+  the hull (`ShipExterior.contains`, from the hull plan) is 'interior',
+  beyond it is 'exterior'. Between a room's wall and the hull skin still
+  counts as inside, so the switch happens in open space, not inside the
+  hull's thickness.
+- Exterior view: the space scene is drawn from the follow camera's real
+  position with the hull shown and the interior not drawn at all. The
+  drone moves into the space scene while outside, so it is drawn and lit
+  with the hull (its headlight falls on the plating); its deck shadow is
+  hidden. It moves back on re-entry. The V shot also shows the drone when
+  it is outside.
+- Hull visibility is now one rule in game.ts: shown during the cinematic
+  shot or while the drone's camera is outside.
+- Hum: outside, in vacuum, the synthesized hum drops to 20 %
+  (`shipHum.outsideLevel`): only a faint thrum through the drone's frame.
+- 531 tests passing (6 new); lint, format, types and build clean.
+
+Checked in the page by placing the drone: inside the cargo bay and just
+through its window (interior view), beside the ship and above it
+(exterior view, drone in the space scene). Not checked: flying out and
+back in by hand at full frame rate.
+
+Open question for the author: the drone can fly away from the ship
+without limit. A soft tether (a limit on how far it can drift) would be
+a small follow-up if wanted.
+
+## 2026-11-18 - Experiment: drone tether with a red warning glow (branch experiment/star-hull)
+
+Answers the open question above: the drone can no longer drift off
+forever. Approved by the author ("a soft limit ... a red warning glow").
+
+- `physics/tether.ts` (pure): distance is measured from the hull's
+  bounding box (`hullBounds` in hullPlan), so the margin is the same off
+  the nose, the sides and the stern. Config `drone.tether`:
+  warn at 5 m (strain starts rising from 0), soft spring pull from 8 m
+  (felt, not hit), hard stop at 12 m (held there, outward speed removed;
+  sideways drift kept). Inside the ship nothing changes.
+- `DroneController` takes the tether box and reports `tetherStrain` 0..1.
+- Red warning (`droneVisual`, timing in `droneAnimation.warningLevel`):
+  eye, stripe, beacon, thruster glow and hover light shift toward
+  `droneLook.warningColor`, pulsing faster as strain grows, inside a soft
+  additive red halo (hidden, so free, when there is no strain). First try
+  only recoloured the eye and lights; from behind in open space that did
+  not read, so the halo and stripe were added.
+- Ship AI: a new `tetherWarning` line, spoken once when strain reaches
+  `speakAtStrain` (0.5), re-armed after the drone comes back within reach.
+- 548 tests passing (17 new); lint, format, types and build clean.
+
+Checked in the page by placing the drone 11.5 m off the starboard side:
+the spring drew it back, the drone glowed red and the AI line fired.
+Not checked: flying out to the limit by hand at full frame rate.
+
+## 2026-11-18 - Tether warning moves to the antenna, with a beep (branch experiment/star-hull)
+
+Author feedback on the first version: the red glow was too big. Wanted
+instead: the glow on the antenna, and a beeping warning sound.
+
+- The warning now lives on the antenna only. While the drone strains at
+  its tether the beacon turns red and flashes on each alarm beat inside a
+  small red glow (7 cm, centred on the beacon). The eye, stripe,
+  thrusters and hover light keep their normal colours; the body-sized
+  halo is gone.
+- `player/warningBeat.ts` (pure): one rhythm drives both the flash and
+  the beep, so they land together. First beat the moment strain begins;
+  then every 0.9 s at first strain down to 0.18 s at the limit, like a
+  parking sensor (`droneLook.warningBeat`).
+- `audio/warningBeep.ts`: a short synthesized chirp (two sines a fifth
+  apart, 80 ms), rising from 1250 to 1650 Hz with strain
+  (`audio.warningBeep`; `enabled: false` silences it). It is the drone's
+  own alarm, so it plays outside in vacuum too. No audio file; without
+  Web Audio it warns once and stays silent.
+- `droneAnimation.warningLevel` removed (replaced by WarningBeat).
+- 555 tests passing; lint, format, types and build clean.
+
+Checked in the page: beeps fire and slow as the tether pulls the drone
+back in; the antenna glows red. Not checked by ear: the beep's sound.
+
+## 2026-11-18 - Command deck: the dashboard becomes the hub (branch experiment/holo-dashboard)
+
+Author report: "I cannot set course or look at the outside view" from the
+dashboard. Not a bug: set course lived only at the helm, and V only
+worked in flight. The author wants the dashboard to be the entry point
+for everything, holographic and polished. Plan approved before building.
+Branched from experiment/star-hull, so it carries today's other work.
+
+- Tabs: Navigation, Cameras, Ship, Training (keys 1-4, A/D or arrows,
+  or click). Live journey and systems stay in a status column beside
+  them; the ship hologram floats in the middle as before.
+- Navigation: a star chart (SVG) of the known places with the route to
+  the chosen destination; pick one and Engage (Enter, double-click or
+  the button). It sends the same `travel:requested` as the helm, and the
+  dashboard stays open to show the departure. Underway the course is
+  locked, the route turns amber and the ship moves along it. Places gain
+  a `chart` position in content/destinations.ts (validated 0..1).
+- Cameras: "Exterior orbit" closes the dashboard and opens the outside
+  view. V now works while docked too; the exterior shot ends itself on
+  arrival (was: whenever docked). Hint text no longer says "in flight".
+- Ship: compartments light up on the hologram, as before, but only while
+  that tab shows. Training: as before; T still starts it from any tab.
+- Look: cyan glass with scanlines, corner brackets, a slow scan sweep,
+  flicker-in, monospaced readouts; motion off under reduced-motion.
+- Structure: the overlay is a shell; each tab is a panel behind one small
+  interface (ui/dashboard/panel.ts); data stays in the pure model.
+- Helm (E) and the V key remain as shortcuts.
+- 570 tests passing (dashboard tests rewritten for the tabs); lint,
+  format, types and build clean.
+
+Checked in the page with real key presses: opened the dashboard, chose
+Cinder, Enter set the course (cruising, route locked), Cameras > Enter
+opened the outside view in flight, V in and out while docked. No console
+errors. Not checked: a full-size window by the author.
+
+Also found today: the "background noise" was a copy of the game left
+running in the app's hidden browser pane during testing. The pane is
+closed after each check now.
+
+## 2026-11-18 - Kept: today's experiments merged into `main`
+
+**Author decision:** "our experiment (today) works so make it main."
+`experiment/holo-dashboard` (which carries `experiment/new-drone` and
+`experiment/star-hull`) was merged into `main` and tagged
+`checkpoint-2026-11-18-b`. Next experiment: ship combat, on a new branch
+cut from that checkpoint.

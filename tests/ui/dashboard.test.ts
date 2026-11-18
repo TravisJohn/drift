@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { locations } from '../../src/content/destinations';
 import { shipLayout } from '../../src/content/shipLayout';
 import { VESSEL_NAME, roomReadouts } from '../../src/content/shipSystems';
 import { PlayerMode } from '../../src/state/playerMode';
-import { type DashboardInput, buildDashboardData } from '../../src/ui/dashboardModel';
+import { drawStarChart } from '../../src/ui/dashboard/starChart';
+import { type DashboardInput, buildDashboardData, cssColor } from '../../src/ui/dashboardModel';
 import { type DashboardCallbacks, DashboardOverlay } from '../../src/ui/dashboardOverlay';
 
 const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
@@ -10,8 +12,10 @@ const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
   podCount: 4,
   phase: 'docked',
   progress: 0,
-  locationName: 'Anchorage Point',
-  destinationName: null,
+  places: locations,
+  locationId: 'anchorage',
+  destinationId: null,
+  cruiseScale: 1,
   training: [{ id: 'placeholder', title: 'Training console' }],
   ...over,
 });
@@ -20,7 +24,7 @@ const value = (
   label: string,
 ): string | undefined => rows.find((r) => r.label === label)?.value;
 
-describe('buildDashboardData', () => {
+describe('buildDashboardData: status readouts', () => {
   it('names the vessel and lists every compartment with its readout', () => {
     const data = buildDashboardData(input());
     expect(data.vessel).toBe(VESSEL_NAME);
@@ -43,7 +47,7 @@ describe('buildDashboardData', () => {
 
   it('cruising: shows origin, destination and progress, with autopilot engaged', () => {
     const data = buildDashboardData(
-      input({ phase: 'cruising', progress: 0.426, destinationName: 'Aurelia' }),
+      input({ phase: 'cruising', progress: 0.426, destinationId: 'aurelia' }),
     );
     expect(value(data.journey, 'Status')).toBe('Cruising');
     expect(value(data.journey, 'From')).toBe('Anchorage Point');
@@ -54,9 +58,9 @@ describe('buildDashboardData', () => {
   });
 
   it('departure and arrival are shown as manoeuvres, not as a percentage', () => {
-    const departing = buildDashboardData(input({ phase: 'departing', destinationName: 'Cinder' }));
+    const departing = buildDashboardData(input({ phase: 'departing', destinationId: 'cinder' }));
     expect(value(departing.journey, 'Progress')).toBe('Departing');
-    const arriving = buildDashboardData(input({ phase: 'arriving', destinationName: 'Cinder' }));
+    const arriving = buildDashboardData(input({ phase: 'arriving', destinationId: 'cinder' }));
     expect(value(arriving.journey, 'Progress')).toBe('Arriving');
   });
 
@@ -74,25 +78,98 @@ describe('buildDashboardData', () => {
     ];
     expect(buildDashboardData(input({ training })).training).toEqual(training);
   });
+
+  it('fails loud on a place it does not know (content error, not a blank screen)', () => {
+    expect(() => buildDashboardData(input({ locationId: 'nowhere' }))).toThrow(/unknown place/);
+  });
+});
+
+describe('buildDashboardData: navigation (set course from the dashboard)', () => {
+  it('docked: a course can be set, to every place but the one the ship is at', () => {
+    const nav = buildDashboardData(input()).navigation;
+    expect(nav.canSetCourse).toBe(true);
+    expect(nav.here.id).toBe('anchorage');
+    expect(nav.destinations.map((d) => d.id)).toEqual(['aurelia', 'cinder']);
+    expect(nav.courseId).toBeNull();
+    expect(nav.shipAt).toEqual(nav.here.chart);
+  });
+
+  it('shows travel times as this run will take them (cruise scale applied)', () => {
+    const nav = buildDashboardData(input({ cruiseScale: 0.5 })).navigation;
+    expect(nav.destinations.find((d) => d.id === 'aurelia')?.etaSeconds).toBe(45);
+  });
+
+  it('underway: the course is locked and the ship moves along the route', () => {
+    const at = (phase: DashboardInput['phase'], progress: number) =>
+      buildDashboardData(input({ phase, progress, destinationId: 'aurelia' })).navigation;
+    const aurelia = locations.find((l) => l.id === 'aurelia')!;
+    const anchorage = locations.find((l) => l.id === 'anchorage')!;
+    expect(at('cruising', 0.5).canSetCourse).toBe(false);
+    expect(at('cruising', 0.5).courseId).toBe('aurelia');
+    expect(at('departing', 0).shipAt).toEqual(anchorage.chart);
+    expect(at('cruising', 0.5).shipAt.x).toBeCloseTo((anchorage.chart.x + aurelia.chart.x) / 2, 9);
+    expect(at('arriving', 1).shipAt).toEqual(aurelia.chart);
+    expect(at('cruising', 0.5).status).toContain('Aurelia');
+  });
+
+  it('turns content colours into CSS colours', () => {
+    expect(cssColor(0x7fd4e8)).toBe('#7fd4e8');
+    expect(cssColor(0x00000f)).toBe('#00000f');
+  });
+
+  it('offers the exterior camera', () => {
+    expect(buildDashboardData(input()).cameras.map((c) => c.id)).toEqual(['exterior']);
+  });
+});
+
+describe('drawStarChart', () => {
+  const nav = buildDashboardData(input()).navigation;
+  const marks = (svg: SVGSVGElement) =>
+    [...svg.querySelectorAll('.place')].map((g) => g.getAttribute('data-id'));
+
+  it('marks every known place, with the ship on the chart', () => {
+    const svg = drawStarChart(nav, null);
+    expect(marks(svg).sort()).toEqual(['anchorage', 'aurelia', 'cinder']);
+    expect(svg.querySelector('.ship-marker')).not.toBeNull();
+  });
+
+  it('draws a dashed route to the destination being considered, and none without one', () => {
+    expect(drawStarChart(nav, null).querySelector('.route')).toBeNull();
+    const route = drawStarChart(nav, 'cinder').querySelector('.route');
+    expect(route?.classList.contains('locked')).toBe(false);
+  });
+
+  it('draws the course as a locked route while underway', () => {
+    const underway = buildDashboardData(
+      input({ phase: 'cruising', progress: 0.3, destinationId: 'cinder' }),
+    ).navigation;
+    expect(drawStarChart(underway, null).querySelector('.route.locked')).not.toBeNull();
+  });
 });
 
 describe('DashboardOverlay', () => {
   let overlay: DashboardOverlay;
   let callbacks: {
     onRoomSelected: Mock<DashboardCallbacks['onRoomSelected']>;
+    onSetCourse: Mock<DashboardCallbacks['onSetCourse']>;
+    onExteriorView: Mock<DashboardCallbacks['onExteriorView']>;
     onTraining: Mock<DashboardCallbacks['onTraining']>;
     onClose: Mock<DashboardCallbacks['onClose']>;
   };
   const press = (code: string, repeat = false): void => {
     document.dispatchEvent(new KeyboardEvent('keydown', { code, repeat }));
   };
+  const visible = (): HTMLElement =>
+    document.querySelector('#dashboard .tab-panel:not([hidden])') as HTMLElement;
   const selected = (): string | null =>
-    document.querySelector('#dashboard .item.selected')?.textContent ?? null;
+    visible().querySelector('.item.selected')?.textContent ?? null;
 
   beforeEach(() => {
     overlay = new DashboardOverlay();
     callbacks = {
       onRoomSelected: vi.fn<DashboardCallbacks['onRoomSelected']>(),
+      onSetCourse: vi.fn<DashboardCallbacks['onSetCourse']>(),
+      onExteriorView: vi.fn<DashboardCallbacks['onExteriorView']>(),
       onTraining: vi.fn<DashboardCallbacks['onTraining']>(),
       onClose: vi.fn<DashboardCallbacks['onClose']>(),
     };
@@ -103,36 +180,87 @@ describe('DashboardOverlay', () => {
     overlay.close();
   });
 
-  it('shows the vessel, live readouts, compartments and training', () => {
+  it('shows the vessel, live readouts and the four tabs', () => {
     const text = document.getElementById('dashboard')?.textContent ?? '';
     expect(text).toContain(VESSEL_NAME);
     expect(text).toContain('Anchorage Point');
-    expect(text).toContain('Engineering');
-    expect(text).toContain('Training console');
+    const tabs = [...document.querySelectorAll('#dashboard .tab')].map((t) => t.textContent);
+    expect(tabs).toEqual(['1Navigation', '2Cameras', '3Ship', '4Training']);
   });
 
-  it('opens on the first compartment and tells the game so (hologram highlight)', () => {
+  it('opens on navigation, with no compartment lit on the hologram', () => {
+    expect(overlay.activeTab).toBe('navigation');
+    expect(visible().querySelector('.star-chart')).not.toBeNull();
+    expect(callbacks.onRoomSelected).toHaveBeenLastCalledWith(null);
+  });
+
+  it('Enter engages the chosen destination and keeps the dashboard open', () => {
+    press('ArrowDown');
+    press('Enter');
+    expect(callbacks.onSetCourse).toHaveBeenCalledWith('cinder');
+    expect(overlay.isOpen).toBe(true);
+  });
+
+  it('the Engage button names the destination and sets the course', () => {
+    const engage = visible().querySelector('.engage') as HTMLButtonElement;
+    expect(engage.textContent).toContain('Aurelia');
+    engage.click();
+    expect(callbacks.onSetCourse).toHaveBeenCalledWith('aurelia');
+  });
+
+  it('underway the course is locked: nothing to engage, the button says why', () => {
+    overlay.update(
+      buildDashboardData(input({ phase: 'cruising', progress: 0.2, destinationId: 'aurelia' })),
+    );
+    press('ArrowDown');
+    press('Enter');
+    expect(callbacks.onSetCourse).not.toHaveBeenCalled();
+    const engage = visible().querySelector('.engage') as HTMLButtonElement;
+    expect(engage.disabled).toBe(true);
+    expect(engage.textContent).toBe('Autopilot engaged');
+    expect(selected()).toContain('Aurelia');
+  });
+
+  it('number keys, arrows and clicks switch tabs', () => {
+    press('Digit3');
+    expect(overlay.activeTab).toBe('ship');
+    press('ArrowRight');
+    expect(overlay.activeTab).toBe('training');
+    press('ArrowRight');
+    expect(overlay.activeTab).toBe('navigation');
+    (document.querySelectorAll('#dashboard .tab')[1] as HTMLElement).click();
+    expect(overlay.activeTab).toBe('cameras');
+  });
+
+  it('the cameras tab takes the player outside, closing the dashboard first', () => {
+    press('Digit2');
+    press('Enter');
+    expect(callbacks.onExteriorView).toHaveBeenCalledTimes(1);
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+    expect(overlay.isOpen).toBe(false);
+  });
+
+  it('the ship tab lights the first compartment and arrows move through them, wrapping', () => {
+    press('Digit3');
     expect(selected()).toBe(shipLayout.rooms[0]?.name);
     expect(callbacks.onRoomSelected).toHaveBeenLastCalledWith(shipLayout.rooms[0]?.id);
-  });
-
-  it('arrow keys move through the compartments and wrap at both ends', () => {
     press('ArrowDown');
-    expect(selected()).toBe(shipLayout.rooms[1]?.name);
     expect(callbacks.onRoomSelected).toHaveBeenLastCalledWith(shipLayout.rooms[1]?.id);
+    const second = shipLayout.rooms[1];
+    if (!second) throw new Error('layout needs at least two rooms');
+    expect(visible().querySelector('.detail')?.textContent).toBe(roomReadouts[second.id]);
     press('ArrowUp');
     press('ArrowUp');
     expect(selected()).toBe(shipLayout.rooms[shipLayout.rooms.length - 1]?.name);
   });
 
-  it("shows the selected compartment's readout", () => {
-    press('ArrowDown');
-    const second = shipLayout.rooms[1];
-    if (!second) throw new Error('layout needs at least two rooms');
-    expect(document.querySelector('#dashboard .detail')?.textContent).toBe(roomReadouts[second.id]);
+  it('leaving the ship tab clears the hologram highlight', () => {
+    press('Digit3');
+    press('Digit1');
+    expect(callbacks.onRoomSelected).toHaveBeenLastCalledWith(null);
   });
 
-  it('T starts training and closes the dashboard, without also reporting a close', () => {
+  it('T starts training from any tab and closes, without also reporting a close', () => {
     press('KeyT');
     expect(callbacks.onTraining).toHaveBeenCalledWith('placeholder');
     expect(callbacks.onClose).not.toHaveBeenCalled();
@@ -140,7 +268,8 @@ describe('DashboardOverlay', () => {
   });
 
   it('clicking a training module starts that module', () => {
-    (document.querySelector('#dashboard .item.training') as HTMLElement).click();
+    press('Digit4');
+    (visible().querySelector('.item') as HTMLElement).click();
     expect(callbacks.onTraining).toHaveBeenCalledWith('placeholder');
   });
 
@@ -157,14 +286,16 @@ describe('DashboardOverlay', () => {
     expect(overlay.isOpen).toBe(false);
   });
 
-  it('update() refreshes the live readouts and keeps the selection', () => {
+  it('update() refreshes the live readouts and keeps the tab and selection', () => {
+    press('Digit3');
     press('ArrowDown');
     overlay.update(
-      buildDashboardData(input({ phase: 'cruising', progress: 0.5, destinationName: 'Aurelia' })),
+      buildDashboardData(input({ phase: 'cruising', progress: 0.5, destinationId: 'aurelia' })),
     );
     const text = document.getElementById('dashboard')?.textContent ?? '';
     expect(text).toContain('Cruising');
     expect(text).toContain('50%');
+    expect(overlay.activeTab).toBe('ship');
     expect(selected()).toBe(shipLayout.rooms[1]?.name);
   });
 
