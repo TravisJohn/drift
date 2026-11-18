@@ -153,6 +153,7 @@ describe('DashboardOverlay', () => {
     onRoomSelected: Mock<DashboardCallbacks['onRoomSelected']>;
     onSetCourse: Mock<DashboardCallbacks['onSetCourse']>;
     onExteriorView: Mock<DashboardCallbacks['onExteriorView']>;
+    onCombat: Mock<DashboardCallbacks['onCombat']>;
     onTraining: Mock<DashboardCallbacks['onTraining']>;
     onClose: Mock<DashboardCallbacks['onClose']>;
   };
@@ -170,6 +171,7 @@ describe('DashboardOverlay', () => {
       onRoomSelected: vi.fn<DashboardCallbacks['onRoomSelected']>(),
       onSetCourse: vi.fn<DashboardCallbacks['onSetCourse']>(),
       onExteriorView: vi.fn<DashboardCallbacks['onExteriorView']>(),
+      onCombat: vi.fn<DashboardCallbacks['onCombat']>(),
       onTraining: vi.fn<DashboardCallbacks['onTraining']>(),
       onClose: vi.fn<DashboardCallbacks['onClose']>(),
     };
@@ -180,12 +182,12 @@ describe('DashboardOverlay', () => {
     overlay.close();
   });
 
-  it('shows the vessel, live readouts and the four tabs', () => {
+  it('shows the vessel, live readouts and the five tabs', () => {
     const text = document.getElementById('dashboard')?.textContent ?? '';
     expect(text).toContain(VESSEL_NAME);
     expect(text).toContain('Anchorage Point');
     const tabs = [...document.querySelectorAll('#dashboard .tab')].map((t) => t.textContent);
-    expect(tabs).toEqual(['1Navigation', '2Cameras', '3Ship', '4Training']);
+    expect(tabs).toEqual(['1Navigation', '2Cameras', '3Ship', '4Tactical', '5Training']);
   });
 
   it('opens on navigation, with no compartment lit on the hologram', () => {
@@ -224,6 +226,8 @@ describe('DashboardOverlay', () => {
   it('number keys, arrows and clicks switch tabs', () => {
     press('Digit3');
     expect(overlay.activeTab).toBe('ship');
+    press('ArrowRight');
+    expect(overlay.activeTab).toBe('tactical');
     press('ArrowRight');
     expect(overlay.activeTab).toBe('training');
     press('ArrowRight');
@@ -268,9 +272,27 @@ describe('DashboardOverlay', () => {
   });
 
   it('clicking a training module starts that module', () => {
-    press('Digit4');
+    press('Digit5');
     (visible().querySelector('.item') as HTMLElement).click();
     expect(callbacks.onTraining).toHaveBeenCalledWith('placeholder');
+  });
+
+  it('the tactical tab offers Rookie then Ace drills; Enter engages and closes the dashboard', () => {
+    press('Digit4');
+    expect(overlay.activeTab).toBe('tactical');
+    expect(selected()).toContain('Rookie');
+    press('ArrowDown');
+    expect(selected()).toContain('Ace');
+    press('Enter');
+    expect(callbacks.onCombat).toHaveBeenCalledWith('ace');
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+    expect(overlay.isOpen).toBe(false);
+  });
+
+  it('the dashboard can open straight onto the tactical tab (returning from a fight)', () => {
+    overlay.close();
+    overlay.open(buildDashboardData(input()), callbacks, document.body, 'tactical');
+    expect(overlay.activeTab).toBe('tactical');
   });
 
   it('Esc closes and reports it', () => {
@@ -312,6 +334,20 @@ describe('DashboardOverlay', () => {
     press('KeyT');
     expect(callbacks.onTraining).not.toHaveBeenCalled();
     expect(overlay.isOpen).toBe(true);
+  });
+});
+
+describe('PlayerMode: combat', () => {
+  it('a fight is entered from roaming and left back to roaming', () => {
+    const mode = new PlayerMode();
+    expect(mode.enterCombat()).toEqual({ from: 'roaming', to: 'inCombat' });
+    expect(mode.exitToRoaming()).toEqual({ from: 'inCombat', to: 'roaming' });
+  });
+
+  it('a fight cannot start on top of the dashboard (it must close first)', () => {
+    const mode = new PlayerMode();
+    mode.enterDashboard();
+    expect(() => mode.enterCombat()).toThrow(/cannot enter inCombat/);
   });
 });
 

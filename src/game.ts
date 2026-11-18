@@ -54,7 +54,10 @@ import type { RoomSpec } from './content/shipLayout';
 import { AppState } from './state/appState';
 import { TitleScreen } from './ui/titleScreen';
 import { PauseMenu } from './ui/pauseMenu';
-import { DashboardOverlay } from './ui/dashboardOverlay';
+import { DashboardOverlay, type DashboardTabId } from './ui/dashboardOverlay';
+import { CombatOverlay, type CombatOutcome } from './ui/combatOverlay';
+import { CombatSounds } from './combat/combatSounds';
+import type { DifficultyId } from './combat/combatTypes';
 import { type DashboardData, buildDashboardData } from './ui/dashboardModel';
 import { type HologramPlacement, ShipHologram } from './world/ship/shipHologram';
 import { dashboardPose } from './travel/dashboardCamera';
@@ -134,6 +137,9 @@ export class Game {
 
   // --- Ship dashboard: bridge holo-table, forward view, ship hologram ---
   private readonly dashboard = new DashboardOverlay();
+  // --- Tactical combat: a 2D fight on the hologram (src/combat) ---
+  private readonly combatSounds = new CombatSounds();
+  private readonly combat = new CombatOverlay({ audio: this.combatSounds });
   private readonly hologram = new ShipHologram(shipLayout);
   private readonly bridgeRoom: RoomSpec;
   private readonly hologramAtTable: HologramPlacement;
@@ -160,6 +166,7 @@ export class Game {
     this.intercom.resume();
     this.hum.resume();
     this.warningBeep.resume();
+    this.combatSounds.resume();
   };
   /** A hand on the view while it is being dragged round. */
   private readonly onLookChange = (looking: boolean): void => {
@@ -376,6 +383,7 @@ export class Game {
     this.intercom.resume();
     this.hum.resume();
     this.warningBeep.resume();
+    this.combatSounds.resume();
     this.appState.start();
     this.events.emit('app:started');
   }
@@ -391,11 +399,13 @@ export class Game {
     this.titleScreen.close();
     this.pauseMenu.close();
     this.dashboard.close();
+    this.combat.close();
     this.hologram.dispose();
     this.audio.dispose();
     this.intercom.dispose();
     this.hum.dispose();
     this.warningBeep.dispose();
+    this.combatSounds.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -444,7 +454,8 @@ export class Game {
       this.menu.isOpen ||
       this.puzzleOverlay.isOpen ||
       this.pauseMenu.isOpen ||
-      this.dashboard.isOpen;
+      this.dashboard.isOpen ||
+      this.combat.isOpen;
 
     // Title / pause: time stands still, but the ship keeps breathing and
     // audio fades keep moving so nothing pops when the player returns.
@@ -489,6 +500,12 @@ export class Game {
     // M4: space keeps drifting whatever the player is doing.
     this.travelView = computeTravelView(this.shipSnapshot());
     this.spaceScene.update(dt, this.travelView);
+
+    if (this.playerMode.mode === 'inCombat') {
+      // The fight runs on the hologram; the bridge view waits behind it.
+      this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
+      this.combat.update(dt);
+    }
 
     if (this.playerMode.mode === 'atDashboard') {
       this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
@@ -668,8 +685,8 @@ export class Game {
     });
   }
 
-  /** Open the ship dashboard at the bridge holo-table. */
-  private openDashboard(): void {
+  /** Open the ship dashboard at the bridge holo-table, on one of its tabs. */
+  private openDashboard(tab: DashboardTabId = 'navigation'): void {
     this.events.emit('player:modeChanged', this.playerMode.enterDashboard());
     this.releaseControls();
     this.audio.playOnce('sfx_ui_blip');
@@ -678,19 +695,48 @@ export class Game {
     this.hologram.setPlacement(this.hologramInView);
     this.events.emit('dashboard:opened');
 
-    this.dashboard.open(this.dashboardData(), {
-      onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
-      onSetCourse: (destinationId) => this.setCourseFromDashboard(destinationId),
-      onExteriorView: () => {
-        this.closeDashboard();
-        this.enterCinematic();
+    this.dashboard.open(
+      this.dashboardData(),
+      {
+        onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
+        onSetCourse: (destinationId) => this.setCourseFromDashboard(destinationId),
+        onExteriorView: () => {
+          this.closeDashboard();
+          this.enterCinematic();
+        },
+        onCombat: (difficulty) => {
+          this.closeDashboard();
+          this.startCombat(difficulty);
+        },
+        onTraining: (moduleId) => {
+          this.closeDashboard();
+          this.openTerminal('dashboard', moduleId);
+        },
+        onClose: () => this.closeDashboard(),
       },
-      onTraining: (moduleId) => {
-        this.closeDashboard();
-        this.openTerminal('dashboard', moduleId);
-      },
-      onClose: () => this.closeDashboard(),
+      document.body,
+      tab,
+    );
+  }
+
+  /** Begin a tactical fight on the hologram (from the dashboard's tactical tab). */
+  private startCombat(difficulty: DifficultyId): void {
+    this.events.emit('player:modeChanged', this.playerMode.enterCombat());
+    this.releaseControls();
+    this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
+    this.combatSounds.resume();
+    this.combat.open(difficulty, {
+      onEnd: (outcome, score) => this.endCombat(outcome, score),
     });
+    this.events.emit('combat:started', { difficulty });
+  }
+
+  /** The player left the fight: back to the deck, on the tactical tab. */
+  private endCombat(outcome: CombatOutcome, score: number): void {
+    this.events.emit('combat:ended', { outcome, score });
+    this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+    this.dashboardView = null;
+    this.openDashboard('tactical');
   }
 
   /** Return from the dashboard view to the drone. */
@@ -745,6 +791,13 @@ export class Game {
   }
 
   private render(alpha: number): void {
+    if (this.combat.isOpen) {
+      // The fight covers the screen: draw only the hologram, and leave the
+      // 3D view (and its resolution tuning) alone until it closes.
+      this.combat.render(performance.now());
+      this.lastFrameAt = null;
+      return;
+    }
     // Rolling fps over ~30 frames, for the PRD performance check (M7).
     const now = performance.now();
     if (this.lastFrameAt !== null) {

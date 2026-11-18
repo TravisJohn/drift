@@ -3,11 +3,11 @@
  *
  * The 3D hologram of the ship floats in the middle (drawn by the game).
  * Around it: a status column on the left (live journey and systems) and a
- * command panel on the right with four tabs - Navigation (star chart, set
- * course), Cameras (go outside), Ship (compartments, lit on the hologram)
- * and Training.
+ * command panel on the right with five tabs - Navigation (star chart, set
+ * course), Cameras (go outside), Ship (compartments, lit on the hologram),
+ * Tactical (combat drills) and Training.
  *
- * Keyboard: 1-4 or A/D (←→) switch tabs; W/S (↑↓) move the selection;
+ * Keyboard: 1-5 or A/D (←→) switch tabs; W/S (↑↓) move the selection;
  * Enter acts on it; T starts training from any tab; Esc or E closes.
  * Mouse: click a tab, hover or click an item, or use its button. The
  * overlay owns its own key listener while open so its keys never leak
@@ -23,7 +23,8 @@ import {
   heading,
   wrapIndex,
 } from './dashboard/panel';
-import { CamerasPanel, ShipPanel, TrainingPanel } from './dashboard/simplePanels';
+import { CamerasPanel, ShipPanel, TacticalPanel, TrainingPanel } from './dashboard/simplePanels';
+import type { DifficultyId } from '../combat/combatTypes';
 
 export type { DashboardTabId } from './dashboard/panel';
 
@@ -34,13 +35,21 @@ export interface DashboardCallbacks {
   onSetCourse(destinationId: string): void;
   /** Go outside: the exterior camera. The dashboard has closed. */
   onExteriorView(): void;
+  /** Start a tactical fight. The dashboard has closed. */
+  onCombat(difficulty: DifficultyId): void;
   /** Start a training module. The dashboard has closed. */
   onTraining(moduleId: string): void;
   /** The player closed the dashboard. */
   onClose(): void;
 }
 
-const TAB_KEYS: Record<string, number> = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 };
+const TAB_KEYS: Record<string, number> = {
+  Digit1: 0,
+  Digit2: 1,
+  Digit3: 2,
+  Digit4: 3,
+  Digit5: 4,
+};
 
 export class DashboardOverlay {
   private root: HTMLDivElement | null = null;
@@ -79,6 +88,7 @@ export class DashboardOverlay {
       new NavigationPanel(data, (id) => this.callbacks?.onSetCourse(id)),
       new CamerasPanel(data, () => this.leave((c) => c.onExteriorView())),
       new ShipPanel(data, (id) => this.callbacks?.onRoomSelected(id)),
+      new TacticalPanel(data, (difficulty) => this.leave((c) => c.onCombat(difficulty))),
       new TrainingPanel(data, (id) => this.leave((c) => c.onTraining(id))),
     ];
 
@@ -180,7 +190,8 @@ export class DashboardOverlay {
 
   private renderFooter(): void {
     const panel = this.panels[this.active];
-    if (this.footer && panel) this.footer.textContent = `1-4 tabs · ${panel.hint} · Esc close`;
+    if (this.footer && panel)
+      this.footer.textContent = `1-${this.panels.length} tabs · ${panel.hint} · Esc close`;
   }
 
   private row(row: DashboardRow): HTMLDivElement {

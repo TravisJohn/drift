@@ -5,8 +5,9 @@
  *
  * The dashboard is the ship's command hub: navigation (set a course on the
  * star chart), cameras (the view from outside), the ship's compartments,
- * and training. Live journey and systems readouts sit beside all of them.
+ * tactical (combat drills on the hologram) and training. Live journey and systems readouts sit beside all of them.
  */
+import type { DifficultyId } from '../combat/combatTypes';
 import type { RoomSpec } from '../content/shipLayout';
 import { VESSEL_NAME, roomReadouts } from '../content/shipSystems';
 
@@ -70,6 +71,13 @@ export interface DashboardCamera {
   readonly detail: string;
 }
 
+/** A fight the tactical tab offers. */
+export interface DashboardEngagement {
+  readonly difficulty: DifficultyId;
+  readonly title: string;
+  readonly detail: string;
+}
+
 export interface DashboardData {
   readonly vessel: string;
   readonly journey: readonly DashboardRow[];
@@ -77,6 +85,7 @@ export interface DashboardData {
   readonly navigation: DashboardNavigation;
   readonly cameras: readonly DashboardCamera[];
   readonly rooms: readonly DashboardRoom[];
+  readonly tactical: readonly DashboardEngagement[];
   readonly training: readonly DashboardTraining[];
 }
 
@@ -130,6 +139,19 @@ const CAMERAS: readonly DashboardCamera[] = [
     id: 'exterior',
     title: 'Exterior orbit',
     detail: 'Hull camera on a slow orbit of the ship. Press V to come back in.',
+  },
+];
+
+const ENGAGEMENTS: readonly DashboardEngagement[] = [
+  {
+    difficulty: 'rookie',
+    title: 'Raider patrol · Rookie',
+    detail: 'Three waves of light raiders. They shoot slowly and miss often.',
+  },
+  {
+    difficulty: 'ace',
+    title: 'Raider patrol · Ace',
+    detail: 'The same patrol, tougher and sharper. Shields will not save you for long.',
   },
 ];
 
@@ -244,6 +266,7 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
     systems: systemRows(input),
     navigation: navigation(input),
     cameras: CAMERAS,
+    tactical: ENGAGEMENTS,
     rooms: input.rooms.map((room) => ({
       id: room.id,
       name: room.name,
