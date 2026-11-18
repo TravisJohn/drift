@@ -454,6 +454,11 @@ export const gameConfig = {
       strafeStep: 70,
       strafeNotches: 2,
       /**
+       * The cockpit drifts only while A/D is held (it is harder to judge
+       * a set drift from the seat): holding one drifts this many notches.
+       */
+      holdDriftNotches: 2,
+      /**
        * Shift (while boost energy lasts) goes the way the ship is drifting:
        * with a drift set it adds this much sideways speed (a hard dodge);
        * with none it adds `boostExtra` forward.

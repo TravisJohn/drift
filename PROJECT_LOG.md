@@ -1271,3 +1271,33 @@ follows the drift. 697 tests passing; lint, types and build clean.
 - Status bar shows "+ boost" on whichever it is adding to ("Cruise ·
   Drift left 1 + boost"). The hint reads "Shift boost (toward drift)".
 - Tunable: `ship.boostSide`, `ship.boostAccel`, `defence.boostMinStart`.
+
+## 2026-11-18 - Combat: cockpit view - big console map, INCOMING, hold to drift (branch `experiment/combat`)
+
+**Author feedback:** "THE 2D WORKS PERFECTLY!" The cockpit needed work:
+the map was too small to see a missile from behind, no jets were seen
+approaching, and the set drift made it hard to navigate. Choices made
+with the author: a big map on the centre console; keep 120 degrees but
+make raiders stand out; hold-to-drift in the cockpit. The tactical view
+is unchanged.
+
+- Cause of "no jets approaching": the 120 degree view halved how big
+  everything looks; a raider on a head-on run at 400 to 800 range was a
+  few pixels across.
+- Big holographic map: centred on the instrument console, about a third
+  of the screen's height across (shrinks on narrow screens). Blips, ship
+  and label scale with it, and raiders on an attack run are ringed in
+  red. It sits above the wingman's line; the "CANNONS COOLING" warning
+  moved above the aim ring to make room at small window sizes.
+- Raiders are drawn 1.6x their real size in the cockpit (hits still use
+  the real size; the lock and aim assist cover the difference). A raider
+  on an attack run gets pulsing red brackets with "INCOMING - 529 M"; out
+  of view, its edge arrow flashes red.
+- Hold to drift: in the cockpit A/D drift (two notches) only while held,
+  and the ship glides back to straight on release. The sim takes this as
+  `strafeHold` on the input (null means the tactical view's taps).
+  Switching from the cockpit to tactical keeps whatever drift was held
+  at that moment; from tactical to the cockpit, a set drift ends.
+- 707 tests passing; lint, types and build clean.
+- Tunable: `ship.holdDriftNotches`, and in the cockpit renderer
+  RAIDER_LOOK and consoleMapFrame.

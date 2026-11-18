@@ -150,10 +150,14 @@ reusing what we can from STARFALL (an earlier cockpit shooter prototype).
   love this format, can we have both?"): the top-down tactical hologram,
   and STARFALL's first-person cockpit. C switches at any time. The
   cockpit always looks forward with a wide view (about 120 degrees); the
-  mouse moves the aim ring, and a small 2D holographic map on the
+  mouse moves the aim ring, and a large 2D holographic map on the centre
   console shows everything around the ship, incoming missiles flashing.
-  Raiders behind are seen on that map and are dealt with by changing
-  speed, by missile, or from the tactical view. The rules stay 2D, so in the
+  Raiders are drawn larger than life (the wide view shrinks them), and
+  one turning in on the ship is bracketed in red, INCOMING with its
+  range. In the cockpit A/D drift only while held, and the ship glides
+  back to straight on release (the tactical view keeps the set-and-stay
+  taps). Raiders behind are seen on that map and are dealt with by
+  changing speed, by missile, or from the tactical view. The rules stay 2D, so in the
   cockpit raiders fly on one level near the horizon rather than above
   and below; a full 3D fight would be a separate, larger piece of work.
 - **Consequences:** none that last in this version. Losing or retreating

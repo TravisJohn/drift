@@ -25,6 +25,10 @@ export interface HoloMapFrame {
 export interface HoloMapOptions {
   /** Half-angle of the cockpit's view (radians), drawn as a wedge; omit for none. */
   readonly viewCone?: number;
+  /** Blip, ship and text size (1 = the small corner map); a big map reads better larger. */
+  readonly scale?: number;
+  /** Ring the raiders on an attack run (turning in on the ship) in red. */
+  readonly markAttacks?: boolean;
 }
 
 /** A world point placed on the disc, and whether it was pinned to the rim. */
@@ -82,6 +86,7 @@ export function drawHoloMap(
   options: HoloMapOptions = {},
 ): void {
   const { cx, cy, radius } = frame;
+  const k = options.scale ?? 1;
   const ship = view.player.pos;
   const place = (at: Vec2) => mapPoint(at, ship, frame);
   const flash = 0.5 + 0.5 * Math.sin(time * 14);
@@ -124,7 +129,7 @@ export function drawHoloMap(
     const p = place(rock.pos);
     if (p.pinned) continue;
     c.fillStyle = rgba(CYAN, 0.45);
-    c.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    c.fillRect(p.x - 1.5 * k, p.y - 1.5 * k, 3 * k, 3 * k);
   }
 
   for (const shot of view.shots) {
@@ -134,29 +139,36 @@ export function drawHoloMap(
       // A raider missile: flashing red, with a tail showing where it heads.
       const tail = place(sub(shot.pos, scale(shot.vel, 0.6)));
       c.strokeStyle = rgba(RED, 0.5);
-      c.lineWidth = 1;
+      c.lineWidth = k;
       c.beginPath();
       c.moveTo(tail.x, tail.y);
       c.lineTo(p.x, p.y);
       c.stroke();
       c.fillStyle = rgba(RED, 0.45 + 0.55 * flash);
       c.beginPath();
-      c.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
+      c.arc(p.x, p.y, 3.2 * k, 0, Math.PI * 2);
       c.fill();
     } else if (shot.missile) {
       c.fillStyle = rgba(WHITE, 0.9);
-      c.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+      c.fillRect(p.x - 1.5 * k, p.y - 1.5 * k, 3 * k, 3 * k);
     } else if (shot.owner === 'enemy') {
       c.fillStyle = rgba(WARM, 0.7);
-      c.fillRect(p.x - 1, p.y - 1, 2, 2);
+      c.fillRect(p.x - k, p.y - k, 2 * k, 2 * k);
     }
   }
 
   for (const r of view.raiders) {
     if (r.dead) continue;
     const p = place(r.pos);
-    const size = r.commander ? 5 : 3.5;
+    const size = (r.commander ? 5 : 3.5) * k;
     const locked = r.id === view.lock.targetId && view.lock.progress > 0;
+    if (options.markAttacks && r.attacking > 0) {
+      c.strokeStyle = rgba(RED, 0.4 + 0.5 * flash);
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(p.x, p.y, size * 2.2, 0, Math.PI * 2);
+      c.stroke();
+    }
     c.save();
     c.translate(p.x, p.y);
     c.rotate(r.heading);
@@ -180,15 +192,15 @@ export function drawHoloMap(
   c.stroke();
   c.fillStyle = rgba(WHITE, 0.95);
   c.beginPath();
-  c.moveTo(cx, cy - 6);
-  c.lineTo(cx - 4, cy + 4);
-  c.lineTo(cx + 4, cy + 4);
+  c.moveTo(cx, cy - 6 * k);
+  c.lineTo(cx - 4 * k, cy + 4 * k);
+  c.lineTo(cx + 4 * k, cy + 4 * k);
   c.closePath();
   c.fill();
 
   const warning = missileWarning(view);
   if (warning) {
-    c.font = '600 11px ui-monospace, Consolas, monospace';
+    c.font = `600 ${Math.round(11 * Math.min(k, 1.4))}px ui-monospace, Consolas, monospace`;
     c.textAlign = 'center';
     c.fillStyle = rgba(RED, 0.55 + 0.45 * flash);
     c.fillText(`MISSILE · ${SIDE_NAMES[warning]}`, cx, cy - radius - 8);

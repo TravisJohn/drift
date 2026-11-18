@@ -163,7 +163,10 @@ export class CombatSim {
     const p = this.player;
     const ship = this.s.ship;
     p.throttle = stepThrottle(p.throttle, input.throttle, ship);
-    p.strafe = stepStrafe(p.strafe, input.strafe, ship);
+    p.strafe =
+      input.strafeHold === null
+        ? stepStrafe(p.strafe, input.strafe, ship)
+        : stepStrafe(0, Math.sign(input.strafeHold) * ship.holdDriftNotches, ship);
     if (input.aimAngle !== null) p.aim = input.aimAngle;
 
     const d = this.s.defence;

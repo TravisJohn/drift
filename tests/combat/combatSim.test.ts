@@ -196,6 +196,24 @@ describe('CombatSim: forward flight', () => {
     expect(player(sim).vel.x).toBeCloseTo(0);
   });
 
+  it('hold-to-drift (the cockpit): the ship drifts while held and glides back to straight on release', () => {
+    const sim = newSim();
+    run(sim, 1, { strafeHold: -1 });
+    expect(player(sim).vel.x).toBeCloseTo(-ship.holdDriftNotches * ship.strafeStep);
+    run(sim, 1.5, { strafeHold: 0 });
+    expect(player(sim).strafe).toBe(0);
+    expect(player(sim).vel.x).toBeCloseTo(0);
+    expect(player(sim).vel.y).toBeCloseTo(-cruise); // still flying forward
+  });
+
+  it('hold-to-drift ignores stray taps; switching back to taps starts from the held setting', () => {
+    const sim = newSim();
+    run(sim, 0.5, { strafeHold: 1, strafe: -1 });
+    expect(player(sim).strafe).toBe(ship.holdDriftNotches);
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, strafe: -1 }); // tactical again: one tap
+    expect(player(sim).strafe).toBe(ship.holdDriftNotches - 1);
+  });
+
   it('the hull never rotates: aiming swings the guns, not the ship', () => {
     const sim = newSim();
     run(sim, 1, { aimAngle: 1 });

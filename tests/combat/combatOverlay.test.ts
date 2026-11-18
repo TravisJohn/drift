@@ -135,6 +135,27 @@ describe('CombatOverlay', () => {
     expect(overlay.snapshot?.player.vel.x).toBeCloseTo(0);
   });
 
+  it('in the cockpit, A and D drift only while held, and the ship glides back to straight', () => {
+    press('KeyC');
+    key('keydown', 'KeyA');
+    steps(1);
+    expect(overlay.snapshot?.player.strafe).toBeLessThan(0);
+    expect(overlay.snapshot?.player.vel.x).toBeLessThan(0);
+    expect(text()).toContain('Hold A/D drift');
+    key('keyup', 'KeyA');
+    steps(1.5);
+    expect(overlay.snapshot?.player.strafe).toBe(0);
+    expect(overlay.snapshot?.player.vel.x).toBeCloseTo(0);
+  });
+
+  it('in the tactical view A and D stay taps: a held key is still one notch, and it stays set', () => {
+    key('keydown', 'KeyA');
+    steps(1);
+    key('keyup', 'KeyA');
+    steps(0.5);
+    expect(overlay.snapshot?.player.strafe).toBe(-1);
+  });
+
   it('the chosen view is kept for the next fight', () => {
     press('KeyC');
     overlay.close();

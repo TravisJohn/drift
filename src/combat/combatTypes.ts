@@ -42,6 +42,12 @@ export interface CombatInput {
   readonly throttle: number;
   /** Drift notches to step this step: +1 per D tap (right), −1 per A tap. */
   readonly strafe: number;
+  /**
+   * Hold-to-drift (the cockpit's controls): −1 while left is held, 1 right,
+   * 0 neither, so the ship glides back to straight on release. Null uses
+   * the tapped notches above instead (the tactical view's controls).
+   */
+  readonly strafeHold: number | null;
   /** Where the guns should point (map radians), or null to leave them be. */
   readonly aimAngle: number | null;
   readonly fire: boolean;
@@ -53,6 +59,7 @@ export interface CombatInput {
 export const IDLE_COMBAT_INPUT: CombatInput = {
   throttle: 0,
   strafe: 0,
+  strafeHold: null,
   aimAngle: null,
   fire: false,
   boost: false,

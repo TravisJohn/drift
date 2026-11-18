@@ -11,9 +11,10 @@
  * forward). The choice is kept between fights. In both the mouse aims the
  * swivelling guns; the hull never turns.
  *
- * Controls in both (taps, not holds - each setting stays until changed):
- * W / ↑ and S / ↓ step the forward speed, A / ← and D / → step the
- * sideways drift. Left click or Space fires; right click or R launches a
+ * Controls in both: W / ↑ and S / ↓ step the forward speed (taps; each
+ * setting stays until changed). In tactical, A / ← and D / → step the
+ * sideways drift the same way; in the cockpit they drift only while held,
+ * and the ship glides back to straight on release. Left click or Space fires; right click or R launches a
  * missile once locked; Shift boosts while held (hard toward the drift if
  * one is set, else forward; the boost bar runs down); Esc or P pauses (Q there
  * retreats). Hiding the page (another tab, minimised) pauses too; losing
@@ -62,7 +63,10 @@ const READOUT_SECONDS = 0.1;
 /** Highest canvas pixel ratio: integrated graphics is the target. */
 const MAX_PIXEL_RATIO = 1.5;
 
-/** Tap keys: each press steps a setting (throttle or drift) by one notch. */
+/**
+ * Tap keys: each press steps a setting (throttle or drift) by one notch.
+ * In the cockpit the drift keys are read as held instead (see heldDrift).
+ */
 const NOTCH_KEYS: Record<string, { readonly throttle: number; readonly strafe: number }> = {
   KeyW: { throttle: 1, strafe: 0 },
   ArrowUp: { throttle: 1, strafe: 0 },
@@ -74,13 +78,15 @@ const NOTCH_KEYS: Record<string, { readonly throttle: number; readonly strafe: n
   ArrowRight: { throttle: 0, strafe: 1 },
 };
 const BOOST = ['ShiftLeft', 'ShiftRight'];
+const DRIFT_LEFT = ['KeyA', 'ArrowLeft'];
+const DRIFT_RIGHT = ['KeyD', 'ArrowRight'];
 /** Keys the browser would otherwise act on (scrolling, page down). */
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const HINTS: Record<CombatViewId, string> = {
   tactical:
     'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost (toward drift) · C cockpit · Esc pause',
   cockpit:
-    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost (toward drift) · C tactical · Esc pause',
+    'Mouse aims guns · W/S speed · Hold A/D drift · Click/Space fire · R/right-click missile · Shift boost (toward drift) · C tactical · Esc pause',
 };
 
 interface Readouts {
@@ -313,11 +319,18 @@ export class CombatOverlay {
     return {
       throttle: this.throttleSteps,
       strafe: this.strafeSteps,
+      strafeHold: this.viewId === 'cockpit' ? this.heldDrift() : null,
       aimAngle: this.aimAngle(),
       fire: this.mouseFire || this.keys.has('Space'),
       boost: BOOST.some((code) => this.keys.has(code)),
       missile: this.missileQueued,
     };
+  }
+
+  /** The drift keys as held: −1 left, 1 right, 0 neither (or both). */
+  private heldDrift(): number {
+    const held = (codes: readonly string[]) => codes.some((code) => this.keys.has(code));
+    return (held(DRIFT_RIGHT) ? 1 : 0) - (held(DRIFT_LEFT) ? 1 : 0);
   }
 
   /** Where the pointer asks the guns to point, as the active view reads it. */

@@ -8,8 +8,10 @@
  *
  * The ship never turns, so the view always looks forward, wide (about 120
  * degrees). The mouse moves the aim ring along the horizon (the guns
- * swivel); the sides and the tail are watched on the holographic map
- * (holoMap.ts) projected above the console, where raider missiles flash.
+ * swivel); the sides and the tail are watched on the big holographic map
+ * (holoMap.ts) projected over the centre console, where raider missiles
+ * flash. The wide view makes everything small, so raiders are drawn larger
+ * than life, and one making an attack run is bracketed in red, INCOMING.
  *
  * The rules stay flat (2D): everything that matters sits on one plane at
  * about eye level. Depth comes from things that don't (stars, the planet,
@@ -102,6 +104,31 @@ const RAIDER_EDGES: readonly (readonly [number, number, string, number])[] = [
 ];
 /** The model's half-span, to scale it to a raider's radius. */
 const RAIDER_SPAN = 24;
+/**
+ * Raiders are drawn this much larger than their real size: at 120 degrees
+ * a raider at fighting range is otherwise only a few pixels. (Hits use the
+ * real size; the lock and the aim assist make up the difference.)
+ */
+const RAIDER_LOOK = 1.6;
+
+/**
+ * Where the holographic map sits: centred on the instrument console, its
+ * diameter about a third of the screen's height (smaller on narrow screens).
+ */
+export function consoleMapFrame(
+  width: number,
+  height: number,
+): { cx: number; cy: number; radius: number } {
+  const radius = Math.max(50, Math.min(height * 0.155, width * 0.2, 180));
+  // Lifted clear of the wingman's line along the bottom.
+  return { cx: width / 2, cy: height - 36 - radius, radius };
+}
+
+/** The INCOMING call-out for a raider on an attack run, or null if it isn't on one. */
+export function incomingLabel(raider: Readonly<Raider>, shipPos: Vec2): string | null {
+  if (raider.dead || raider.attacking <= 0) return null;
+  return `INCOMING · ${Math.round(length(sub(raider.pos, shipPos)))} M`;
+}
 const ROCK_SHADES = ['#30343d', '#1a222d', '#242c36', '#3a3b42', '#222a33'];
 
 interface Star {
@@ -225,6 +252,7 @@ export class CockpitRenderer implements CombatView {
     for (const shot of view.shots) this.drawShot(shot);
     this.drawParticles();
     this.drawLock(view);
+    this.drawIncoming(view);
     c.restore();
 
     this.drawReticle(view);
@@ -487,7 +515,7 @@ export class CockpitRenderer implements CombatView {
   private drawRaider(r: Readonly<Raider>, time: number): void {
     const forward = fromAngle(r.heading);
     const right = vec2(-Math.sin(r.heading), Math.cos(r.heading));
-    const size = r.radius / RAIDER_SPAN;
+    const size = (r.radius * RAIDER_LOOK) / RAIDER_SPAN;
     const bank = Math.sin(time + r.phase) * 0.22;
     const lift = Math.sin(time * 0.7 + r.phase * 2.3) * RAIDER_BOB;
     const cs = Math.cos(bank);
@@ -500,7 +528,7 @@ export class CockpitRenderer implements CombatView {
     });
     const points = cam.map((q) => project(q, this.frame));
     const centre = project(toCamera(this.cam, r.pos, lift), this.frame);
-    if (!centre || !this.onScreen(centre, r.radius * centre.scale * 2)) return;
+    if (!centre || !this.onScreen(centre, r.radius * RAIDER_LOOK * centre.scale * 2)) return;
 
     const faces = RAIDER_FACES.map((face) => ({
       face,
@@ -655,7 +683,7 @@ export class CockpitRenderer implements CombatView {
     const at = project(toCamera(this.cam, target.pos), this.frame);
     if (!at) return;
     const locked = view.lock.progress >= 1;
-    const r = Math.max(14, target.radius * at.scale * 1.6);
+    const r = Math.max(14, target.radius * RAIDER_LOOK * at.scale * 1.6);
     const g = r * (1.5 - 0.5 * view.lock.progress);
     const k = r * 0.45;
     const c = this.ctx;
@@ -673,6 +701,40 @@ export class CockpitRenderer implements CombatView {
       c.lineTo(at.x + sx * (g - k), at.y + sy * g);
     }
     c.stroke();
+  }
+
+  /** Red brackets and a closing range on each raider making an attack run. */
+  private drawIncoming(view: CombatSnapshot): void {
+    const c = this.ctx;
+    const pulse = 0.55 + 0.45 * Math.sin(this.time * 10);
+    c.save();
+    c.font = '600 10px ui-monospace, Consolas, monospace';
+    c.textAlign = 'center';
+    for (const r of view.raiders) {
+      const label = incomingLabel(r, view.player.pos);
+      if (!label) continue;
+      const at = project(toCamera(this.cam, r.pos), this.frame);
+      if (!at || !this.onScreen(at, 40)) continue;
+      const g = Math.max(16, r.radius * RAIDER_LOOK * at.scale * 1.9);
+      const k = g * 0.4;
+      c.strokeStyle = `rgba(255, 80, 70, ${pulse.toFixed(3)})`;
+      c.lineWidth = 1.5;
+      c.beginPath();
+      for (const [sx, sy] of [
+        [-1, -1],
+        [1, -1],
+        [1, 1],
+        [-1, 1],
+      ] as const) {
+        c.moveTo(at.x + sx * g, at.y + sy * (g - k));
+        c.lineTo(at.x + sx * g, at.y + sy * g);
+        c.lineTo(at.x + sx * (g - k), at.y + sy * g);
+      }
+      c.stroke();
+      c.fillStyle = `rgba(255, 120, 100, ${(0.5 + 0.5 * pulse).toFixed(3)})`;
+      c.fillText(label, at.x, at.y - g - 6);
+    }
+    c.restore();
   }
 
   private drawReticle(view: CombatSnapshot): void {
@@ -696,10 +758,18 @@ export class CockpitRenderer implements CombatView {
     }
 
     // Arrows round the view toward raiders and missiles out of sight.
-    for (const e of view.raiders) {
-      if (!e.dead) this.offViewArrow(e.pos, e.commander ? '#ffae7aee' : '#e38d6488');
-    }
     const flash = 0.55 + 0.45 * Math.sin(this.time * 14);
+    for (const e of view.raiders) {
+      if (e.dead) continue;
+      // One turning in on the ship flashes red, like a missile.
+      const color =
+        e.attacking > 0
+          ? `rgba(255, 90, 70, ${flash.toFixed(3)})`
+          : e.commander
+            ? '#ffae7aee'
+            : '#e38d6488';
+      this.offViewArrow(e.pos, color);
+    }
     for (const shot of view.shots) {
       if (shot.owner === 'enemy' && shot.missile) {
         this.offViewArrow(shot.pos, `rgba(255, 70, 70, ${flash.toFixed(3)})`);
@@ -715,22 +785,23 @@ export class CockpitRenderer implements CombatView {
     if (target) {
       const kind = target.commander ? 'COMMANDER' : 'RAIDER';
       const range = Math.round(length(sub(target.pos, p.pos)));
-      c.fillText(`${kind} ${String(target.id).padStart(2, '0')} · ${range} M`, x, y + 72);
+      c.fillText(`${kind} ${String(target.id).padStart(2, '0')} · ${range} M`, x, y + 46);
       c.font = '9px ui-monospace, Consolas, monospace';
       c.fillStyle = '#7fa5adcc';
       c.fillText(
         locked ? 'MISSILE LOCK · FIRE' : `ACQUIRING ${Math.round(view.lock.progress * 100)}%`,
         x,
-        y + 86,
+        y + 59,
       );
     } else {
-      c.fillText('NO TARGET', x, y + 72);
+      c.fillText('NO TARGET', x, y + 46);
       c.font = '9px ui-monospace, Consolas, monospace';
       c.fillStyle = '#7fa5adaa';
-      c.fillText('AIM AT A RAIDER TO LOCK', x, y + 86);
+      c.fillText('AIM AT A RAIDER TO LOCK', x, y + 59);
     }
     c.fillStyle = '#ff9b76';
-    if (p.overheated) c.fillText('CANNONS COOLING', x, y + 102);
+    // Above the aim ring: below the readout is the console map's room.
+    if (p.overheated) c.fillText('CANNONS COOLING', x, y - 44);
     if (p.shield < 25)
       c.fillText(p.shield < 1 ? 'SHIELDS DOWN' : 'SHIELDS LOW', x, this.height * 0.25);
     c.restore();
@@ -942,21 +1013,14 @@ export class CockpitRenderer implements CombatView {
     c.restore();
   }
 
-  /** The holographic map, projected above the console's left bay. */
+  /** The holographic map, projected large over the centre console. */
   private drawMap(view: CombatSnapshot): void {
-    const radius = Math.min(90, Math.min(this.width, this.height) * 0.13);
-    drawHoloMap(
-      this.ctx,
-      view,
-      {
-        cx: 24 + radius,
-        cy: this.height - 24 - radius,
-        radius,
-        range: this.s.fieldRadius,
-      },
-      this.time,
-      { viewCone: VIEW_HALF_ANGLE },
-    );
+    const at = consoleMapFrame(this.width, this.height);
+    drawHoloMap(this.ctx, view, { ...at, range: this.s.fieldRadius }, this.time, {
+      viewCone: VIEW_HALF_ANGLE,
+      scale: Math.max(1, at.radius / 80),
+      markAttacks: true,
+    });
   }
 
   // --- Drawing helpers ---
