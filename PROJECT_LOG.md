@@ -1252,3 +1252,22 @@ clean.
   ahead by design (the rear share).
 - Tunable in `gameConfig.combat.enemy`: stationRange, stationSway,
   aheadArc, rearShare, paceGain, attack.
+
+## 2026-11-18 - Combat: boost follows the drift, a hard dodge (branch `experiment/combat`)
+
+**Author request:** a boost that speeds up a bit, not unlimited, "perfect
+for hard left or right to dodge the rocks". Chosen with the author: boost
+follows the drift. 697 tests passing; lint, types and build clean.
+
+- Shift with a drift set adds 220 sideways speed toward the drift (drift
+  1 goes from 70 to 290); forward speed is unchanged. With no drift it
+  adds 150 forward, as before.
+- The engines answer a boost at 700 (against 240 for notch changes), so
+  the dodge bites within about a third of a second; after it, the ship
+  eases back to its set drift at the normal rate.
+- Limited: the boost bar lasts about 3.5 s and refills in about 8. Once
+  empty, a new boost needs 25 energy (about 2 s), so holding Shift on an
+  empty bar no longer trickle-boosts (it used to flicker back on).
+- Status bar shows "+ boost" on whichever it is adding to ("Cruise ·
+  Drift left 1 + boost"). The hint reads "Shift boost (toward drift)".
+- Tunable: `ship.boostSide`, `ship.boostAccel`, `defence.boostMinStart`.

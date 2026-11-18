@@ -65,12 +65,12 @@ inside that world. In this prototype it is a placeholder only.
 
 Each room maps to an exam domain and holds terminals with puzzles:
 
-| Room        | Exam domain                         |
-|-------------|-------------------------------------|
-| Cargo bay   | Data preparation / engineering      |
-| Science lab | Model development                   |
-| Bridge      | Deployment and orchestration        |
-| Engineering | Monitoring, maintenance, security   |
+| Room        | Exam domain                       |
+| ----------- | --------------------------------- |
+| Cargo bay   | Data preparation / engineering    |
+| Science lab | Model development                 |
+| Bridge      | Deployment and orchestration      |
+| Engineering | Monitoring, maintenance, security |
 
 Solving puzzles "repairs" the ship AI, which gives the story a sense of
 progress. v0 only defines the hook (interface plus one placeholder terminal).
@@ -136,7 +136,9 @@ reusing what we can from STARFALL (an earlier cockpit shooter prototype).
   moving forward. W and S step the forward speed through notches (slow,
   cruise, fast) that stay set; S never stops the ship. A and D step a
   sideways drift (two notches each way) that stays until changed, so the
-  pilot keeps navigating. Shift boosts. The twin lasers swivel to the
+  pilot keeps navigating. Shift boosts, on a bar that runs down and must
+  recharge: toward the drift if one is set (a hard dodge left or right,
+  for rocks and missiles), otherwise forward. The twin lasers swivel to the
   mouse, so raiders on any side can be shot; they overheat. Seeker
   missiles fly after holding the aim on a raider for about a second.
   Raiders come from all sides and also launch slow homing missiles that

@@ -14,7 +14,8 @@
  * Controls in both (taps, not holds - each setting stays until changed):
  * W / ↑ and S / ↓ step the forward speed, A / ← and D / → step the
  * sideways drift. Left click or Space fires; right click or R launches a
- * missile once locked; Shift boosts while held; Esc or P pauses (Q there
+ * missile once locked; Shift boosts while held (hard toward the drift if
+ * one is set, else forward; the boost bar runs down); Esc or P pauses (Q there
  * retreats). Hiding the page (another tab, minimised) pauses too; losing
  * focus only lets go of held keys.
  */
@@ -77,9 +78,9 @@ const BOOST = ['ShiftLeft', 'ShiftRight'];
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const HINTS: Record<CombatViewId, string> = {
   tactical:
-    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
+    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost (toward drift) · C cockpit · Esc pause',
   cockpit:
-    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
+    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost (toward drift) · C tactical · Esc pause',
 };
 
 interface Readouts {
@@ -93,13 +94,16 @@ interface Readouts {
   line: HTMLDivElement;
 }
 
-/** The pilot's settings in words: "Cruise · Drift left 2", "Fast · No drift". */
+/**
+ * The pilot's settings in words: "Cruise · Drift left 2", "Fast · No drift".
+ * The boost shows on whichever it is adding to: the drift if one is set.
+ */
 function flightSettings(p: Readonly<PlayerShip>): string {
   const ship = gameConfig.combat.ship;
+  const boost = p.boosting ? ' + boost' : '';
   const speed = ship.throttleNames[p.throttle] ?? `Notch ${p.throttle}`;
-  const drift =
-    p.strafe === 0 ? 'No drift' : `Drift ${p.strafe < 0 ? 'left' : 'right'} ${Math.abs(p.strafe)}`;
-  return `${speed}${p.boosting ? ' + boost' : ''} · ${drift}`;
+  if (p.strafe === 0) return `${speed}${boost} · No drift`;
+  return `${speed} · Drift ${p.strafe < 0 ? 'left' : 'right'} ${Math.abs(p.strafe)}${boost}`;
 }
 
 export class CombatOverlay {

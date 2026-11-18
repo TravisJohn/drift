@@ -4,6 +4,7 @@ import {
   AHEAD,
   STARBOARD,
   approachVelocity,
+  engineAccel,
   setVelocity,
   sideOf,
   stepStrafe,
@@ -44,10 +45,22 @@ describe('forward flight: the notches the pilot sets', () => {
     expect(v.x).toBeCloseTo(-2 * ship.strafeStep);
   });
 
-  it('boost adds forward speed on top of the notch', () => {
+  it('with no drift set, boost adds forward speed on top of the notch', () => {
     const plain = setVelocity(2, 0, false, ship);
     const boosted = setVelocity(2, 0, true, ship);
     expect(length(boosted) - length(plain)).toBeCloseTo(ship.boostExtra);
+  });
+
+  it('with a drift set, boost throws the ship hard that way (a dodge), not forward', () => {
+    const left = setVelocity(1, -1, true, ship);
+    expect(left.x).toBeCloseTo(-(ship.strafeStep + ship.boostSide));
+    expect(left.y).toBeCloseTo(-(ship.forwardSpeeds[1] ?? 0)); // forward speed unchanged
+    const right = setVelocity(1, 2, true, ship);
+    expect(right.x).toBeCloseTo(2 * ship.strafeStep + ship.boostSide);
+  });
+
+  it('the engines answer a boost faster than a notch change, so a dodge is sharp', () => {
+    expect(engineAccel(true, ship)).toBeGreaterThan(engineAccel(false, ship));
   });
 });
 

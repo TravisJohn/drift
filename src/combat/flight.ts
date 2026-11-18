@@ -8,6 +8,11 @@
  * actual motion round to those settings at a limited rate, so a change
  * takes a moment and a knock (a rock, a ram) is flown out of.
  *
+ * Boost (limited by its energy) goes the way the pilot is drifting: with
+ * a drift set it throws the ship hard to that side, for dodging rocks and
+ * missiles; with no drift it adds forward speed. The engines answer a
+ * boost faster than a notch change, so the dodge is sharp.
+ *
  * Pure functions over the settings; the simulation owns the ship.
  */
 import { angleBetween, clamp } from './combatMath';
@@ -30,15 +35,25 @@ export function stepStrafe(notch: number, steps: number, s: ShipSettings): numbe
   return clamp(Math.round(notch + steps), -s.strafeNotches, s.strafeNotches);
 }
 
-/** The motion the pilot has set: forward at the notch speed, plus the drift. */
+/**
+ * The motion the pilot has set: forward at the notch speed, plus the drift.
+ * Boost adds to the drift's side when one is set, otherwise forward.
+ */
 export function setVelocity(
   throttle: number,
   strafe: number,
   boosting: boolean,
   s: ShipSettings,
 ): Vec2 {
-  const forward = (s.forwardSpeeds[throttle] ?? 0) + (boosting ? s.boostExtra : 0);
-  return add(scale(AHEAD, forward), scale(STARBOARD, strafe * s.strafeStep));
+  const sideways = boosting && strafe !== 0;
+  const forward = (s.forwardSpeeds[throttle] ?? 0) + (boosting && !sideways ? s.boostExtra : 0);
+  const side = strafe * s.strafeStep + (sideways ? Math.sign(strafe) * s.boostSide : 0);
+  return add(scale(AHEAD, forward), scale(STARBOARD, side));
+}
+
+/** How fast the engines change the motion: sharper while boosting. */
+export function engineAccel(boosting: boolean, s: ShipSettings): number {
+  return boosting ? s.boostAccel : s.accel;
 }
 
 /** Move `vel` toward `target`, changing it by at most `accel * dt`. */

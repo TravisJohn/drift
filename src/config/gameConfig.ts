@@ -453,10 +453,17 @@ export const gameConfig = {
       /** Sideways speed added per A/D notch, and how many notches each way. */
       strafeStep: 70,
       strafeNotches: 2,
-      /** Shift (while energy lasts) adds this much forward speed. */
+      /**
+       * Shift (while boost energy lasts) goes the way the ship is drifting:
+       * with a drift set it adds this much sideways speed (a hard dodge);
+       * with none it adds `boostExtra` forward.
+       */
       boostExtra: 150,
+      boostSide: 220,
       /** How fast the engines bring the motion to the set speeds (units/s, per s). */
       accel: 240,
+      /** ...and while boosting, so a dodge bites at once. */
+      boostAccel: 700,
     },
     defence: {
       shieldMax: 100,
@@ -468,6 +475,8 @@ export const gameConfig = {
       energyMax: 100,
       boostDrain: 28,
       energyRefill: 13,
+      /** Starting a boost needs at least this much energy (an empty bar waits). */
+      boostMinStart: 25,
       /** Damage from ramming a raider or scraping a rock. */
       ramDamage: 20,
       rockDamage: 9,

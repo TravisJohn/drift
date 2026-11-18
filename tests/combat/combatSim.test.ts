@@ -218,6 +218,39 @@ describe('CombatSim: forward flight', () => {
     expect(player(sim).energy).toBeLessThan(80);
   });
 
+  it('boost while drifting is a hard sideways dodge: quick, and it ends when the energy runs out', () => {
+    const sim = newSim();
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, strafe: -1 }); // one tap of A
+    run(sim, 1); // settle into the drift
+    const before = player(sim).pos.x;
+    run(sim, 0.5, { boost: true });
+    // Half a second of boost carries the ship well left of a plain drift.
+    const plainDrift = ship.strafeStep * 0.5;
+    expect(before - player(sim).pos.x).toBeGreaterThan(plainDrift * 2.5);
+    expect(-player(sim).vel.x).toBeGreaterThan(ship.strafeStep + ship.boostSide * 0.9);
+    // Held on, the energy runs dry and the ship eases back to its set drift.
+    run(sim, 4, { boost: true });
+    expect(player(sim).boosting).toBe(false);
+    run(sim, 0.8, { boost: true });
+    expect(player(sim).boosting).toBe(false);
+    expect(player(sim).vel.x).toBeCloseTo(-ship.strafeStep);
+  });
+
+  it('an empty boost bar stays off while Shift is held, until it has recharged a little', () => {
+    const sim = newSim();
+    player(sim).energy = 0;
+    const d = gameConfig.combat.defence;
+    let boosted = false;
+    const wait = d.boostMinStart / d.energyRefill;
+    for (let t = 0; t < (wait - 0.1) / DT; t++) {
+      sim.step(DT, { ...IDLE_COMBAT_INPUT, boost: true });
+      if (player(sim).boosting) boosted = true;
+    }
+    expect(boosted).toBe(false);
+    run(sim, 0.3, { boost: true });
+    expect(player(sim).boosting).toBe(true);
+  });
+
   it('boost energy refills after boosting stops', () => {
     const sim = newSim();
     run(sim, 1, { boost: true });

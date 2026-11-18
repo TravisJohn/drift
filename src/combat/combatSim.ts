@@ -35,7 +35,14 @@ import {
   steerRaider,
   updateAttackRun,
 } from './enemyAi';
-import { approachVelocity, setVelocity, sideOf, stepStrafe, stepThrottle } from './flight';
+import {
+  approachVelocity,
+  engineAccel,
+  setVelocity,
+  sideOf,
+  stepStrafe,
+  stepThrottle,
+} from './flight';
 import { type Vec2, add, angleOf, distance, fromAngle, normalize, scale, sub, vec2 } from './vec2';
 import {
   coolLasers,
@@ -160,13 +167,15 @@ export class CombatSim {
     if (input.aimAngle !== null) p.aim = input.aimAngle;
 
     const d = this.s.defence;
-    p.boosting = input.boost && p.energy > 1;
+    // A boost runs until the energy is gone; a new one needs a minimum
+    // charge, so holding Shift on an empty bar doesn't trickle-boost.
+    p.boosting = input.boost && p.energy > (p.boosting ? 0 : d.boostMinStart);
     p.energy = clamp(p.energy + (p.boosting ? -d.boostDrain : d.energyRefill) * dt, 0, d.energyMax);
 
     // The engines bring the motion round to the set notches at a limited
     // rate, so a change (or a knock from a rock) takes a moment.
     const target = setVelocity(p.throttle, p.strafe, p.boosting, ship);
-    p.vel = approachVelocity(p.vel, target, ship.accel, dt);
+    p.vel = approachVelocity(p.vel, target, engineAccel(p.boosting, ship), dt);
     p.pos = add(p.pos, scale(p.vel, dt));
   }
 
