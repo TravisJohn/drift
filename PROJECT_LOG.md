@@ -998,3 +998,42 @@ instead: the glow on the antenna, and a beeping warning sound.
 
 Checked in the page: beeps fire and slow as the tether pulls the drone
 back in; the antenna glows red. Not checked by ear: the beep's sound.
+
+## 2026-11-18 - Command deck: the dashboard becomes the hub (branch experiment/holo-dashboard)
+
+Author report: "I cannot set course or look at the outside view" from the
+dashboard. Not a bug: set course lived only at the helm, and V only
+worked in flight. The author wants the dashboard to be the entry point
+for everything, holographic and polished. Plan approved before building.
+Branched from experiment/star-hull, so it carries today's other work.
+
+- Tabs: Navigation, Cameras, Ship, Training (keys 1-4, A/D or arrows,
+  or click). Live journey and systems stay in a status column beside
+  them; the ship hologram floats in the middle as before.
+- Navigation: a star chart (SVG) of the known places with the route to
+  the chosen destination; pick one and Engage (Enter, double-click or
+  the button). It sends the same `travel:requested` as the helm, and the
+  dashboard stays open to show the departure. Underway the course is
+  locked, the route turns amber and the ship moves along it. Places gain
+  a `chart` position in content/destinations.ts (validated 0..1).
+- Cameras: "Exterior orbit" closes the dashboard and opens the outside
+  view. V now works while docked too; the exterior shot ends itself on
+  arrival (was: whenever docked). Hint text no longer says "in flight".
+- Ship: compartments light up on the hologram, as before, but only while
+  that tab shows. Training: as before; T still starts it from any tab.
+- Look: cyan glass with scanlines, corner brackets, a slow scan sweep,
+  flicker-in, monospaced readouts; motion off under reduced-motion.
+- Structure: the overlay is a shell; each tab is a panel behind one small
+  interface (ui/dashboard/panel.ts); data stays in the pure model.
+- Helm (E) and the V key remain as shortcuts.
+- 570 tests passing (dashboard tests rewritten for the tabs); lint,
+  format, types and build clean.
+
+Checked in the page with real key presses: opened the dashboard, chose
+Cinder, Enter set the course (cruising, route locked), Cameras > Enter
+opened the outside view in flight, V in and out while docked. No console
+errors. Not checked: a full-size window by the author.
+
+Also found today: the "background noise" was a copy of the game left
+running in the app's hidden browser pane during testing. The pane is
+closed after each check now.

@@ -269,6 +269,14 @@ Added 2026-11-18 (experiment branches, not yet on main):
   assembles them.
 - `audio/shipHum.ts`: the ship hum synthesized live with Web Audio.
 - Shared: `core/random.ts` (seeded random), `rendering/pulse.ts` (blink timing).
+- Tether: `physics/tether.ts` (soft limit outside; pure), `player/warningBeat.ts`
+  (alarm rhythm; pure), `audio/warningBeep.ts` (synthesized beep).
+- Command deck (branch experiment/holo-dashboard): the dashboard is the
+  hub. `ui/dashboardOverlay.ts` is the shell (tabs, keys, status column);
+  each tab is a panel in `ui/dashboard/` (`panel.ts` interface,
+  `navigationPanel.ts` + `starChart.ts`, `simplePanels.ts` for cameras,
+  ship and training). Set course from it uses the same travel request as
+  the helm; places carry a `chart` position in `content/destinations.ts`.
 
 Rule of thumb for new work: anything static should be baked at startup,
 not paid for per frame - the target includes integrated graphics.

@@ -14,7 +14,7 @@ const CONTROLS: readonly (readonly [string, string])[] = [
   ['Space / Shift', 'up & down'],
   ['Right mouse + drag', 'look around'],
   ['E', 'interact'],
-  ['V', 'exterior view in flight'],
+  ['V', 'exterior view'],
   ['Esc', 'pause / resume'],
   ['F2', 'performance readout'],
 ];

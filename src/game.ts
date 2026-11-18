@@ -301,7 +301,7 @@ export class Game {
       id: 'dashboard',
       position: tableProp.center,
       radius: gameConfig.interaction.dashboardRadius,
-      promptText: '[E] Dashboard — ship overview',
+      promptText: '[E] Command deck — navigation, cameras, ship',
       onInteract: () => this.openDashboard(),
     });
     this.events.on('dashboard:opened', () => this.narrative.trigger('dashboardOpened'));
@@ -469,6 +469,8 @@ export class Game {
       this.events.emit('ship:phaseChanged', change);
       if (change.to === 'docked' && change.destinationId) {
         this.events.emit('travel:arrived', { destinationId: change.destinationId });
+        // The exterior shot of a journey ends when the journey does.
+        if (this.playerMode.mode === 'cinematic') this.exitCinematic();
       }
     }
     this.refreshStatus();
@@ -497,18 +499,13 @@ export class Game {
       }
     }
 
-    // The exterior shot ends itself when the journey does.
-    if (this.playerMode.mode === 'cinematic' && this.shipState.phase === 'docked') {
-      this.exitCinematic();
-    }
-
     if (this.playerMode.mode === 'cinematic') {
       if (viewPressed) {
         this.exitCinematic();
       } else {
         this.cinematicPose = this.cinematicCamera.update(dt);
       }
-    } else if (viewPressed && this.playerMode.isRoaming && this.shipState.phase !== 'docked') {
+    } else if (viewPressed && this.playerMode.isRoaming) {
       this.enterCinematic();
     }
 
@@ -662,8 +659,10 @@ export class Game {
       podCount: shipLayout.props.filter((p) => p.kind === 'pod').length,
       phase: this.shipState.phase,
       progress: this.shipState.progress,
-      locationName: getLocation(this.shipState.locationId).name,
-      destinationName: destinationId ? getLocation(destinationId).name : null,
+      places: locations,
+      locationId: this.shipState.locationId,
+      destinationId: destinationId ?? null,
+      cruiseScale: gameConfig.travel.cruiseScale,
       // Every registered module appears here: the AWS training entry point.
       training: this.puzzles.ids().map((id) => ({ id, title: this.puzzles.get(id).title })),
     });
@@ -681,6 +680,11 @@ export class Game {
 
     this.dashboard.open(this.dashboardData(), {
       onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
+      onSetCourse: (destinationId) => this.setCourseFromDashboard(destinationId),
+      onExteriorView: () => {
+        this.closeDashboard();
+        this.enterCinematic();
+      },
       onTraining: (moduleId) => {
         this.closeDashboard();
         this.openTerminal('dashboard', moduleId);
@@ -690,6 +694,17 @@ export class Game {
   }
 
   /** Return from the dashboard view to the drone. */
+  /**
+   * Engage a course from the dashboard's navigation tab: the same request
+   * the helm makes. The dashboard stays open and shows the departure.
+   */
+  private setCourseFromDashboard(destinationId: string): void {
+    if (this.shipState.phase !== 'docked') return; // course locked underway
+    this.audio.playOnce('sfx_ui_blip');
+    this.events.emit('travel:requested', { destinationId });
+    this.dashboard.update(this.dashboardData());
+  }
+
   private closeDashboard(): void {
     this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
     this.dashboardView = null;
