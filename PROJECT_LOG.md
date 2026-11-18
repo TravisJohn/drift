@@ -1046,3 +1046,270 @@ closed after each check now.
 `experiment/star-hull`) was merged into `main` and tagged
 `checkpoint-2026-11-18-b`. Next experiment: ship combat, on a new branch
 cut from that checkpoint.
+
+## 2026-11-18 - Experiment: tactical combat (branch `experiment/combat`)
+
+**Author request:** let the ship fight enemy ships, as a 2D game, reusing
+what we can from STARFALL (an earlier Codex cockpit shooter in
+Documents/Codex). Cut from `checkpoint-2026-11-18-b`. 628 tests passing
+(58 new); lint, types and build clean. Not merged into `main`.
+
+**PRD:** section 10 added. "Combat" left the out-of-scope list; flying
+the 3D ship by hand stays out of scope.
+
+**What was reused from STARFALL:** the rules and numbers, rewritten in
+TypeScript as 2D: aim-ahead (intercept) maths, swept hit tests, laser
+heat and overheat, missile lock (about a second on the nose) and homing,
+shields before hull with a 4.5 s recharge delay, boost energy, waves of
+5/7/9 with a commander last, Rookie/Ace numbers, the sound recipes and
+the shape of its tests. Not reused: its 3D projection and cockpit
+drawing, its one-big-function structure, its input and loop.
+
+**What was built:**
+- A fifth dashboard tab, Tactical, offering a Rookie and an Ace raider
+  patrol. Engaging opens the fight; leaving (retreat, win or loss)
+  returns to the deck on the Tactical tab. Nothing carries over.
+- The fight: a top-down hologram in the deck's cyan, raiders in warm
+  orange. Mouse aims (the ship turns toward the pointer), W/S thrust and
+  brake, A/D turn, click or Space fires, right click or R fires a missile
+  once locked, Shift boosts, Esc or P pauses (Q retreats). Radar, arrows
+  to off-screen raiders, lock brackets, readouts, drifting rocks that
+  block shots, and the ship AI's calm combat lines.
+- Design: `src/combat/` is pure rules (fixed step in, events out) plus a
+  renderer and sounds that only react to events; `ui/combatOverlay.ts`
+  owns the screen. The 3D view is not drawn while the fight is open, so
+  the fight costs about 0.4 ms of drawing a frame.
+
+**Checked in the browser** (pane hidden, so the loop was stepped by
+hand): tab, engage, lasers kill raiders, overheat line, lock and missile
+kill, pause and retreat to the deck, all three waves to a win, results,
+back to the deck, and mouse aim. No console errors. Not yet played by a
+person with real input, so feel and difficulty are untested.
+
+## 2026-11-18 - Combat: a cockpit view as well (branch `experiment/combat`)
+
+**Author request:** after seeing STARFALL's first-person cockpit again: "i
+also love this format, wondering if we can have both?" 645 tests passing
+(17 new); lint, types and build clean.
+
+- One fight, two views, C switches at any time (the choice is kept
+  between fights). The tactical hologram is unchanged. The new cockpit
+  view is STARFALL's, ported to TypeScript: nebula, stars, ringed
+  planet, sun, raiders as small 3D fighters from its vertex model,
+  faceted rocks, converging laser bolts, the canopy frame and console,
+  a heading-up radar, heading tape, the targeting ring that fills as a
+  lock builds, target readout, and arrows to raiders out of view. The
+  view banks into turns and shakes on a hit.
+- In the cockpit the mouse is a flight stick (STARFALL's steering): the
+  further right or left of centre, the harder the turn, with a small
+  dead zone. Keys work the same in both views. No change to the rules.
+- Trade-off, flagged to the author: the rules are 2D, so in the cockpit
+  raiders fly on one level near the horizon. Depth comes from debris
+  drifting above and below, the sky and the bank. A full 3D fight would
+  mean 3D rules, a larger separate piece of work.
+- Cost: about 2 ms of drawing a frame in the cockpit (the 3D ship view
+  is not drawn during a fight).
+- Test runner: the slow ship-building tests passed alone but timed out
+  at vitest's 5 s default when the whole suite ran on a busy machine;
+  `testTimeout` is now 15 s in vite.config.ts, with a comment.
+- Checked in the browser by stepping the game by hand: switching both
+  ways, the cockpit drawing a fight with a lock building, no errors.
+
+## 2026-11-18 - Combat: heavier, more realistic flight (branch `experiment/combat`)
+
+**Author feedback** after first trying the fight: "the sensitivity is too
+fast. In real space i dont think a ship can move like that". 655 tests
+passing (10 new); lint, types and build clean.
+
+- Turning has inertia: the hull spins up and spins down (about half a
+  second each way) and tops out at about 75 degrees a second, down from
+  about 195. Mouse aim eases the nose onto the pointer and never
+  overshoots (it only asks for a spin the ship can still stop from).
+- Momentum carries: thrust pushes along the nose and turning no longer
+  redirects the motion, so the ship drifts the old way until thrust
+  changes it. A light flight computer damping bleeds drift slowly
+  (about 6 s half-life). S is now retro thrusters that slow the drift to
+  a stop and never push backwards. After a boost, the extra speed eases
+  off instead of vanishing in one step.
+- Raiders turn slower and their motion lags their nose, so they swing
+  wide through turns; the commander is heavier still.
+- Cockpit stick: a wider dead zone, full spin further out, and a squared
+  response, so small mouse moves give gentle turns. The drawn stick now
+  tilts in step with what the ship does.
+- All of it is tunable in `gameConfig.combat.ship` and `.enemy`
+  (turnRate, turnAccel, aimGain, thrust, drag, retroThrust, grip...).
+- Trade-off: heavier flight makes the fight harder, since aiming takes
+  longer and dodging needs planning. Raider difficulty was not retuned;
+  the author's next playtest decides whether it needs to be.
+- Checked in the browser by stepping the fight by hand: turn build-up and
+  settling, drift holding its direction through a 110 degree swing,
+  retros stopping the ship in about a second, stick response, raiders
+  sliding, both views drawing.
+
+## 2026-11-18 - Combat: real-space flight, no drag (branch `experiment/combat`)
+
+**Author feedback** on the heavier flight: "the ship shouldnt hover - it
+wont stop in actual life ... if you want to go back you should circle
+around or look around." 658 tests passing; lint, types and build clean.
+
+- No drag and no magic braking: nothing changes the ship's velocity but
+  its own engine. Coasting keeps the speed forever.
+- S is now a flip: the nose swings round to face against the drift (a
+  half turn takes about 3.5 s), and W then slows the ship. Burn too long
+  and it starts moving the other way. Below 5 units a second S holds.
+- The engine limit is a limit on the engine, not the ship: thrust can't
+  push past top speed (or boost speed), but never takes speed away, so
+  the extra speed from a boost is kept until the pilot burns against it.
+- The fight opens with the ship already cruising forward (120), so it
+  never sits parked.
+- With the nose and the motion parting ways, both views show the drift:
+  a dashed line ahead of the ship in tactical; in the cockpit, a drift
+  speed and "N degrees LEFT/RIGHT" readout under the heading tape, plus
+  horizon markers for the drift ahead (ring with wings) and the way back
+  (crossed ring; S puts the nose on it).
+- Kept as game concessions, flagged to the author: the attitude
+  thrusters still settle the spin when the turn keys are released; the
+  arena edge is a spring-like pull, so with no drag a ship that drifts
+  out is bounced back in; raiders keep their simpler grip model.
+- Checked in the browser pane by stepping the fight (the pane gave the
+  page 1 animation frame a second this time, a pane throttle; the fight
+  itself costs 0.04 ms a step and 0.2 ms to draw).
+
+## 2026-11-18 - Combat: forward flight redesign (branch `experiment/combat`)
+
+**Author feedback** on real-space flight: the fight paused at random on
+engage, and the ship turned far too fast. Asked for: always flying
+forward, up the screen; W/S and A/D that set a speed and a drift that
+stay until changed (S slows but never stops); enemies that come from
+behind and the sides; a wider cockpit view with a small 2D holographic
+map that shows missiles coming from the sides and the rear. Choices
+made with the author: guns swivel to the mouse, speed notches, a 120
+degree cockpit view plus hologram, raiders fire slow homing missiles.
+684 tests passing; lint, types and build clean.
+
+- Pause fix (committed on its own first): losing focus only clears the
+  held keys; the fight pauses only when the page is actually hidden.
+- The hull never turns: it always points up the map (FORWARD). The
+  rotation complaint goes away with the rotation.
+- Speed notches: W/S step Slow 90 / Cruise 160 / Fast 240 and never
+  reach zero. A/D step a sideways drift (two notches each way, 70 each)
+  that stays set. Shift boost adds 150 forward. The ship eases toward
+  the set velocity at a limited acceleration. New module
+  `src/combat/flight.ts` holds this as pure functions.
+- Guns swivel to the mouse in both views. Aim assist, missile lock and
+  missile launch follow the aim, not the hull.
+- Endless space: no arena edge. Rocks left behind are recycled ahead.
+- Raider missiles: slow homing (230 speed, limited turn rate, 7 s
+  life). Raiders launch from 300 to 950 range. Rookie: one in flight at
+  a time, every 10 to 18 s. Ace: up to three, every 6 to 11 s. They can
+  be dodged with drift, outrun at Fast, or shot down with the lasers.
+  The wingman calls the side ("Missile from port").
+- Holographic map (`src/combat/holoMap.ts`): a ship-centred, nose-up
+  disc shared by both views (bottom-left). Things out of range sit on
+  the rim, missiles flash red, and a "MISSILE - PORT/STARBOARD/AFT/
+  AHEAD" label calls the nearest. The cockpit's map also shows the
+  view's wedge.
+- Cockpit: 120 degree view, always forward. The aim ring moves along
+  the horizon with the mouse, and the view banks with the drift. Red
+  arrows round the edge point at missiles out of sight. The old drift
+  markers and radar are gone (the hologram replaces them).
+- Trade-offs flagged to the author: in the cockpit you can only aim
+  inside the 120 degree view; threats behind are fought from the
+  tactical view (C) or dodged. Speeds, drift and missile numbers are
+  first guesses for the next playtest.
+- Checked in the browser pane by stepping the fight: notches and drift
+  reach the set velocities, the aim follows the mouse in both views, a
+  25 s rookie fight with continuous fire reached wave 2 with two raider
+  missiles launched, and both views draw the hologram and missile
+  warnings.
+
+## 2026-11-18 - Combat: raiders fly in front (branch `experiment/combat`)
+
+**Author feedback** on forward flight: "i love it though i notice there
+are no enemy ships in front". 693 tests passing; lint, types and build
+clean.
+
+- Cause, measured: raiders spent 75 to 80% of their time behind the ship
+  and only about 15% inside the cockpit's 120 degree view. They chased a
+  point on a ring that turned round the ship and slid forward with it,
+  so they always arrived late; and a wave spawned from any side, parked
+  and facing in, so the ship flew straight past the ones ahead.
+- Stations: each raider holds a bearing from the nose. Most of a wave is
+  spread across the arc ahead (inside the view), and a quarter sit
+  behind so the tail still needs watching (rookie wave 1: four ahead,
+  one behind). Stations sway and weave in and out.
+- Station keeping: a raider matches the ship's velocity plus a pull
+  toward its station, so it holds position instead of trailing.
+- Attack runs: holding station ahead, a raider points the way the ship
+  flies (away from it), so every 8 to 14 s it turns in on the ship
+  (head-on from ahead), fires, and breaks off at 420 range back to its
+  station.
+- A wave now flies in from its stations, already moving with the ship.
+- Raider top speed 300 to 360, so they get back in front after a run;
+  boost (390) still outruns them.
+- Result: about 70% of raider time ahead of the ship in tests, about 80%
+  inside the cockpit view in a 20 s browser run. The ceiling is 75%
+  ahead by design (the rear share).
+- Tunable in `gameConfig.combat.enemy`: stationRange, stationSway,
+  aheadArc, rearShare, paceGain, attack.
+
+## 2026-11-18 - Combat: boost follows the drift, a hard dodge (branch `experiment/combat`)
+
+**Author request:** a boost that speeds up a bit, not unlimited, "perfect
+for hard left or right to dodge the rocks". Chosen with the author: boost
+follows the drift. 697 tests passing; lint, types and build clean.
+
+- Shift with a drift set adds 220 sideways speed toward the drift (drift
+  1 goes from 70 to 290); forward speed is unchanged. With no drift it
+  adds 150 forward, as before.
+- The engines answer a boost at 700 (against 240 for notch changes), so
+  the dodge bites within about a third of a second; after it, the ship
+  eases back to its set drift at the normal rate.
+- Limited: the boost bar lasts about 3.5 s and refills in about 8. Once
+  empty, a new boost needs 25 energy (about 2 s), so holding Shift on an
+  empty bar no longer trickle-boosts (it used to flicker back on).
+- Status bar shows "+ boost" on whichever it is adding to ("Cruise ·
+  Drift left 1 + boost"). The hint reads "Shift boost (toward drift)".
+- Tunable: `ship.boostSide`, `ship.boostAccel`, `defence.boostMinStart`.
+
+## 2026-11-18 - Combat: cockpit view - big console map, INCOMING, hold to drift (branch `experiment/combat`)
+
+**Author feedback:** "THE 2D WORKS PERFECTLY!" The cockpit needed work:
+the map was too small to see a missile from behind, no jets were seen
+approaching, and the set drift made it hard to navigate. Choices made
+with the author: a big map on the centre console; keep 120 degrees but
+make raiders stand out; hold-to-drift in the cockpit. The tactical view
+is unchanged.
+
+- Cause of "no jets approaching": the 120 degree view halved how big
+  everything looks; a raider on a head-on run at 400 to 800 range was a
+  few pixels across.
+- Big holographic map: centred on the instrument console, about a third
+  of the screen's height across (shrinks on narrow screens). Blips, ship
+  and label scale with it, and raiders on an attack run are ringed in
+  red. It sits above the wingman's line; the "CANNONS COOLING" warning
+  moved above the aim ring to make room at small window sizes.
+- Raiders are drawn 1.6x their real size in the cockpit (hits still use
+  the real size; the lock and aim assist cover the difference). A raider
+  on an attack run gets pulsing red brackets with "INCOMING - 529 M"; out
+  of view, its edge arrow flashes red.
+- Hold to drift: in the cockpit A/D drift (two notches) only while held,
+  and the ship glides back to straight on release. The sim takes this as
+  `strafeHold` on the input (null means the tactical view's taps).
+  Switching from the cockpit to tactical keeps whatever drift was held
+  at that moment; from tactical to the cockpit, a set drift ends.
+- 707 tests passing; lint, types and build clean.
+- Tunable: `ship.holdDriftNotches`, and in the cockpit renderer
+  RAIDER_LOOK and consoleMapFrame.
+
+## 2026-11-19 - Merged: ship combat into `main` (`checkpoint-2026-11-19`)
+
+**Author request:** "yup lets merge this, the test passed" - the author
+approved the combat experiment (the 2D view after playtesting; the
+cockpit rework as it stands, to be tuned on `main` or a new branch).
+
+`experiment/combat` was merged into `main` (no conflicts; `main` had not
+moved since `checkpoint-2026-11-18-b`) and tagged
+`checkpoint-2026-11-19`. On the merged `main`: 707 tests passing, lint,
+types and build clean. Next: the author is trying Codex for a graphics
+refinement pass, on its own experiment branch cut from this checkpoint.

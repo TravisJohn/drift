@@ -65,12 +65,12 @@ inside that world. In this prototype it is a placeholder only.
 
 Each room maps to an exam domain and holds terminals with puzzles:
 
-| Room        | Exam domain                         |
-|-------------|-------------------------------------|
-| Cargo bay   | Data preparation / engineering      |
-| Science lab | Model development                   |
-| Bridge      | Deployment and orchestration        |
-| Engineering | Monitoring, maintenance, security   |
+| Room        | Exam domain                       |
+| ----------- | --------------------------------- |
+| Cargo bay   | Data preparation / engineering    |
+| Science lab | Model development                 |
+| Bridge      | Deployment and orchestration      |
+| Engineering | Monitoring, maintenance, security |
 
 Solving puzzles "repairs" the ship AI, which gives the story a sense of
 progress. v0 only defines the hook (interface plus one placeholder terminal).
@@ -79,7 +79,8 @@ progress. v0 only defines the hook (interface plus one placeholder terminal).
 
 - Real puzzles or exam content
 - Live AI or LLM features, backend, accounts, saving progress
-- Manual or physics-based flying, combat, multiplayer
+- Manual or physics-based flying of the 3D ship, multiplayer
+  (2D combat on the tactical hologram was added later; see section 10)
 - Procedural galaxy, more than one star system
 - Mobile or touch controls, gamepad (desktop keyboard and mouse only)
 - Character customization
@@ -121,3 +122,47 @@ Details will be confirmed in the architecture phase.
 - **Title:** "Drift".
 - **Session length:** about 10 minutes. This is a default because the author
   didn't answer; revisit after the first playtest.
+
+## 10. Addition: tactical combat (2026-11-18)
+
+**Author request:** let the ship fight enemy ships, built as a 2D game,
+reusing what we can from STARFALL (an earlier cockpit shooter prototype).
+
+- **Where:** a new Tactical tab on the command deck. The drone runs the
+  ship's defences from the hologram; the 3D game stays calm, and combat
+  lives inside a top-down holographic view.
+- **Play (forward flight, revised 2026-11-18 on the author's playtest):**
+  the ship always faces forward and never rotates, and it is always
+  moving forward. W and S step the forward speed through notches (slow,
+  cruise, fast) that stay set; S never stops the ship. A and D step a
+  sideways drift (two notches each way) that stays until changed, so the
+  pilot keeps navigating. Shift boosts, on a bar that runs down and must
+  recharge: toward the drift if one is set (a hard dodge left or right,
+  for rocks and missiles), otherwise forward. The twin lasers swivel to the
+  mouse, so raiders on any side can be shot; they overheat. Seeker
+  missiles fly after holding the aim on a raider for about a second.
+  Raiders come from all sides and also launch slow homing missiles that
+  can be dodged by drifting, outrun, or shot down, with a warning sound,
+  an AI line and a flashing mark. Space is endless (no arena edge).
+  Shields recharge after a quiet spell, then hull. Three waves of
+  raiders (5, 7, 9) with a commander in the last; Rookie and Ace.
+- **Two views of the same fight** (added the same day, author: "i also
+  love this format, can we have both?"): the top-down tactical hologram,
+  and STARFALL's first-person cockpit. C switches at any time. The
+  cockpit always looks forward with a wide view (about 120 degrees); the
+  mouse moves the aim ring, and a large 2D holographic map on the centre
+  console shows everything around the ship, incoming missiles flashing.
+  Raiders are drawn larger than life (the wide view shrinks them), and
+  one turning in on the ship is bracketed in red, INCOMING with its
+  range. In the cockpit A/D drift only while held, and the ship glides
+  back to straight on release (the tactical view keeps the set-and-stay
+  taps). Raiders behind are seen on that map and are dealt with by
+  changing speed, by missile, or from the tactical view. The rules stay 2D, so in the
+  cockpit raiders fly on one level near the horizon rather than above
+  and below; a full 3D fight would be a separate, larger piece of work.
+- **Consequences:** none that last in this version. Losing or retreating
+  returns to the deck; try again any time.
+- **Out of scope for now:** surprise attacks during travel, damage that
+  carries into the 3D ship, upgrades, saved progress.
+- **Success:** the author finds a 5-minute fight fun, and leaving it puts
+  them back on a calm ship with nothing broken.

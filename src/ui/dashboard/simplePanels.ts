@@ -1,13 +1,16 @@
 /**
- * The smaller dashboard tabs: cameras, the ship's compartments, training.
+ * The smaller dashboard tabs: cameras, the ship's compartments, tactical,
+ * training.
  *
- * Each is a list with one selected item. Cameras and training leave the
- * dashboard when used (the overlay closes first); the ship tab lights the
- * selected compartment on the hologram.
+ * Each is a list with one selected item. Cameras, tactical and training
+ * leave the dashboard when used (the overlay closes first); the ship tab
+ * lights the selected compartment on the hologram.
  */
+import type { DifficultyId } from '../../combat/combatTypes';
 import type {
   DashboardCamera,
   DashboardData,
+  DashboardEngagement,
   DashboardRoom,
   DashboardTraining,
 } from '../dashboardModel';
@@ -145,6 +148,42 @@ export class ShipPanel extends ListPanel<DashboardRoom> {
 
   protected renderItem(room: DashboardRoom): HTMLElement {
     return el('div', 'room', room.name);
+  }
+}
+
+export class TacticalPanel extends ListPanel<DashboardEngagement> {
+  readonly id = 'tactical';
+  readonly label = 'Tactical';
+  readonly hint = '↑↓ choose · Enter engage';
+
+  constructor(
+    data: DashboardData,
+    private readonly onEngage: (difficulty: DifficultyId) => void,
+  ) {
+    super('tactical', 'Combat drills');
+    this.update(data);
+  }
+
+  update(data: DashboardData): void {
+    // The drills never change during play; only build the list once.
+    if (this.items.length === data.tactical.length && this.items.length > 0) return;
+    this.items = data.tactical;
+    this.renderList('No drills loaded.');
+  }
+
+  activate(): void {
+    const engagement = this.items[this.selected];
+    if (engagement) this.onEngage(engagement.difficulty);
+  }
+
+  protected renderItem(engagement: DashboardEngagement): HTMLElement {
+    const node = el('div', 'engagement');
+    node.append(
+      el('div', 'dest-name', engagement.title),
+      el('div', 'dest-blurb', engagement.detail),
+      el('div', 'cta', 'Engage ▸'),
+    );
+    return node;
   }
 }
 

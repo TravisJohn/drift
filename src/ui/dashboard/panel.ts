@@ -7,7 +7,7 @@
  */
 import type { DashboardData } from '../dashboardModel';
 
-export type DashboardTabId = 'navigation' | 'cameras' | 'ship' | 'training';
+export type DashboardTabId = 'navigation' | 'cameras' | 'ship' | 'tactical' | 'training';
 
 export interface DashboardPanel {
   readonly id: DashboardTabId;

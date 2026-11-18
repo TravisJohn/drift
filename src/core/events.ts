@@ -51,6 +51,12 @@ export interface GameEvents {
   'dashboard:opened': void;
   /** The dashboard view was closed. */
   'dashboard:closed': void;
+
+  // --- Tactical combat (on the hologram) ---
+  /** A fight began from the tactical tab. */
+  'combat:started': { difficulty: string };
+  /** The player left a fight: won, lost or retreated, with the final score. */
+  'combat:ended': { outcome: string; score: number };
 }
 
 export type GameEventName = keyof GameEvents;
