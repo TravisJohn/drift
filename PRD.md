@@ -131,7 +131,8 @@ reusing what we can from STARFALL (an earlier cockpit shooter prototype).
 - **Where:** a new Tactical tab on the command deck. The drone runs the
   ship's defences from the hologram; the 3D game stays calm, and combat
   lives inside a top-down holographic view.
-- **Play:** steer the ship (mouse aims, W/S thrust and brake, A/D turn),
+- **Play:** steer the ship (mouse aims, W thrust, S retro thrusters, A/D
+  turn; flight is heavy, with turning inertia and momentum that carries),
   twin lasers that overheat, seeker missiles after a lock, boost energy,
   shields that recharge after a quiet spell, then hull. Three waves of
   raiders (5, 7, 9) with a commander in the last; Rookie and Ace.

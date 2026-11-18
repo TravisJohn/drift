@@ -1114,3 +1114,34 @@ also love this format, wondering if we can have both?" 645 tests passing
   `testTimeout` is now 15 s in vite.config.ts, with a comment.
 - Checked in the browser by stepping the game by hand: switching both
   ways, the cockpit drawing a fight with a lock building, no errors.
+
+## 2026-11-18 - Combat: heavier, more realistic flight (branch `experiment/combat`)
+
+**Author feedback** after first trying the fight: "the sensitivity is too
+fast. In real space i dont think a ship can move like that". 655 tests
+passing (10 new); lint, types and build clean.
+
+- Turning has inertia: the hull spins up and spins down (about half a
+  second each way) and tops out at about 75 degrees a second, down from
+  about 195. Mouse aim eases the nose onto the pointer and never
+  overshoots (it only asks for a spin the ship can still stop from).
+- Momentum carries: thrust pushes along the nose and turning no longer
+  redirects the motion, so the ship drifts the old way until thrust
+  changes it. A light flight computer damping bleeds drift slowly
+  (about 6 s half-life). S is now retro thrusters that slow the drift to
+  a stop and never push backwards. After a boost, the extra speed eases
+  off instead of vanishing in one step.
+- Raiders turn slower and their motion lags their nose, so they swing
+  wide through turns; the commander is heavier still.
+- Cockpit stick: a wider dead zone, full spin further out, and a squared
+  response, so small mouse moves give gentle turns. The drawn stick now
+  tilts in step with what the ship does.
+- All of it is tunable in `gameConfig.combat.ship` and `.enemy`
+  (turnRate, turnAccel, aimGain, thrust, drag, retroThrust, grip...).
+- Trade-off: heavier flight makes the fight harder, since aiming takes
+  longer and dodging needs planning. Raider difficulty was not retuned;
+  the author's next playtest decides whether it needs to be.
+- Checked in the browser by stepping the fight by hand: turn build-up and
+  settling, drift holding its direction through a 110 degree swing,
+  retros stopping the ship in about a second, stick response, raiders
+  sliding, both views drawing.

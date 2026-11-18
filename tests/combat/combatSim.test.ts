@@ -11,6 +11,7 @@ import {
   type Rock,
   type Shot,
 } from '../../src/combat/combatTypes';
+import { steerRaider } from '../../src/combat/enemyAi';
 import { mulberry32 } from '../../src/core/random';
 import { angleOf, distance, length, sub, vec2 } from '../../src/combat/vec2';
 
@@ -99,20 +100,90 @@ describe('CombatSim: starting a fight', () => {
 });
 
 describe('CombatSim: flying', () => {
-  it('the ship turns toward the mouse aim, no faster than its turn rate', () => {
+  const ship = gameConfig.combat.ship;
+  const NOSE_UP = -Math.PI / 2;
+
+  it('a turn builds up: the first tenth of a second turns far less than full spin would', () => {
     const sim = newSim();
-    run(sim, 0.1, { aimAngle: 0 });
-    const turned = Math.abs(player(sim).heading - -Math.PI / 2);
-    expect(turned).toBeCloseTo(gameConfig.combat.ship.turnRate * 0.1, 1);
+    run(sim, 0.1, { turn: 1 });
+    const turned = player(sim).heading - NOSE_UP;
+    expect(turned).toBeGreaterThan(0);
+    expect(turned).toBeLessThan(ship.turnRate * 0.1 * 0.5);
+  });
+
+  it('spin never passes the top turn rate, however long the turn is held', () => {
+    const sim = newSim();
+    run(sim, 3, { turn: 1 });
+    expect(player(sim).spin).toBeCloseTo(ship.turnRate, 5);
+  });
+
+  it('letting go of a turn, the spin settles to zero over time instead of stopping dead', () => {
+    const sim = newSim();
+    run(sim, 2, { turn: 1 });
+    run(sim, 0.1);
+    expect(player(sim).spin).toBeGreaterThan(0); // still coasting round
+    run(sim, 1);
+    expect(player(sim).spin).toBe(0);
+  });
+
+  it('the nose swings onto the mouse aim and settles there without overshooting', () => {
+    const sim = newSim();
+    const aim = 0; // a quarter turn right of nose-up
+    let furthest = -Infinity;
+    for (let i = 0; i < 4 * 60; i++) {
+      sim.step(DT, { ...IDLE_COMBAT_INPUT, aimAngle: aim });
+      furthest = Math.max(furthest, player(sim).heading);
+    }
+    expect(player(sim).heading).toBeCloseTo(aim, 2);
+    expect(furthest).toBeLessThan(aim + 0.02);
+  });
+
+  it('momentum carries: turning the nose does not change the direction of drift', () => {
+    const sim = newSim();
+    run(sim, 1, { thrust: 1 }); // drifting up the map
+    const before = angleOf(player(sim).vel);
+    run(sim, 1.5, { turn: 1 }); // swing the nose round, engines off
+    expect(Math.abs(player(sim).heading - NOSE_UP)).toBeGreaterThan(1);
+    expect(angleOf(player(sim).vel)).toBeCloseTo(before, 5);
+  });
+
+  it('with the engines off the ship keeps drifting for a long while (only light damping)', () => {
+    const sim = newSim();
+    run(sim, 2, { thrust: 1 });
+    const cruising = length(player(sim).vel);
+    run(sim, 2);
+    expect(length(player(sim).vel)).toBeGreaterThan(cruising * 0.7);
+  });
+
+  it('the retros (S) slow the drift to a stop and never push the ship backwards', () => {
+    const sim = newSim();
+    run(sim, 2, { thrust: 1 });
+    const drift = angleOf(player(sim).vel);
+    run(sim, 0.3, { thrust: -1 });
+    expect(angleOf(player(sim).vel)).toBeCloseTo(drift, 5);
+    run(sim, 2, { thrust: -1 });
+    expect(length(player(sim).vel)).toBe(0);
   });
 
   it('thrust is capped at top speed, and boost raises the cap while it drains energy', () => {
     const sim = newSim();
     run(sim, 3, { thrust: 1 });
-    expect(length(player(sim).vel)).toBeCloseTo(gameConfig.combat.ship.maxSpeed, 0);
+    expect(length(player(sim).vel)).toBeCloseTo(ship.maxSpeed, 0);
     run(sim, 1, { thrust: 1, boost: true });
-    expect(length(player(sim).vel)).toBeGreaterThan(gameConfig.combat.ship.maxSpeed + 50);
+    expect(length(player(sim).vel)).toBeGreaterThan(ship.maxSpeed + 50);
     expect(player(sim).energy).toBeLessThan(80);
+  });
+
+  it('when a boost ends the extra speed eases off rather than vanishing in one step', () => {
+    const sim = newSim();
+    run(sim, 2, { thrust: 1, boost: true });
+    // Start the slow-down near the bottom edge, flying up, so the arena's
+    // pull never gets involved.
+    player(sim).pos = vec2(0, gameConfig.combat.arenaRadius - 100);
+    run(sim, DT, { thrust: 1 });
+    expect(length(player(sim).vel)).toBeGreaterThan(ship.maxSpeed + 100);
+    run(sim, 6, { thrust: 1 });
+    expect(length(player(sim).vel)).toBeCloseTo(ship.maxSpeed, 0);
   });
 
   it('boost energy refills after boosting stops', () => {
@@ -130,6 +201,38 @@ describe('CombatSim: flying', () => {
     p.vel = vec2(0, -100);
     run(sim, 2);
     expect(length(p.pos)).toBeLessThan(gameConfig.combat.arenaRadius + 100);
+  });
+});
+
+describe('raider flight', () => {
+  const enemy = gameConfig.combat.enemy;
+  const raider = (): Raider => ({
+    id: 1,
+    commander: false,
+    radius: enemy.radius,
+    maxHp: 1,
+    pos: vec2(0, 0),
+    vel: vec2(enemy.speed, 0), // flying right at full speed
+    heading: 0,
+    hp: 1,
+    fireIn: 99,
+    phase: 0,
+    dead: false,
+  });
+
+  it('a raider turning hard keeps sliding the old way for a moment (momentum)', () => {
+    const r = raider();
+    // Its goal is behind it, so it wants to come about.
+    steerRaider(r, vec2(-2000, 0), 0, 0.25, enemy);
+    expect(Math.abs(r.heading)).toBeGreaterThan(0.2); // the nose has swung
+    expect(r.vel.x).toBeGreaterThan(enemy.speed * 0.5); // still carried to the right
+  });
+
+  it("given time, a raider's motion lines up with where its nose points", () => {
+    const r = raider();
+    for (let i = 0; i < 6 * 60; i++) steerRaider(r, vec2(-2000, 0), 0, DT, enemy);
+    expect(angleOf(r.vel)).toBeCloseTo(r.heading, 1);
+    expect(length(r.vel)).toBeCloseTo(enemy.speed, -1);
   });
 });
 

@@ -11,7 +11,7 @@
  * cockpit (first person; the mouse is a flight stick - the further from
  * the centre, the harder the turn). The choice is kept between fights.
  *
- * Controls in both: W / ↑ thrust, S / ↓ brake, A D / ← → turn; left
+ * Controls in both: W / ↑ thrust, S / ↓ retros (slow the drift), A D / ← → turn; left
  * click or Space fires; right click or R launches a missile once locked;
  * Shift boosts; Esc or P pauses (Q there retreats). Leaving the window
  * pauses too.
@@ -69,9 +69,9 @@ const BOOST = ['ShiftLeft', 'ShiftRight'];
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const HINTS: Record<CombatViewId, string> = {
   tactical:
-    'Mouse aim · W thrust · S brake · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
+    'Mouse aim · W thrust · S retros · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
   cockpit:
-    'Mouse steer · W thrust · S brake · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
+    'Mouse steer · W thrust · S retros · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
 };
 
 interface Readouts {
@@ -251,12 +251,16 @@ export class CombatOverlay {
     return { turn: this.lastTurn, stick };
   }
 
-  /** The pointer as a stick position, −1..1 each way from the view's centre. */
+  /**
+   * The pointer as a stick position, −1..1 each way from the view's centre.
+   * Sideways it reaches full tilt where stickTurn reaches full spin (0.85
+   * of the half-width), so the drawn stick matches what the ship does.
+   */
   private stickPosition(pointer: Vec2): Vec2 {
     const w = window.innerWidth;
     const h = window.innerHeight;
     return vec2(
-      clamp((pointer.x - w / 2) / (w * 0.3), -1, 1),
+      clamp((pointer.x - w / 2) / (w * 0.425), -1, 1),
       clamp((pointer.y - h * 0.46) / (h * 0.3), -1, 1),
     );
   }

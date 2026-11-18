@@ -80,6 +80,7 @@ export class CombatSim {
       pos: vec2(),
       vel: vec2(),
       heading: -Math.PI / 2, // nose up the screen
+      spin: 0,
       shield: s.defence.shieldMax,
       hull: s.defence.hullMax,
       heat: 0,
@@ -151,27 +152,59 @@ export class CombatSim {
   private movePlayer(dt: number, input: CombatInput): void {
     const p = this.player;
     const ship = this.s.ship;
-    const turn = clamp(input.turn, -1, 1);
-    if (turn !== 0) {
-      p.heading = angleOf(fromAngle(p.heading + turn * ship.turnRate * dt));
-    } else if (input.aimAngle !== null) {
-      const diff = angleBetween(p.heading, input.aimAngle);
-      const stepMax = ship.turnRate * dt;
-      p.heading += Math.abs(diff) <= stepMax ? diff : Math.sign(diff) * stepMax;
-    }
+    const wanted = this.wantedSpin(input);
+    const spinStep = ship.turnAccel * dt;
+    p.spin += clamp(wanted - p.spin, -spinStep, spinStep);
+    p.heading = angleOf(fromAngle(p.heading + p.spin * dt));
 
     const d = this.s.defence;
     p.boosting = input.boost && p.energy > 1;
     p.energy = clamp(p.energy + (p.boosting ? -d.boostDrain : d.energyRefill) * dt, 0, d.energyMax);
 
-    const forward = fromAngle(p.heading);
-    const thrust = p.boosting ? 1 : Math.max(0, input.thrust);
-    if (thrust > 0) p.vel = add(p.vel, scale(forward, ship.thrust * thrust * dt));
-    else p.vel = scale(p.vel, 1 - approach(ship.drag, dt));
-    if (input.thrust < 0) p.vel = scale(p.vel, 1 - approach(ship.brake, dt));
-    p.vel = clampLength(p.vel, p.boosting ? ship.boostSpeed : ship.maxSpeed);
+    const ceiling = this.speedCeiling(
+      length(p.vel),
+      p.boosting ? ship.boostSpeed : ship.maxSpeed,
+      dt,
+    );
+    // Thrust only ever pushes along the nose; turning leaves the drift alone.
+    const push = p.boosting ? ship.boostThrust : Math.max(0, input.thrust);
+    if (push > 0) p.vel = add(p.vel, scale(fromAngle(p.heading), ship.thrust * push * dt));
+    p.vel = scale(p.vel, 1 - approach(ship.drag, dt));
+    const speed = length(p.vel);
+    if (input.thrust < 0 && speed > 0) {
+      p.vel = scale(p.vel, Math.max(0, speed - ship.retroThrust * dt) / speed);
+    }
+    p.vel = clampLength(p.vel, ceiling);
     p.pos = add(p.pos, scale(p.vel, dt));
     this.keepInArena(dt);
+  }
+
+  /**
+   * The spin the pilot is asking for. A/D or the cockpit stick ask for a
+   * share of the top rate. Mouse aim asks for less the closer the nose is,
+   * and never more than the ship could still stop from in the angle left
+   * (v = sqrt(2 a d)), so the nose settles on the aim without overshooting.
+   */
+  private wantedSpin(input: CombatInput): number {
+    const ship = this.s.ship;
+    const turn = clamp(input.turn, -1, 1);
+    if (turn !== 0) return turn * ship.turnRate;
+    if (input.aimAngle === null) return 0;
+    const diff = angleBetween(this.player.heading, input.aimAngle);
+    const off = Math.abs(diff);
+    const stoppable = Math.sqrt(2 * ship.turnAccel * off);
+    return Math.sign(diff) * Math.min(ship.turnRate, off * ship.aimGain, stoppable);
+  }
+
+  /**
+   * The fastest the ship may go after this step. Normally the cap; when it
+   * is already over the cap (a boost just ended), the excess settles away
+   * from last step's speed, so it eases off rather than snapping, and
+   * thrust can't top it back up.
+   */
+  private speedCeiling(speedBefore: number, cap: number, dt: number): number {
+    if (speedBefore <= cap) return cap;
+    return cap + (speedBefore - cap) * (1 - approach(this.s.ship.overspeedSettle, dt));
   }
 
   /**

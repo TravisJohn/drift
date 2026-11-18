@@ -54,6 +54,8 @@ export interface PlayerShip {
   pos: Vec2;
   vel: Vec2;
   heading: number;
+  /** Turning speed now, radians a second (clockwise positive). */
+  spin: number;
   shield: number;
   hull: number;
   heat: number;

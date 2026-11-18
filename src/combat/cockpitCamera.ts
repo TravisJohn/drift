@@ -112,14 +112,15 @@ export function compassDegrees(heading: number): number {
 
 /**
  * The mouse as a flight stick (STARFALL's steering): how far the pointer
- * sits from the centre of the view sets the turn rate. A small dead zone
- * lets the ship fly straight; at `full` of the half-width it turns as
- * hard as it can. Returns −1 (hard left) .. 1 (hard right).
+ * sits from the centre of the view sets the turn rate. A dead zone lets
+ * the ship fly straight; at `full` of the half-width it turns as hard as
+ * it can. The response is squared, so small moves give gentle turns and
+ * only a big push asks for full spin. Returns −1 (hard left) .. 1 (hard right).
  */
-export function stickTurn(offsetX: number, width: number, deadZone = 0.04, full = 0.6): number {
+export function stickTurn(offsetX: number, width: number, deadZone = 0.08, full = 0.85): number {
   const half = Math.max(1, width / 2);
   const k = offsetX / half;
   if (Math.abs(k) <= deadZone) return 0;
-  const past = (Math.abs(k) - deadZone) / (full - deadZone);
-  return Math.sign(k) * clamp(past, 0, 1);
+  const past = clamp((Math.abs(k) - deadZone) / (full - deadZone), 0, 1);
+  return Math.sign(k) * past * past;
 }

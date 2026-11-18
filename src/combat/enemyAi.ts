@@ -5,9 +5,10 @@
  * An arcade approximation, as in STARFALL: each raider steers toward a
  * point on a slowly turning ring around the player, so a wave spreads out
  * around the ship instead of queueing in a line. Turning is rate-limited,
- * so a raider has to come about before it can shoot.
+ * so a raider has to come about before it can shoot, and its motion lags
+ * its nose (momentum), so it swings wide through a turn.
  */
-import { angleBetween, intercept, turnToward } from './combatMath';
+import { angleBetween, approach, intercept, turnToward } from './combatMath';
 import type { CombatSettings, DifficultySettings, PlayerShip, Raider } from './combatTypes';
 import { type Vec2, add, angleOf, distance, fromAngle, scale, sub } from './vec2';
 
@@ -32,7 +33,11 @@ export function steerRaider(
   raider.heading = turnToward(raider.heading, angleOf(sub(goal, raider.pos)), s.turnRate * dt);
   // The commander is a little slower and heavier.
   const speed = raider.commander ? s.speed * 0.8 : s.speed;
-  raider.vel = scale(fromAngle(raider.heading), speed);
+  const grip = raider.commander ? s.grip * 0.7 : s.grip;
+  // Momentum: the motion eases toward the nose's direction instead of
+  // snapping to it, so a raider slides wide through its turns.
+  const wanted = scale(fromAngle(raider.heading), speed);
+  raider.vel = add(raider.vel, scale(sub(wanted, raider.vel), approach(grip, dt)));
   raider.pos = add(raider.pos, scale(raider.vel, dt));
 }
 

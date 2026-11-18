@@ -98,9 +98,10 @@ describe('CombatOverlay', () => {
     canvas.dispatchEvent(
       new MouseEvent('mousemove', { clientX: window.innerWidth * 0.9, clientY: 100 }),
     );
-    steps(0.5);
+    // The hull takes a moment to spin up, so give the turn time to build.
+    steps(1.5);
     // Headings grow clockwise on the map: a right turn increases it.
-    expect((overlay.snapshot?.player.heading ?? 0) - before).toBeGreaterThan(0.5);
+    expect((overlay.snapshot?.player.heading ?? 0) - before).toBeGreaterThan(1);
   });
 
   it('in the tactical view the same mouse position aims the ship at the pointer instead', () => {

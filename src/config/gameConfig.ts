@@ -437,15 +437,27 @@ export const gameConfig = {
     viewSpan: 1100,
     ship: {
       radius: 26,
-      /** Turn rate toward the aim (mouse) or with A/D. */
-      turnRate: 3.4,
-      thrust: 520,
+      // Flight is heavy on purpose (author: "in real space a ship can't move
+      // like that"): the hull has to spin up and spin down to turn, and
+      // momentum carries until thrust or the retros change it.
+      /** Top spin rate, radians a second (about 75 degrees). */
+      turnRate: 1.3,
+      /** How fast the spin builds or settles, radians a second, per second. */
+      turnAccel: 2.6,
+      /** Mouse aim: spin asked for per radian off target (eases in at the end). */
+      aimGain: 2.5,
+      /** Main engine push along the nose, per second. */
+      thrust: 220,
+      /** Boost multiplies the main engine's push. */
+      boostThrust: 1.7,
       maxSpeed: 260,
       boostSpeed: 470,
-      /** How quickly speed bleeds off without thrust (per second). */
-      drag: 0.9,
-      /** Extra slowing while braking (S). */
-      brake: 3,
+      /** Flight computer damping: a slow bleed so drift doesn't last forever. */
+      drag: 0.12,
+      /** Retro thrusters (S): slowing against the drift, per second. */
+      retroThrust: 260,
+      /** How fast speed above the cap (after a boost ends) settles back. */
+      overspeedSettle: 1.2,
     },
     defence: {
       shieldMax: 100,
@@ -495,7 +507,12 @@ export const gameConfig = {
       radius: 20,
       commanderRadius: 30,
       speed: 210,
-      turnRate: 2.3,
+      turnRate: 1.4,
+      /**
+       * How quickly a raider's motion swings round to where its nose points
+       * (per second). Lower means wider, slidier turns: they carry momentum.
+       */
+      grip: 1.6,
       /** Raiders circle the ship at about this distance, weaving. */
       orbitRange: 380,
       orbitWeave: 120,

@@ -87,6 +87,11 @@ describe('mouse as a flight stick', () => {
     expect(stickTurn(-250, 1000)).toBeCloseTo(-hard);
   });
 
+  it('small stick moves give gentle turns: a quarter of the way out asks for under a tenth of full spin', () => {
+    expect(stickTurn(250, 2000)).toBeGreaterThan(0);
+    expect(stickTurn(250, 2000)).toBeLessThan(0.1);
+  });
+
   it('the turn never exceeds full rate, however far the pointer goes', () => {
     expect(stickTurn(5000, 1000)).toBe(1);
     expect(stickTurn(-5000, 1000)).toBe(-1);
