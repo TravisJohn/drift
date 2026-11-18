@@ -1313,3 +1313,15 @@ moved since `checkpoint-2026-11-18-b`) and tagged
 `checkpoint-2026-11-19`. On the merged `main`: 707 tests passing, lint,
 types and build clean. Next: the author is trying Codex for a graphics
 refinement pass, on its own experiment branch cut from this checkpoint.
+
+## 2026-11-19 - Cockpit interior (branch `experiment/graphics`)
+
+The author chose the pilot's seat for the first graphics pass. The canopy
+now has bevelled pillars and open side windows. Recessed switch panels sit
+under the dashboard lip, and the centre map has a projector with a cyan
+reflection across the metal. The existing flight meters sit in a recessed
+display. The cockpit caches the metalwork at the current viewport size
+and moves it with the existing seat sway.
+
+All 707 tests passed. Lint, TypeScript and the production build passed.
+The author's in-game visual review is pending.

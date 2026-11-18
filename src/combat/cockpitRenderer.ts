@@ -33,6 +33,7 @@ import {
   skyToCamera,
   toCamera,
 } from './cockpitCamera';
+import { paintCockpitInterior } from './cockpitInterior';
 import { angleBetween, approach, clamp } from './combatMath';
 import {
   type CombatEvent,
@@ -174,6 +175,8 @@ export class CockpitRenderer implements CombatView {
   private particles: Particle[] = [];
   private readonly stars: Star[];
   private readonly debris: Debris[];
+  private interior: HTMLCanvasElement | null = null;
+  private pixelRatio = 1;
   private readonly nebula: HTMLCanvasElement;
 
   constructor(
@@ -199,6 +202,8 @@ export class CockpitRenderer implements CombatView {
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
+    this.interior = null;
+    this.pixelRatio = pixelRatio;
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     this.frame = {
@@ -256,8 +261,20 @@ export class CockpitRenderer implements CombatView {
     c.restore();
 
     this.drawReticle(view);
-    this.drawCockpit(drift);
+    // Composite the detailed metalwork as one layer, including its projector lighting.
+    this.interior ??= paintCockpitInterior(
+      this.width,
+      this.height,
+      this.pixelRatio,
+      consoleMapFrame(this.width, this.height),
+    );
+    // Allow the original five-pixel seat sway at full drift. Overscan the sides
+    // so the moving foreground still covers the viewport edges.
+    c.save();
+    c.translate(drift * 5, 0);
+    c.drawImage(this.interior, -5, 0, this.width + 10, this.height);
     this.drawMap(view);
+    c.restore();
     if (this.flash > 0) {
       const a = this.flash / HIT_FLASH;
       c.fillStyle = `rgba(255, 90, 60, ${(a * 0.3).toFixed(3)})`;
@@ -870,146 +887,6 @@ export class CockpitRenderer implements CombatView {
       ],
       color,
     );
-    c.restore();
-  }
-
-  /** The canopy frame and instrument console (STARFALL's cockpit). */
-  private drawCockpit(drift: number): void {
-    const c = this.ctx;
-    const w = this.width;
-    const h = this.height;
-    c.save();
-    c.translate(drift * 5, 0);
-    const metal = c.createLinearGradient(0, h * 0.7, 0, h);
-    metal.addColorStop(0, '#182430');
-    metal.addColorStop(0.2, '#111e2a');
-    metal.addColorStop(1, '#070d15');
-    // Side canopy spars, tapering toward the instrument deck.
-    this.path(
-      [
-        [0, h * 0.18],
-        [w * 0.026, h * 0.23],
-        [w * 0.16, h * 0.77],
-        [w * 0.12, h],
-        [0, h],
-      ],
-      '#090f18',
-      '#6e859339',
-      1.2,
-    );
-    this.path(
-      [
-        [w, h * 0.18],
-        [w * 0.974, h * 0.23],
-        [w * 0.84, h * 0.77],
-        [w * 0.88, h],
-        [w, h],
-      ],
-      '#090f18',
-      '#6e859339',
-      1.2,
-    );
-    this.path(
-      [
-        [0, h * 0.39],
-        [w * 0.011, h * 0.4],
-        [w * 0.124, h * 0.79],
-        [w * 0.15, h * 0.79],
-      ],
-      '#283745',
-      '#778c9b30',
-    );
-    this.path(
-      [
-        [w, h * 0.39],
-        [w * 0.989, h * 0.4],
-        [w * 0.876, h * 0.79],
-        [w * 0.85, h * 0.79],
-      ],
-      '#263340',
-      '#778c9b30',
-    );
-    this.line(w * 0.023, h * 0.285, w * 0.148, h * 0.776, '#b4c3c438', 1.4);
-    this.line(w * 0.977, h * 0.285, w * 0.852, h * 0.776, '#b4c3c438', 1.4);
-    // Narrow upper canopy rim.
-    this.path(
-      [
-        [0, 0],
-        [w, 0],
-        [w, h * 0.036],
-        [w * 0.71, h * 0.027],
-        [w * 0.29, h * 0.027],
-        [0, h * 0.036],
-      ],
-      '#090e16',
-      '#46596933',
-    );
-    // Console, its bevelled lip, and three recessed instrument bays.
-    this.path(
-      [
-        [0, h * 0.88],
-        [w * 0.12, h * 0.765],
-        [w * 0.32, h * 0.815],
-        [w * 0.41, h * 0.795],
-        [w * 0.59, h * 0.795],
-        [w * 0.68, h * 0.815],
-        [w * 0.88, h * 0.765],
-        [w, h * 0.88],
-        [w, h],
-        [0, h],
-      ],
-      metal,
-      '#9ab6c250',
-      1.2,
-    );
-    this.path(
-      [
-        [w * 0.12, h * 0.8],
-        [w * 0.33, h * 0.852],
-        [w * 0.34, h * 0.99],
-        [w * 0.12, h * 0.97],
-      ],
-      '#08131c',
-      '#44627635',
-    );
-    this.path(
-      [
-        [w * 0.88, h * 0.8],
-        [w * 0.67, h * 0.852],
-        [w * 0.66, h * 0.99],
-        [w * 0.88, h * 0.97],
-      ],
-      '#08131c',
-      '#44627635',
-    );
-    this.path(
-      [
-        [w * 0.36, h * 0.857],
-        [w * 0.42, h * 0.838],
-        [w * 0.58, h * 0.838],
-        [w * 0.64, h * 0.857],
-        [w * 0.62, h],
-        [w * 0.38, h],
-      ],
-      '#09151f',
-      '#66879825',
-    );
-    // Structural ribs and small amber indicator lights.
-    for (const side of [0, 1]) {
-      const xx = (x: number) => (side ? w - x : x);
-      this.line(xx(w * 0.085), h * 0.87, xx(w * 0.108), h * 0.965, '#46556266', 2);
-      for (let i = 0; i < 5; i++) {
-        const y = h * (0.884 + i * 0.016);
-        this.line(xx(w * 0.052), y, xx(w * 0.074), y - 3, '#294352', 2);
-      }
-      for (let i = 0; i < 3; i++) {
-        c.fillStyle = i === 0 ? '#ef9e64' : '#68858d';
-        c.fillRect(xx(w * 0.099 + i * 5), h * 0.844, 2, 2);
-      }
-    }
-    // Faint canopy reflections; the centre of the view stays clear.
-    this.line(w * 0.11, h * 0.66, w * 0.2, h * 0.73, '#94cee20b', 20);
-    this.line(w * 0.83, h * 0.65, w * 0.9, h * 0.61, '#94cee208', 25);
     c.restore();
   }
 
