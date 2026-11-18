@@ -79,7 +79,8 @@ progress. v0 only defines the hook (interface plus one placeholder terminal).
 
 - Real puzzles or exam content
 - Live AI or LLM features, backend, accounts, saving progress
-- Manual or physics-based flying, combat, multiplayer
+- Manual or physics-based flying of the 3D ship, multiplayer
+  (2D combat on the tactical hologram was added later; see section 10)
 - Procedural galaxy, more than one star system
 - Mobile or touch controls, gamepad (desktop keyboard and mouse only)
 - Character customization
@@ -121,3 +122,22 @@ Details will be confirmed in the architecture phase.
 - **Title:** "Drift".
 - **Session length:** about 10 minutes. This is a default because the author
   didn't answer; revisit after the first playtest.
+
+## 10. Addition: tactical combat (2026-11-18)
+
+**Author request:** let the ship fight enemy ships, built as a 2D game,
+reusing what we can from STARFALL (an earlier cockpit shooter prototype).
+
+- **Where:** a new Tactical tab on the command deck. The drone runs the
+  ship's defences from the hologram; the 3D game stays calm, and combat
+  lives inside a top-down holographic view.
+- **Play:** steer the ship (mouse aims, W/S thrust and brake, A/D turn),
+  twin lasers that overheat, seeker missiles after a lock, boost energy,
+  shields that recharge after a quiet spell, then hull. Three waves of
+  raiders (5, 7, 9) with a commander in the last; Rookie and Ace.
+- **Consequences:** none that last in this version. Losing or retreating
+  returns to the deck; try again any time.
+- **Out of scope for now:** surprise attacks during travel, damage that
+  carries into the 3D ship, upgrades, saved progress.
+- **Success:** the author finds a 5-minute fight fun, and leaving it puts
+  them back on a calm ship with nothing broken.

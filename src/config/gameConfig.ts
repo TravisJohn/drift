@@ -166,6 +166,11 @@ export const gameConfig = {
      * hum, ventilation air and engine rumble. Plays alongside any files in
      * public/audio/amb_ship_hum; set `enabled: false` to rely on files only.
      */
+    /** Tactical combat effects, synthesized live (combat/combatSounds.ts). */
+    combatSounds: {
+      enabled: true,
+      level: 0.32,
+    },
     /** The drone's tether alarm, synthesized live (audio/warningBeep.ts). */
     warningBeep: {
       enabled: true,
@@ -417,6 +422,119 @@ export const gameConfig = {
     collisionMargin: 0.25,
     /** Exponential smoothing rate for camera position. */
     positionSmoothing: 14,
+  },
+
+  /**
+   * Tactical combat on the command deck's hologram (src/combat). A 2D,
+   * top-down fight; distances are arena units (about a pixel at 1x zoom),
+   * speeds units per second, angles radians. Rules and numbers come from
+   * the STARFALL prototype, re-tuned for a flat view.
+   */
+  combat: {
+    /** The fight stays inside this circle; past it, a pull back to the middle. */
+    arenaRadius: 1500,
+    /** Units of the arena visible across the narrower side of the screen. */
+    viewSpan: 1100,
+    ship: {
+      radius: 26,
+      /** Turn rate toward the aim (mouse) or with A/D. */
+      turnRate: 3.4,
+      thrust: 520,
+      maxSpeed: 260,
+      boostSpeed: 470,
+      /** How quickly speed bleeds off without thrust (per second). */
+      drag: 0.9,
+      /** Extra slowing while braking (S). */
+      brake: 3,
+    },
+    defence: {
+      shieldMax: 100,
+      hullMax: 100,
+      /** Shields start to recharge after this long without a hit. */
+      shieldRegenDelay: 4.5,
+      shieldRegenRate: 9,
+      /** Boost energy: drains while boosting, refills otherwise. */
+      energyMax: 100,
+      boostDrain: 28,
+      energyRefill: 13,
+      /** Damage from ramming a raider or scraping a rock. */
+      ramDamage: 20,
+      rockDamage: 9,
+    },
+    lasers: {
+      cooldown: 0.135,
+      speed: 1100,
+      life: 1.1,
+      damage: 1,
+      heatPerShot: 7.5,
+      coolRate: 22,
+      /** Overheated cannons cool a little faster, and fire again below this heat. */
+      overheatedCoolRate: 28,
+      resumeHeat: 25,
+      /** Twin cannons: this far either side of the nose. */
+      spread: 11,
+      /** Aim help: a target this close to the nose (radians) is led automatically. */
+      assistAngle: 0.1,
+    },
+    missiles: {
+      count: 6,
+      cooldown: 0.7,
+      launchSpeed: 320,
+      speed: 640,
+      /** How hard a missile steers toward its target (exponential rate). */
+      homing: 4,
+      life: 5,
+      damage: 8,
+      hitRadius: 30,
+      /** Hold a raider within this angle of the nose and range to lock. */
+      lockAngle: 0.22,
+      lockRange: 900,
+      lockSeconds: 1.05,
+    },
+    enemy: {
+      radius: 20,
+      commanderRadius: 30,
+      speed: 210,
+      turnRate: 2.3,
+      /** Raiders circle the ship at about this distance, weaving. */
+      orbitRange: 380,
+      orbitWeave: 120,
+      /** They open fire inside this range, when roughly facing the ship. */
+      fireRange: 820,
+      fireAngle: 0.5,
+      shotSpeed: 520,
+      shotLife: 2.2,
+      /** Where a wave appears: this far from the ship. */
+      spawnMin: 900,
+      spawnMax: 1250,
+    },
+    /** Raiders per wave; the last wave is led by a commander. */
+    waves: [5, 7, 9],
+    /** Seconds between a cleared wave and the next. */
+    wavePause: 3,
+    /** Repairs and rearming between waves. */
+    rearm: { shield: 35, hull: 15 },
+    difficulty: {
+      rookie: {
+        enemyHp: 3,
+        commanderHp: 9,
+        fireMin: 3.6,
+        fireMax: 6.2,
+        /** Random aim error, radians either way. */
+        spread: 0.09,
+        shotDamage: 13,
+      },
+      ace: {
+        enemyHp: 4,
+        commanderHp: 12,
+        fireMin: 1.8,
+        fireMax: 3.5,
+        spread: 0.04,
+        shotDamage: 20,
+      },
+    },
+    score: { hit: 10, raider: 150, commander: 500, hullBonus: 10, shieldBonus: 5 },
+    rocks: { count: 9, minRadius: 34, maxRadius: 90, drift: 14 },
   },
 
   /** Debug flags, toggled via Vite env (`VITE_DEBUG=true npm run dev`). */
