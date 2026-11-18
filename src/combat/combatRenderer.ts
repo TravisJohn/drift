@@ -1,5 +1,6 @@
 /**
- * CombatRenderer - draws the tactical fight as a top-down hologram.
+ * CombatRenderer - draws the fight as a top-down tactical hologram (the
+ * other view is the cockpit, cockpitRenderer.ts).
  *
  * Canvas 2D, in the command deck's projector colours: the ship and its
  * fire in cyan, raiders and their fire in warm orange so friend and foe
@@ -19,6 +20,7 @@ import type {
   Rock,
   Shot,
 } from './combatTypes';
+import type { CombatView } from './combatView';
 import { type Vec2, add, fromAngle, length, scale, sub, vec2 } from './vec2';
 
 const CYAN = '127, 220, 255';
@@ -41,7 +43,7 @@ interface Particle {
 
 const rgba = (rgb: string, a: number): string => `rgba(${rgb}, ${a.toFixed(3)})`;
 
-export class CombatRenderer {
+export class CombatRenderer implements CombatView {
   private width = 1;
   private height = 1;
   private zoom = 1;

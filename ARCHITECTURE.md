@@ -288,7 +288,11 @@ Added 2026-11-18 (experiment branches, not yet on main):
   hologram, particles), `combatSounds.ts` (synthesized),
   `content/combatLines.ts` (the AI's lines). `ui/combatOverlay.ts` owns
   the screen, keys and mouse; the game steps it in `update` and draws it
-  in `render`, and skips the 3D view while it is open. Player mode
+  in `render`, and skips the 3D view while it is open. Two views share
+  one fight behind `combatView.ts` (`CombatView`): `combatRenderer.ts`
+  (tactical, top-down) and `cockpitRenderer.ts` (first person, ported
+  from STARFALL), with `cockpitCamera.ts` for its projection and the
+  mouse-as-flight-stick maths; C switches. Player mode
   `inCombat`; events `combat:started` / `combat:ended`. All tuning in
   `gameConfig.combat` (and `audio.combatSounds`).
 

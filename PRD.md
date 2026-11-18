@@ -135,6 +135,12 @@ reusing what we can from STARFALL (an earlier cockpit shooter prototype).
   twin lasers that overheat, seeker missiles after a lock, boost energy,
   shields that recharge after a quiet spell, then hull. Three waves of
   raiders (5, 7, 9) with a commander in the last; Rookie and Ace.
+- **Two views of the same fight** (added the same day, author: "i also
+  love this format, can we have both?"): the top-down tactical hologram,
+  and STARFALL's first-person cockpit. C switches at any time. In the
+  cockpit the mouse is a flight stick. The rules stay 2D, so in the
+  cockpit raiders fly on one level near the horizon rather than above
+  and below; a full 3D fight would be a separate, larger piece of work.
 - **Consequences:** none that last in this version. Losing or retreating
   returns to the deck; try again any time.
 - **Out of scope for now:** surprise attacks during travel, damage that

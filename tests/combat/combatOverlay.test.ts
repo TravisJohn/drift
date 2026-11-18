@@ -37,9 +37,7 @@ describe('CombatOverlay', () => {
   const text = (): string => document.getElementById('combat')?.textContent ?? '';
 
   beforeEach(() => {
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
-      () => fakeContext(),
-    );
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => fakeContext());
     played = [];
     onEnd = vi.fn<CombatCallbacks['onEnd']>();
     overlay = new CombatOverlay({
@@ -69,6 +67,57 @@ describe('CombatOverlay', () => {
     overlay.render(1016);
     key('keyup', 'KeyW');
     expect(overlay.snapshot?.time).toBeGreaterThan(1.9);
+  });
+
+  it('C switches between the tactical hologram and the cockpit, and back', () => {
+    expect(overlay.view).toBe('tactical');
+    expect(text()).toContain('C cockpit');
+    press('KeyC');
+    expect(overlay.view).toBe('cockpit');
+    expect(document.getElementById('combat')?.classList.contains('cockpit')).toBe(true);
+    expect(text()).toContain('Mouse steer');
+    press('KeyC');
+    expect(overlay.view).toBe('tactical');
+  });
+
+  it('the cockpit view draws a running fight (explosions, shots, lock) without error', () => {
+    press('KeyC');
+    key('keydown', 'Space');
+    for (let i = 0; i < 120; i++) {
+      overlay.update(DT);
+      overlay.render(1000 + i * 16.7);
+    }
+    key('keyup', 'Space');
+    expect(overlay.snapshot?.time).toBeGreaterThan(1.9);
+  });
+
+  it('in the cockpit the mouse is a flight stick: right of centre turns the ship right', () => {
+    press('KeyC');
+    const canvas = document.querySelector('#combat canvas') as HTMLCanvasElement;
+    const before = overlay.snapshot?.player.heading ?? 0;
+    canvas.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: window.innerWidth * 0.9, clientY: 100 }),
+    );
+    steps(0.5);
+    // Headings grow clockwise on the map: a right turn increases it.
+    expect((overlay.snapshot?.player.heading ?? 0) - before).toBeGreaterThan(0.5);
+  });
+
+  it('in the tactical view the same mouse position aims the ship at the pointer instead', () => {
+    const canvas = document.querySelector('#combat canvas') as HTMLCanvasElement;
+    // Straight above the ship (the ship sits at the centre of the view).
+    canvas.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: window.innerWidth / 2, clientY: 10 }),
+    );
+    steps(1);
+    expect(overlay.snapshot?.player.heading).toBeCloseTo(-Math.PI / 2, 1);
+  });
+
+  it('the chosen view is kept for the next fight', () => {
+    press('KeyC');
+    overlay.close();
+    overlay.open('rookie', { onEnd });
+    expect(overlay.view).toBe('cockpit');
   });
 
   it('held Space fires the cannons', () => {

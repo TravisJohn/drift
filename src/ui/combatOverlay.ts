@@ -6,13 +6,22 @@
  * nothing leaks into the drone. The game drives it: `update(dt)` once per
  * fixed step (the rules) and `render(now)` once per frame (the drawing).
  *
- * Controls: the mouse aims (the ship turns toward the pointer); W / ↑
- * thrust, S / ↓ brake, A D / ← → turn; left click or Space fires; right
- * click or R launches a missile once locked; Shift boosts; Esc or P
- * pauses (Q there retreats). Leaving the window pauses too.
+ * Two views of the same fight, switched with C at any time: the tactical
+ * hologram (top-down; the ship turns toward the mouse pointer) and the
+ * cockpit (first person; the mouse is a flight stick - the further from
+ * the centre, the harder the turn). The choice is kept between fights.
+ *
+ * Controls in both: W / ↑ thrust, S / ↓ brake, A D / ← → turn; left
+ * click or Space fires; right click or R launches a missile once locked;
+ * Shift boosts; Esc or P pauses (Q there retreats). Leaving the window
+ * pauses too.
  */
 import { gameConfig } from '../config/gameConfig';
+import { stickTurn } from '../combat/cockpitCamera';
+import { CockpitRenderer } from '../combat/cockpitRenderer';
+import { clamp } from '../combat/combatMath';
 import { CombatRenderer } from '../combat/combatRenderer';
+import type { CombatView, CombatViewId, PilotState } from '../combat/combatView';
 import { CombatSim } from '../combat/combatSim';
 import {
   type CombatEvent,
@@ -58,6 +67,12 @@ const BRAKE = ['KeyS', 'ArrowDown'];
 const BOOST = ['ShiftLeft', 'ShiftRight'];
 /** Keys the browser would otherwise act on (scrolling, page down). */
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+const HINTS: Record<CombatViewId, string> = {
+  tactical:
+    'Mouse aim · W thrust · S brake · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
+  cockpit:
+    'Mouse steer · W thrust · S brake · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
+};
 
 interface Readouts {
   status: HTMLDivElement;
@@ -73,7 +88,13 @@ interface Readouts {
 export class CombatOverlay {
   private root: HTMLDivElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
-  private renderer: CombatRenderer | null = null;
+  private tacticalView: CombatRenderer | null = null;
+  private cockpitView: CockpitRenderer | null = null;
+  /** Which view is showing; kept between fights. */
+  private viewId: CombatViewId = 'tactical';
+  private hint: HTMLDivElement | null = null;
+  /** The turn last sent to the simulation (the cockpit banks with it). */
+  private lastTurn = 0;
   private sim: CombatSim | null = null;
   private callbacks: CombatCallbacks | null = null;
   private readouts: Readouts | null = null;
@@ -98,6 +119,10 @@ export class CombatOverlay {
 
   get isOpen(): boolean {
     return this.root !== null;
+  }
+
+  get view(): CombatViewId {
+    return this.viewId;
   }
 
   get isPaused(): boolean {
@@ -126,16 +151,18 @@ export class CombatOverlay {
       this.root = null;
       throw new Error('CombatOverlay: this browser cannot draw a 2D canvas');
     }
-    this.renderer = new CombatRenderer(context);
+    this.tacticalView = new CombatRenderer(context);
+    this.cockpitView = new CockpitRenderer(context);
     this.readouts = this.buildReadouts();
-    this.root.append(this.canvas, this.readouts.status, this.buildMeters(), this.readouts.line);
-    this.root.appendChild(
-      el(
-        'div',
-        'hint',
-        'Mouse aim · W thrust · S brake · A/D turn · Click/Space fire · R/right-click missile · Shift boost · Esc pause',
-      ),
+    this.hint = el('div', 'hint');
+    this.root.append(
+      this.canvas,
+      this.readouts.status,
+      this.buildMeters(),
+      this.readouts.line,
+      this.hint,
     );
+    this.showView(this.viewId);
     parent.appendChild(this.root);
 
     document.addEventListener('keydown', this.onKeyDown);
@@ -163,7 +190,9 @@ export class CombatOverlay {
     this.root?.remove();
     this.root = null;
     this.canvas = null;
-    this.renderer = null;
+    this.tacticalView = null;
+    this.cockpitView = null;
+    this.hint = null;
     this.sim = null;
     this.callbacks = null;
     this.readouts = null;
@@ -193,12 +222,43 @@ export class CombatOverlay {
 
   /** Draw a frame. `now` is a performance.now() timestamp. */
   render(now: number): void {
-    if (!this.sim || !this.renderer) return;
+    const view = this.activeView();
+    if (!this.sim || !view) return;
     const dt = this.lastFrameAt === null ? 0 : Math.min(0.1, (now - this.lastFrameAt) / 1000);
     this.lastFrameAt = now;
-    this.renderer.react(this.pendingEvents);
+    view.react(this.pendingEvents);
     this.pendingEvents = [];
-    this.renderer.draw(this.sim.snapshot, this.paused ? 0 : dt);
+    view.draw(this.sim.snapshot, this.paused ? 0 : dt, this.pilot());
+  }
+
+  /** Switch between the tactical hologram and the cockpit. */
+  private showView(id: CombatViewId): void {
+    this.viewId = id;
+    this.root?.classList.toggle('cockpit', id === 'cockpit');
+    if (this.hint) this.hint.textContent = HINTS[id];
+    // Effects already in flight belong to the old view.
+    this.pendingEvents = [];
+  }
+
+  private activeView(): CombatView | null {
+    return this.viewId === 'cockpit' ? this.cockpitView : this.tacticalView;
+  }
+
+  /** The pilot's hands, for the cockpit to show. */
+  private pilot(): PilotState {
+    const stick =
+      this.viewId === 'cockpit' && this.pointer ? this.stickPosition(this.pointer) : null;
+    return { turn: this.lastTurn, stick };
+  }
+
+  /** The pointer as a stick position, −1..1 each way from the view's centre. */
+  private stickPosition(pointer: Vec2): Vec2 {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    return vec2(
+      clamp((pointer.x - w / 2) / (w * 0.3), -1, 1),
+      clamp((pointer.y - h * 0.46) / (h * 0.3), -1, 1),
+    );
   }
 
   // --- The fight ---
@@ -237,12 +297,19 @@ export class CombatOverlay {
 
   private sampleInput(): CombatInput {
     const held = (codes: readonly string[]) => codes.some((c) => this.keys.has(c));
-    const turn = (held(TURN_RIGHT) ? 1 : 0) - (held(TURN_LEFT) ? 1 : 0);
+    const keyTurn = (held(TURN_RIGHT) ? 1 : 0) - (held(TURN_LEFT) ? 1 : 0);
     const thrust = (held(THRUST) ? 1 : 0) - (held(BRAKE) ? 1 : 0);
+    const cockpit = this.viewId === 'cockpit';
+    // In the cockpit the mouse is a stick: it turns the ship directly.
+    const turn =
+      keyTurn !== 0 || !cockpit || !this.pointer
+        ? keyTurn
+        : stickTurn(this.pointer.x - window.innerWidth / 2, window.innerWidth);
+    this.lastTurn = turn;
     return {
       thrust,
       turn,
-      aimAngle: turn === 0 ? this.aimAngle() : null,
+      aimAngle: turn === 0 && !cockpit ? this.aimAngle() : null,
       fire: this.mouseFire || this.keys.has('Space'),
       boost: held(BOOST),
       missile: this.missileQueued,
@@ -251,8 +318,8 @@ export class CombatOverlay {
 
   /** Heading from the ship (centre of the view) toward the pointer. */
   private aimAngle(): number | null {
-    if (!this.pointer || !this.sim || !this.renderer) return null;
-    const ship = this.renderer.toScreen(this.sim.snapshot.player.pos);
+    if (!this.pointer || !this.sim || !this.tacticalView) return null;
+    const ship = this.tacticalView.toScreen(this.sim.snapshot.player.pos);
     const toward = sub(this.pointer, ship);
     if (Math.hypot(toward.x, toward.y) < 6) return null; // pointer on the ship itself
     return angleOf(toward);
@@ -408,6 +475,10 @@ export class CombatOverlay {
       else if (event.code === 'Enter') this.togglePause();
       return;
     }
+    if (event.code === 'KeyC') {
+      this.showView(this.viewId === 'cockpit' ? 'tactical' : 'cockpit');
+      return;
+    }
     if (event.code === 'KeyR') this.missileQueued = true;
     if (TURN_LEFT.includes(event.code) || TURN_RIGHT.includes(event.code)) {
       // Keyboard steering takes over until the mouse moves again.
@@ -447,12 +518,13 @@ export class CombatOverlay {
   };
 
   private readonly onResize = (): void => {
-    if (!this.canvas || !this.renderer) return;
+    if (!this.canvas || !this.tacticalView || !this.cockpitView) return;
     const ratio = Math.min(MAX_PIXEL_RATIO, window.devicePixelRatio || 1);
     const width = window.innerWidth;
     const height = window.innerHeight;
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
-    this.renderer.resize(width, height, ratio);
+    this.tacticalView.resize(width, height, ratio);
+    this.cockpitView.resize(width, height, ratio);
   };
 }

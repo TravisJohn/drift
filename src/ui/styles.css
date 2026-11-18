@@ -1088,3 +1088,14 @@
     animation: none;
   }
 }
+
+/* Cockpit view: the pointer is the flight stick (drawn on the canvas), and
+   the readouts sit in the console like instruments. */
+#combat.cockpit .scope {
+  cursor: none;
+}
+
+#combat.cockpit .meters {
+  border-color: rgba(var(--holo), 0.18);
+  background: rgba(4, 14, 22, 0.55);
+}

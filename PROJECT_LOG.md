@@ -1085,3 +1085,32 @@ hand): tab, engage, lasers kill raiders, overheat line, lock and missile
 kill, pause and retreat to the deck, all three waves to a win, results,
 back to the deck, and mouse aim. No console errors. Not yet played by a
 person with real input, so feel and difficulty are untested.
+
+## 2026-11-18 - Combat: a cockpit view as well (branch `experiment/combat`)
+
+**Author request:** after seeing STARFALL's first-person cockpit again: "i
+also love this format, wondering if we can have both?" 645 tests passing
+(17 new); lint, types and build clean.
+
+- One fight, two views, C switches at any time (the choice is kept
+  between fights). The tactical hologram is unchanged. The new cockpit
+  view is STARFALL's, ported to TypeScript: nebula, stars, ringed
+  planet, sun, raiders as small 3D fighters from its vertex model,
+  faceted rocks, converging laser bolts, the canopy frame and console,
+  a heading-up radar, heading tape, the targeting ring that fills as a
+  lock builds, target readout, and arrows to raiders out of view. The
+  view banks into turns and shakes on a hit.
+- In the cockpit the mouse is a flight stick (STARFALL's steering): the
+  further right or left of centre, the harder the turn, with a small
+  dead zone. Keys work the same in both views. No change to the rules.
+- Trade-off, flagged to the author: the rules are 2D, so in the cockpit
+  raiders fly on one level near the horizon. Depth comes from debris
+  drifting above and below, the sky and the bank. A full 3D fight would
+  mean 3D rules, a larger separate piece of work.
+- Cost: about 2 ms of drawing a frame in the cockpit (the 3D ship view
+  is not drawn during a fight).
+- Test runner: the slow ship-building tests passed alone but timed out
+  at vitest's 5 s default when the whole suite ran on a busy machine;
+  `testTimeout` is now 15 s in vite.config.ts, with a comment.
+- Checked in the browser by stepping the game by hand: switching both
+  ways, the cockpit drawing a fight with a lock building, no errors.
