@@ -11,10 +11,10 @@
  * cockpit (first person; the mouse is a flight stick - the further from
  * the centre, the harder the turn). The choice is kept between fights.
  *
- * Controls in both: W / ↑ thrust, S / ↓ retros (slow the drift), A D / ← → turn; left
- * click or Space fires; right click or R launches a missile once locked;
- * Shift boosts; Esc or P pauses (Q there retreats). Leaving the window
- * pauses too.
+ * Controls in both: W / ↑ thrust, S / ↓ flip (swing the nose against the
+ * drift; W then slows the ship), A D / ← → turn; left click or Space
+ * fires; right click or R launches a missile once locked; Shift boosts;
+ * Esc or P pauses (Q there retreats). Leaving the window pauses too.
  */
 import { gameConfig } from '../config/gameConfig';
 import { stickTurn } from '../combat/cockpitCamera';
@@ -69,9 +69,9 @@ const BOOST = ['ShiftLeft', 'ShiftRight'];
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const HINTS: Record<CombatViewId, string> = {
   tactical:
-    'Mouse aim · W thrust · S retros · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
+    'Mouse aim · W thrust · S flip · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
   cockpit:
-    'Mouse steer · W thrust · S retros · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
+    'Mouse steer · W thrust · S flip · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
 };
 
 interface Readouts {

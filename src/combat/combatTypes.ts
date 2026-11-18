@@ -29,7 +29,7 @@ export type DifficultySettings = CombatSettings['difficulty'][DifficultyId];
 
 /** What the player is asking for this step. */
 export interface CombatInput {
-  /** 1 thrust forward, −1 brake, 0 coast. */
+  /** 1 thrust forward, −1 flip (turn the nose against the drift), 0 coast. */
   readonly thrust: number;
   /** Keyboard turn: −1 left .. 1 right. Overrides the mouse aim while held. */
   readonly turn: number;

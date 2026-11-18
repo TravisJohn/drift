@@ -25,17 +25,18 @@ import {
   skyToCamera,
   toCamera,
 } from './cockpitCamera';
-import { approach, clamp } from './combatMath';
+import { angleBetween, approach, clamp } from './combatMath';
 import type {
   CombatEvent,
   CombatSettings,
   CombatSnapshot,
+  PlayerShip,
   Raider,
   Rock,
   Shot,
 } from './combatTypes';
 import type { CombatView, PilotState } from './combatView';
-import { type Vec2, add, fromAngle, length, normalize, scale, sub, vec2 } from './vec2';
+import { type Vec2, add, angleOf, fromAngle, length, normalize, scale, sub, vec2 } from './vec2';
 
 /** Eye height above the plane the fight happens on. */
 const EYE = 4;
@@ -43,6 +44,8 @@ const EYE = 4;
 const RAIDER_BOB = 4;
 /** Visual roll into a full-rate turn, radians. */
 const MAX_BANK = 0.14;
+/** How far out along the drift the horizon markers are placed (any far point works). */
+const DRIFT_MARKER_DISTANCE = 100_000;
 const STAR_COUNT = 900;
 const DEBRIS_COUNT = 36;
 /** Debris repeats in a square this wide around the ship, so it is always about. */
@@ -207,6 +210,7 @@ export class CockpitRenderer implements CombatView {
     for (const shot of view.shots) this.drawShot(shot);
     this.drawParticles();
     this.drawLock(view);
+    this.drawDrift(p);
     c.restore();
 
     this.drawReticle(view, pilot);
@@ -628,6 +632,44 @@ export class CockpitRenderer implements CombatView {
     c.globalAlpha = 1;
   }
 
+  // --- Flight ---
+
+  /**
+   * Where the ship is actually going. With no drag the nose and the motion
+   * part ways, so two markers sit on the horizon: a ring with wings for the
+   * drift ahead (prograde), a crossed ring for the way back (retrograde,
+   * where S swings the nose; burn there to slow down).
+   */
+  private drawDrift(p: Readonly<PlayerShip>): void {
+    const speed = length(p.vel);
+    if (speed < this.s.ship.flipMinSpeed) return;
+    const dir = scale(p.vel, 1 / speed);
+    for (const way of [1, -1] as const) {
+      // A far point along the drift, at eye height: it lands on the horizon.
+      const far = add(p.pos, scale(dir, way * DRIFT_MARKER_DISTANCE));
+      const at = project(toCamera(this.cam, far, EYE), this.frame);
+      if (!at || !this.onScreen(at, 20)) continue;
+      const color = way > 0 ? '#9fe3d6dd' : '#ffc39add';
+      const c = this.ctx;
+      c.save();
+      c.strokeStyle = color;
+      c.lineWidth = 1.3;
+      c.beginPath();
+      c.arc(at.x, at.y, 7, 0, Math.PI * 2);
+      c.stroke();
+      if (way > 0) {
+        this.line(at.x - 17, at.y, at.x - 7, at.y, color, 1.3);
+        this.line(at.x + 7, at.y, at.x + 17, at.y, color, 1.3);
+        this.line(at.x, at.y - 7, at.x, at.y - 13, color, 1.3);
+      } else {
+        const k = 7 * Math.SQRT1_2;
+        this.line(at.x - k, at.y - k, at.x + k, at.y + k, color, 1.3);
+        this.line(at.x - k, at.y + k, at.x + k, at.y - k, color, 1.3);
+      }
+      c.restore();
+    }
+  }
+
   // --- Targeting and the head-up display ---
 
   /** Brackets around the raider being locked, closing as the lock builds. */
@@ -707,6 +749,16 @@ export class CockpitRenderer implements CombatView {
       this.line(tx, tapeY, tx, tapeY + 4, '#7fa5ad50');
       c.fillStyle = '#7fa5ad80';
       c.fillText(String((base + i * 10 + 360) % 360).padStart(3, '0'), tx, tapeY - 6);
+    }
+    // Drift: speed, and how far the motion is off the nose.
+    const speed = length(p.vel);
+    c.fillStyle = '#9fe3d6bb';
+    c.fillText(`DRIFT ${Math.round(speed)} M/S`, x, tapeY + 18);
+    if (speed >= this.s.ship.flipMinSpeed) {
+      const off = Math.round((angleBetween(p.heading, angleOf(p.vel)) * 180) / Math.PI);
+      const side = off === 0 ? 'ON NOSE' : `${Math.abs(off)}° ${off > 0 ? 'RIGHT' : 'LEFT'}`;
+      c.fillStyle = '#7fa5ad99';
+      c.fillText(side, x, tapeY + 30);
     }
     // Side ladder ticks.
     for (const side of [-1, 1]) {

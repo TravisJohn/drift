@@ -10,7 +10,7 @@
  * fixed seed plays out the same every time (the tests rely on that).
  */
 import { gameConfig } from '../config/gameConfig';
-import { angleBetween, approach, clamp, intercept, segmentDistance } from './combatMath';
+import { angleBetween, clamp, intercept, segmentDistance } from './combatMath';
 import type {
   CombatEvent,
   CombatInput,
@@ -78,7 +78,8 @@ export class CombatSim {
     if (s.waves.length === 0) throw new Error('CombatSim: no waves configured');
     this.player = {
       pos: vec2(),
-      vel: vec2(),
+      // Already under way: a ship in space is never parked.
+      vel: scale(fromAngle(-Math.PI / 2), s.ship.launchSpeed),
       heading: -Math.PI / 2, // nose up the screen
       spin: 0,
       shield: s.defence.shieldMax,
@@ -161,50 +162,51 @@ export class CombatSim {
     p.boosting = input.boost && p.energy > 1;
     p.energy = clamp(p.energy + (p.boosting ? -d.boostDrain : d.energyRefill) * dt, 0, d.energyMax);
 
-    const ceiling = this.speedCeiling(
-      length(p.vel),
-      p.boosting ? ship.boostSpeed : ship.maxSpeed,
-      dt,
-    );
-    // Thrust only ever pushes along the nose; turning leaves the drift alone.
+    // Newtonian: thrust only ever pushes along the nose, turning leaves the
+    // drift alone, and nothing else changes the velocity (no drag).
     const push = p.boosting ? ship.boostThrust : Math.max(0, input.thrust);
-    if (push > 0) p.vel = add(p.vel, scale(fromAngle(p.heading), ship.thrust * push * dt));
-    p.vel = scale(p.vel, 1 - approach(ship.drag, dt));
-    const speed = length(p.vel);
-    if (input.thrust < 0 && speed > 0) {
-      p.vel = scale(p.vel, Math.max(0, speed - ship.retroThrust * dt) / speed);
+    if (push > 0) {
+      const speedBefore = length(p.vel);
+      const pushed = add(p.vel, scale(fromAngle(p.heading), ship.thrust * push * dt));
+      // The engine can't push past its limit, but never takes speed away:
+      // already faster (after a boost), a burn can only hold or lower it.
+      const limit = Math.max(speedBefore, p.boosting ? ship.boostSpeed : ship.maxSpeed);
+      p.vel = clampLength(pushed, limit);
     }
-    p.vel = clampLength(p.vel, ceiling);
     p.pos = add(p.pos, scale(p.vel, dt));
     this.keepInArena(dt);
   }
 
   /**
-   * The spin the pilot is asking for. A/D or the cockpit stick ask for a
-   * share of the top rate. Mouse aim asks for less the closer the nose is,
-   * and never more than the ship could still stop from in the angle left
-   * (v = sqrt(2 a d)), so the nose settles on the aim without overshooting.
+   * The spin the pilot is asking for. S (flip) swings the nose round to
+   * face against the drift, so a burn then slows the ship. Otherwise A/D
+   * or the cockpit stick ask for a share of the top rate, and mouse aim
+   * swings toward the pointer.
    */
   private wantedSpin(input: CombatInput): number {
     const ship = this.s.ship;
+    const p = this.player;
+    if (input.thrust < 0) {
+      if (length(p.vel) < ship.flipMinSpeed) return 0;
+      return this.spinToward(angleOf(scale(p.vel, -1)));
+    }
     const turn = clamp(input.turn, -1, 1);
     if (turn !== 0) return turn * ship.turnRate;
     if (input.aimAngle === null) return 0;
-    const diff = angleBetween(this.player.heading, input.aimAngle);
-    const off = Math.abs(diff);
-    const stoppable = Math.sqrt(2 * ship.turnAccel * off);
-    return Math.sign(diff) * Math.min(ship.turnRate, off * ship.aimGain, stoppable);
+    return this.spinToward(input.aimAngle);
   }
 
   /**
-   * The fastest the ship may go after this step. Normally the cap; when it
-   * is already over the cap (a boost just ended), the excess settles away
-   * from last step's speed, so it eases off rather than snapping, and
-   * thrust can't top it back up.
+   * Spin that brings the nose onto `target` and settles there: less the
+   * closer it gets, and never more than the ship could still stop from in
+   * the angle left (v = sqrt(2 a d)), so it doesn't overshoot.
    */
-  private speedCeiling(speedBefore: number, cap: number, dt: number): number {
-    if (speedBefore <= cap) return cap;
-    return cap + (speedBefore - cap) * (1 - approach(this.s.ship.overspeedSettle, dt));
+  private spinToward(target: number): number {
+    const ship = this.s.ship;
+    const diff = angleBetween(this.player.heading, target);
+    const off = Math.abs(diff);
+    const stoppable = Math.sqrt(2 * ship.turnAccel * off);
+    return Math.sign(diff) * Math.min(ship.turnRate, off * ship.aimGain, stoppable);
   }
 
   /**

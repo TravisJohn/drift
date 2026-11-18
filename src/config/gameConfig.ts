@@ -437,9 +437,10 @@ export const gameConfig = {
     viewSpan: 1100,
     ship: {
       radius: 26,
-      // Flight is heavy on purpose (author: "in real space a ship can't move
-      // like that"): the hull has to spin up and spin down to turn, and
-      // momentum carries until thrust or the retros change it.
+      // Flight follows real-space rules on purpose (author: "it won't stop
+      // in actual life"): nothing slows the ship but its own engine. The
+      // hull spins up and down to turn, momentum carries forever, and to
+      // slow down you turn round and burn against the drift (S flips).
       /** Top spin rate, radians a second (about 75 degrees). */
       turnRate: 1.3,
       /** How fast the spin builds or settles, radians a second, per second. */
@@ -450,14 +451,17 @@ export const gameConfig = {
       thrust: 220,
       /** Boost multiplies the main engine's push. */
       boostThrust: 1.7,
+      /**
+       * The fastest the main engine (or boost) can push the ship. A limit on
+       * the engine, not on the ship: speed above it (after a boost) is kept
+       * until the pilot burns against it.
+       */
       maxSpeed: 260,
       boostSpeed: 470,
-      /** Flight computer damping: a slow bleed so drift doesn't last forever. */
-      drag: 0.12,
-      /** Retro thrusters (S): slowing against the drift, per second. */
-      retroThrust: 260,
-      /** How fast speed above the cap (after a boost ends) settles back. */
-      overspeedSettle: 1.2,
+      /** The fight opens with the ship already cruising forward at this speed. */
+      launchSpeed: 120,
+      /** S flips the nose to face against the drift; below this speed it holds. */
+      flipMinSpeed: 5,
     },
     defence: {
       shieldMax: 100,

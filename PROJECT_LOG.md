@@ -1145,3 +1145,32 @@ passing (10 new); lint, types and build clean.
   settling, drift holding its direction through a 110 degree swing,
   retros stopping the ship in about a second, stick response, raiders
   sliding, both views drawing.
+
+## 2026-11-18 - Combat: real-space flight, no drag (branch `experiment/combat`)
+
+**Author feedback** on the heavier flight: "the ship shouldnt hover - it
+wont stop in actual life ... if you want to go back you should circle
+around or look around." 658 tests passing; lint, types and build clean.
+
+- No drag and no magic braking: nothing changes the ship's velocity but
+  its own engine. Coasting keeps the speed forever.
+- S is now a flip: the nose swings round to face against the drift (a
+  half turn takes about 3.5 s), and W then slows the ship. Burn too long
+  and it starts moving the other way. Below 5 units a second S holds.
+- The engine limit is a limit on the engine, not the ship: thrust can't
+  push past top speed (or boost speed), but never takes speed away, so
+  the extra speed from a boost is kept until the pilot burns against it.
+- The fight opens with the ship already cruising forward (120), so it
+  never sits parked.
+- With the nose and the motion parting ways, both views show the drift:
+  a dashed line ahead of the ship in tactical; in the cockpit, a drift
+  speed and "N degrees LEFT/RIGHT" readout under the heading tape, plus
+  horizon markers for the drift ahead (ring with wings) and the way back
+  (crossed ring; S puts the nose on it).
+- Kept as game concessions, flagged to the author: the attitude
+  thrusters still settle the spin when the turn keys are released; the
+  arena edge is a spring-like pull, so with no drag a ship that drifts
+  out is bounced back in; raiders keep their simpler grip model.
+- Checked in the browser pane by stepping the fight (the pane gave the
+  page 1 animation frame a second this time, a pane throttle; the fight
+  itself costs 0.04 ms a step and 0.2 ms to draw).

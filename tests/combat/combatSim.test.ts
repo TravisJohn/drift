@@ -13,7 +13,8 @@ import {
 } from '../../src/combat/combatTypes';
 import { steerRaider } from '../../src/combat/enemyAi';
 import { mulberry32 } from '../../src/core/random';
-import { angleOf, distance, length, sub, vec2 } from '../../src/combat/vec2';
+import { angleOf, distance, length, scale, sub, vec2 } from '../../src/combat/vec2';
+import { angleBetween } from '../../src/combat/combatMath';
 
 const DT = 1 / 60;
 
@@ -147,22 +148,51 @@ describe('CombatSim: flying', () => {
     expect(angleOf(player(sim).vel)).toBeCloseTo(before, 5);
   });
 
-  it('with the engines off the ship keeps drifting for a long while (only light damping)', () => {
+  it('the fight opens with the ship already cruising nose-first: a ship in space is never parked', () => {
+    const sim = newSim();
+    expect(length(player(sim).vel)).toBeCloseTo(ship.launchSpeed, 5);
+    expect(angleOf(player(sim).vel)).toBeCloseTo(NOSE_UP, 5);
+  });
+
+  it('with the engines off nothing slows the ship: no drag, the speed is the same seconds later', () => {
     const sim = newSim();
     run(sim, 2, { thrust: 1 });
     const cruising = length(player(sim).vel);
-    run(sim, 2);
-    expect(length(player(sim).vel)).toBeGreaterThan(cruising * 0.7);
+    run(sim, 3);
+    expect(length(player(sim).vel)).toBeCloseTo(cruising, 5);
   });
 
-  it('the retros (S) slow the drift to a stop and never push the ship backwards', () => {
+  it('S swings the nose round to face against the drift, without changing the speed by itself', () => {
     const sim = newSim();
     run(sim, 2, { thrust: 1 });
+    const cruising = length(player(sim).vel);
+    player(sim).pos = vec2(); // keep clear of the arena edge
+    // A half turn takes about 3.5 s: spin up, swing, settle.
+    run(sim, 4, { thrust: -1 });
+    const backwards = angleOf(scale(player(sim).vel, -1));
+    expect(Math.abs(angleBetween(player(sim).heading, backwards))).toBeLessThan(0.02);
+    expect(length(player(sim).vel)).toBeCloseTo(cruising, 5);
+  });
+
+  it('flipped, a burn slows the ship, and burning too long starts it moving the other way (no magic stop)', () => {
+    const sim = newSim();
+    run(sim, 2, { thrust: 1 });
+    run(sim, 3, { thrust: -1 }); // flip
+    player(sim).pos = vec2(); // keep clear of the arena edge
     const drift = angleOf(player(sim).vel);
-    run(sim, 0.3, { thrust: -1 });
-    expect(angleOf(player(sim).vel)).toBeCloseTo(drift, 5);
-    run(sim, 2, { thrust: -1 });
-    expect(length(player(sim).vel)).toBe(0);
+    const cruising = length(player(sim).vel);
+    run(sim, 0.5, { thrust: 1 });
+    expect(length(player(sim).vel)).toBeLessThan(cruising - 50);
+    run(sim, 2, { thrust: 1 });
+    expect(Math.abs(angleBetween(angleOf(player(sim).vel), drift))).toBeGreaterThan(3);
+  });
+
+  it('with the ship all but still, S holds the nose rather than spinning about', () => {
+    const sim = newSim();
+    const p = player(sim);
+    p.vel = vec2();
+    run(sim, 1, { thrust: -1 });
+    expect(p.heading).toBeCloseTo(NOSE_UP, 5);
   });
 
   it('thrust is capped at top speed, and boost raises the cap while it drains energy', () => {
@@ -174,16 +204,15 @@ describe('CombatSim: flying', () => {
     expect(player(sim).energy).toBeLessThan(80);
   });
 
-  it('when a boost ends the extra speed eases off rather than vanishing in one step', () => {
+  it('after a boost the extra speed is kept: the engine cannot push past its limit, but never takes speed away', () => {
     const sim = newSim();
-    run(sim, 2, { thrust: 1, boost: true });
-    // Start the slow-down near the bottom edge, flying up, so the arena's
-    // pull never gets involved.
+    run(sim, 2.5, { thrust: 1, boost: true });
+    const boosted = length(player(sim).vel);
+    expect(boosted).toBeGreaterThan(ship.maxSpeed + 100);
+    // Near the bottom edge, flying up, so the arena's pull stays out of it.
     player(sim).pos = vec2(0, gameConfig.combat.arenaRadius - 100);
-    run(sim, DT, { thrust: 1 });
-    expect(length(player(sim).vel)).toBeGreaterThan(ship.maxSpeed + 100);
-    run(sim, 6, { thrust: 1 });
-    expect(length(player(sim).vel)).toBeCloseTo(ship.maxSpeed, 0);
+    run(sim, 2, { thrust: 1 });
+    expect(length(player(sim).vel)).toBeCloseTo(boosted, 5);
   });
 
   it('boost energy refills after boosting stops', () => {

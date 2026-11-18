@@ -43,6 +43,9 @@ interface Particle {
 
 const rgba = (rgb: string, a: number): string => `rgba(${rgb}, ${a.toFixed(3)})`;
 
+/** Seconds ahead the tactical drift line reaches. */
+const DRIFT_LOOKAHEAD = 1.5;
+
 export class CombatRenderer implements CombatView {
   private width = 1;
   private height = 1;
@@ -108,7 +111,10 @@ export class CombatRenderer implements CombatView {
     for (const rock of view.rocks) this.drawRock(rock);
     for (const shot of view.shots) this.drawShot(shot);
     for (const r of view.raiders) if (!r.dead) this.drawRaider(r, view);
-    if (view.phase !== 'lost') this.drawShip(view.player);
+    if (view.phase !== 'lost') {
+      this.drawDrift(view.player);
+      this.drawShip(view.player);
+    }
     this.drawParticles();
     this.drawLock(view);
     this.drawEdgeArrows(view.raiders);
@@ -238,6 +244,32 @@ export class CombatRenderer implements CombatView {
   }
 
   /** The ship from above: a plated freighter with side modules and an engine. */
+  /**
+   * A dashed line from the ship showing where it will be in a second and a
+   * half: with no drag the nose and the motion part ways, and this is the
+   * motion.
+   */
+  private drawDrift(p: Readonly<PlayerShip>): void {
+    if (length(p.vel) < this.s.ship.flipMinSpeed) return;
+    const c = this.ctx;
+    const from = this.toScreen(p.pos);
+    const to = this.toScreen(add(p.pos, scale(p.vel, DRIFT_LOOKAHEAD)));
+    c.save();
+    c.setLineDash([5, 6]);
+    c.lineWidth = 1.2;
+    c.strokeStyle = rgba(CYAN, 0.45);
+    c.beginPath();
+    c.moveTo(from.x, from.y);
+    c.lineTo(to.x, to.y);
+    c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = rgba(CYAN, 0.6);
+    c.beginPath();
+    c.arc(to.x, to.y, 3, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+
   private drawShip(p: Readonly<PlayerShip>): void {
     const c = this.ctx;
     const at = this.toScreen(p.pos);
