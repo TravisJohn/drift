@@ -12,7 +12,14 @@ import {
   type Rock,
   type Shot,
 } from '../../src/combat/combatTypes';
-import { steerRaider } from '../../src/combat/enemyAi';
+import {
+  stationBearing,
+  stationPoint,
+  stationVelocity,
+  steerRaider,
+  updateAttackRun,
+} from '../../src/combat/enemyAi';
+import { angleBetween } from '../../src/combat/combatMath';
 import { setVelocity } from '../../src/combat/flight';
 import { mulberry32 } from '../../src/core/random';
 import { angleOf, distance, length, sub, vec2 } from '../../src/combat/vec2';
@@ -243,23 +250,156 @@ describe('raider flight', () => {
     hp: 1,
     fireIn: 99,
     missileIn: 99,
+    attackIn: 99,
+    attacking: 0,
+    station: 0,
     phase: 0,
     dead: false,
   });
+  const shipAt = (x: number, y: number) => ({ pos: vec2(x, y), vel: vec2(0, 0) });
 
   it('a raider turning hard keeps sliding the old way for a moment (momentum)', () => {
     const r = raider();
     // Its goal is behind it, so it wants to come about.
-    steerRaider(r, vec2(-2000, 0), 0, 0.25, enemy);
+    steerRaider(r, shipAt(-2000, 0), 0, 0.25, enemy);
     expect(Math.abs(r.heading)).toBeGreaterThan(0.2); // the nose has swung
     expect(r.vel.x).toBeGreaterThan(enemy.speed * 0.5); // still carried to the right
   });
 
   it("given time, a raider's motion lines up with where its nose points", () => {
     const r = raider();
-    for (let i = 0; i < 6 * 60; i++) steerRaider(r, vec2(-2000, 0), 0, DT, enemy);
+    for (let i = 0; i < 6 * 60; i++) steerRaider(r, shipAt(-2000, 0), 0, DT, enemy);
     expect(angleOf(r.vel)).toBeCloseTo(r.heading, 1);
     expect(length(r.vel)).toBeCloseTo(enemy.speed, -1);
+  });
+});
+
+describe('raider stations: enemies in front, not only trailing behind', () => {
+  const enemy = gameConfig.combat.enemy;
+  /** Bearing of `pos` from the ship's nose, ignoring side: 0 ahead, pi behind. */
+  const offNose = (sim: CombatSim, r: Raider) =>
+    Math.abs(angleBetween(FORWARD, angleOf(sub(r.pos, player(sim).pos))));
+
+  it('most of a wave is stationed ahead, inside the cockpit view; a share watch the tail', () => {
+    const stations = Array.from({ length: 5 }, (_, i) => stationBearing(i, 5, enemy));
+    const ahead = stations.filter((b) => Math.abs(b) <= enemy.aheadArc);
+    const behind = stations.filter((b) => Math.abs(angleBetween(0, b)) > Math.PI / 2);
+    expect(ahead).toHaveLength(4);
+    expect(behind).toHaveLength(1);
+    expect(enemy.aheadArc).toBeLessThan(Math.PI / 3); // the cockpit shows +-60 degrees
+  });
+
+  it('the commander (first of the last wave) is stationed ahead', () => {
+    expect(Math.abs(stationBearing(0, 9, enemy))).toBeLessThanOrEqual(enemy.aheadArc);
+  });
+
+  it('a wave flies in mostly from ahead, already moving with the ship', () => {
+    const sim = newSim();
+    const wave = raiders(sim);
+    const fromAhead = wave.filter((r) => offNose(sim, r) < Math.PI / 2);
+    expect(fromAhead.length).toBeGreaterThan(wave.length / 2);
+    for (const r of wave) expect(r.vel).toEqual(player(sim).vel);
+  });
+
+  it('a raider sitting on its station just flies along with the ship', () => {
+    const sim = newSim();
+    const [r] = raiders(sim);
+    if (!r) throw new Error('no raider');
+    const ship = { pos: vec2(0, 0), vel: vec2(0, -160) };
+    r.pos = stationPoint(r, ship.pos, 3, enemy);
+    const want = stationVelocity(r, ship, 3, enemy.speed, enemy);
+    expect(want.x).toBeCloseTo(0);
+    expect(want.y).toBeCloseTo(-160);
+  });
+
+  it('over a minute of cruising, raiders spend most of their time in front of the ship', () => {
+    // The bug the author saw: every raider ended up trailing behind.
+    const sim = newSim();
+    let ahead = 0;
+    let all = 0;
+    for (let t = 0; t < 60 * 60; t++) {
+      player(sim).hull = 1e9; // only where they fly matters here
+      sim.step(DT, IDLE_COMBAT_INPUT);
+      if (t % 30 !== 0 || t < 300) continue;
+      for (const r of raiders(sim)) {
+        if (r.dead) continue;
+        all++;
+        if (offNose(sim, r) < Math.PI / 2) ahead++;
+      }
+    }
+    expect(ahead / all).toBeGreaterThan(0.55);
+  });
+});
+
+describe('raider attack runs: turning in on the ship, then breaking off', () => {
+  const enemy = gameConfig.combat.enemy;
+  const ship = { pos: vec2(0, 0), vel: vec2(0, -160) };
+  const raiderAt = (x: number, y: number): Raider => ({
+    id: 1,
+    commander: false,
+    radius: enemy.radius,
+    maxHp: 1,
+    pos: vec2(x, y),
+    vel: vec2(0, -160),
+    heading: FORWARD,
+    hp: 1,
+    fireIn: 99,
+    missileIn: 99,
+    attackIn: 0.01,
+    attacking: 0,
+    station: 0,
+    phase: 0,
+    dead: false,
+  });
+
+  it('when its countdown runs out a raider starts a run', () => {
+    const r = raiderAt(0, -900);
+    updateAttackRun(r, ship, DT, enemy, () => 0.5);
+    expect(r.attacking).toBe(enemy.attack.runTime);
+  });
+
+  it('on a run, a raider ahead comes round until its guns bear on the ship (head-on)', () => {
+    const r = raiderAt(0, -900);
+    r.attacking = enemy.attack.runTime;
+    let flying = ship;
+    let bears = false;
+    for (let i = 0; i < enemy.attack.runTime * 60; i++) {
+      flying = { ...flying, pos: vec2(flying.pos.x, flying.pos.y + flying.vel.y * DT) };
+      steerRaider(r, flying, 0, DT, enemy);
+      const toShip = angleOf(sub(flying.pos, r.pos));
+      if (Math.abs(angleBetween(r.heading, toShip)) < enemy.fireAngle) bears = true;
+    }
+    expect(bears).toBe(true);
+  });
+
+  it('a raider breaks off once close, rather than flying into the ship', () => {
+    const r = raiderAt(0, -(enemy.attack.breakRange - 10));
+    r.attacking = 1;
+    updateAttackRun(r, ship, DT, enemy, () => 0.5);
+    expect(r.attacking).toBe(0);
+    const { everyMin, everyMax } = enemy.attack;
+    expect(r.attackIn).toBeCloseTo((everyMin + everyMax) / 2);
+  });
+
+  it('raiders stationed ahead do get to shoot at the ship', () => {
+    const sim = newSim();
+    const frontIds = new Set(
+      raiders(sim)
+        .filter((r) => Math.abs(r.station) <= enemy.aheadArc)
+        .map((r) => r.id),
+    );
+    const near = (at: { x: number; y: number }) =>
+      raiders(sim).find((r) => frontIds.has(r.id) && distance(r.pos, at) < r.radius + 40);
+    let frontShots = 0;
+    for (let t = 0; t < 30 * 60; t++) {
+      player(sim).hull = 1e9;
+      const before = shots(sim).length;
+      sim.step(DT, IDLE_COMBAT_INPUT);
+      for (const shot of shots(sim).slice(before)) {
+        if (shot.owner === 'enemy' && !shot.missile && near(shot.pos)) frontShots++;
+      }
+    }
+    expect(frontShots).toBeGreaterThan(0);
   });
 });
 

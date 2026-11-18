@@ -96,7 +96,13 @@ export interface Raider {
   fireIn: number;
   /** Seconds until it may launch a missile. */
   missileIn: number;
-  /** Its own offset in the circling pattern, so raiders spread out. */
+  /** Seconds until its next attack run (while holding station). */
+  attackIn: number;
+  /** Seconds left of the attack run it is on; 0 while holding station. */
+  attacking: number;
+  /** Its station: a bearing from the ship's nose (radians, + right). */
+  readonly station: number;
+  /** Its own offset in the weaving, so raiders don't move in step. */
   readonly phase: number;
   dead: boolean;
 }

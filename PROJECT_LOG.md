@@ -1222,3 +1222,33 @@ degree cockpit view plus hologram, raiders fire slow homing missiles.
   25 s rookie fight with continuous fire reached wave 2 with two raider
   missiles launched, and both views draw the hologram and missile
   warnings.
+
+## 2026-11-18 - Combat: raiders fly in front (branch `experiment/combat`)
+
+**Author feedback** on forward flight: "i love it though i notice there
+are no enemy ships in front". 693 tests passing; lint, types and build
+clean.
+
+- Cause, measured: raiders spent 75 to 80% of their time behind the ship
+  and only about 15% inside the cockpit's 120 degree view. They chased a
+  point on a ring that turned round the ship and slid forward with it,
+  so they always arrived late; and a wave spawned from any side, parked
+  and facing in, so the ship flew straight past the ones ahead.
+- Stations: each raider holds a bearing from the nose. Most of a wave is
+  spread across the arc ahead (inside the view), and a quarter sit
+  behind so the tail still needs watching (rookie wave 1: four ahead,
+  one behind). Stations sway and weave in and out.
+- Station keeping: a raider matches the ship's velocity plus a pull
+  toward its station, so it holds position instead of trailing.
+- Attack runs: holding station ahead, a raider points the way the ship
+  flies (away from it), so every 8 to 14 s it turns in on the ship
+  (head-on from ahead), fires, and breaks off at 420 range back to its
+  station.
+- A wave now flies in from its stations, already moving with the ship.
+- Raider top speed 300 to 360, so they get back in front after a run;
+  boost (390) still outruns them.
+- Result: about 70% of raider time ahead of the ship in tests, about 80%
+  inside the cockpit view in a 20 s browser run. The ceiling is 75%
+  ahead by design (the rear share).
+- Tunable in `gameConfig.combat.enemy`: stationRange, stationSway,
+  aheadArc, rearShare, paceGain, attack.

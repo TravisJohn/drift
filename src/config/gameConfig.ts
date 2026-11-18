@@ -505,25 +505,54 @@ export const gameConfig = {
     enemy: {
       radius: 20,
       commanderRadius: 30,
-      /** Faster than the ship's top notch, so raiders keep up; boost outruns them. */
-      speed: 300,
+      /**
+       * Well above the ship's top notch (240), so raiders keep station and
+       * get back in front after an attack run; boost (390) outruns them.
+       */
+      speed: 360,
       turnRate: 1.4,
       /**
        * How quickly a raider's motion swings round to where its nose points
        * (per second). Lower means wider, slidier turns: they carry momentum.
        */
       grip: 1.6,
-      /** Raiders circle the ship at about this distance, weaving. */
-      orbitRange: 380,
-      orbitWeave: 120,
+      /**
+       * Each raider holds a station around the ship at about this distance,
+       * weaving in and out, its bearing swaying to and fro.
+       */
+      stationRange: 420,
+      stationWeave: 120,
+      stationSway: 0.35,
+      stationSwayRate: 0.4,
+      /**
+       * Where the stations are: the wave spread across this half-arc ahead
+       * of the nose (radians; inside the cockpit's 60 degree half-view),
+       * except this share, spread across this half-arc behind the tail.
+       */
+      aheadArc: 0.75,
+      rearShare: 0.25,
+      rearArc: 0.6,
+      /**
+       * Keeping station, a raider matches the ship's velocity plus this
+       * much speed toward its station per unit still to go.
+       */
+      paceGain: 0.9,
+      /**
+       * Attack runs: every `everyMin`..`everyMax` seconds a raider leaves
+       * its station and turns in on the ship (head-on from ahead), for up
+       * to `runTime` seconds or until it is within `breakRange`.
+       */
+      attack: { everyMin: 8, everyMax: 14, runTime: 3.5, breakRange: 420 },
       /** They open fire inside this range, when roughly facing the ship. */
       fireRange: 820,
       fireAngle: 0.5,
       shotSpeed: 520,
       shotLife: 2.2,
-      /** Where a wave appears: this far from the ship. */
+      /** Where a wave appears: this far from the ship, toward each station. */
       spawnMin: 900,
       spawnMax: 1250,
+      /** Radians either side of its station a raider may appear. */
+      spawnScatter: 0.25,
       /**
        * Raider missiles: slow and turning gently, so a sideways drift dodges
        * them, the fast notch outruns one from behind, and lasers shoot them

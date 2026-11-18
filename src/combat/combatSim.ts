@@ -27,7 +27,14 @@ import {
   type Rock,
   type Shot,
 } from './combatTypes';
-import { raiderMissile, raiderShot, steerEnemyMissile, steerRaider } from './enemyAi';
+import {
+  raiderMissile,
+  raiderShot,
+  stationBearing,
+  steerEnemyMissile,
+  steerRaider,
+  updateAttackRun,
+} from './enemyAi';
 import { approachVelocity, setVelocity, sideOf, stepStrafe, stepThrottle } from './flight';
 import { type Vec2, add, angleOf, distance, fromAngle, normalize, scale, sub, vec2 } from './vec2';
 import {
@@ -223,7 +230,8 @@ export class CombatSim {
     const diff = this.s.difficulty[this.difficulty];
     for (const r of this.raiders) {
       if (r.dead) continue;
-      steerRaider(r, this.player.pos, this.time, dt, this.s.enemy);
+      updateAttackRun(r, this.player, dt, this.s.enemy, this.random);
+      steerRaider(r, this.player, this.time, dt, this.s.enemy);
       this.launchRaiderMissile(r, dt);
       const angle = raiderShot(r, this.player, dt, this.s.enemy, diff, this.random);
       if (angle !== null) {
@@ -451,9 +459,11 @@ export class CombatSim {
     this.phase = 'fighting';
     this.raiders = Array.from({ length: count }, (_, i) => {
       const commander = last && i === 0;
-      const angle = this.random() * Math.PI * 2;
+      // Each flies in from the direction of its station, so most of a wave
+      // comes from ahead and a few from behind.
+      const station = stationBearing(i, count, e);
+      const angle = FORWARD + station + (this.random() * 2 - 1) * e.spawnScatter;
       const range = e.spawnMin + this.random() * (e.spawnMax - e.spawnMin);
-      // From any side, behind included.
       const pos = add(this.player.pos, scale(fromAngle(angle), range));
       const hp = commander ? diff.commanderHp : diff.enemyHp;
       return {
@@ -462,12 +472,17 @@ export class CombatSim {
         radius: commander ? e.commanderRadius : e.radius,
         maxHp: hp,
         pos,
-        vel: vec2(),
-        heading: angleOf(sub(this.player.pos, pos)),
+        // Already flying with the ship, so it doesn't start parked and
+        // get left behind.
+        vel: this.player.vel,
+        heading: FORWARD,
         hp,
         // Stagger the first shots so a wave doesn't fire all at once.
         fireIn: diff.fireMin * 0.5 + this.random() * diff.fireMax,
         missileIn: diff.missileMin * 0.5 + this.random() * diff.missileMax,
+        attackIn: e.attack.everyMin * 0.5 + this.random() * e.attack.everyMax,
+        attacking: 0,
+        station,
         phase: (i / count) * Math.PI * 2,
         dead: false,
       };
