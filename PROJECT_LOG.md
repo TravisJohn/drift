@@ -973,3 +973,28 @@ forever. Approved by the author ("a soft limit ... a red warning glow").
 Checked in the page by placing the drone 11.5 m off the starboard side:
 the spring drew it back, the drone glowed red and the AI line fired.
 Not checked: flying out to the limit by hand at full frame rate.
+
+## 2026-11-18 - Tether warning moves to the antenna, with a beep (branch experiment/star-hull)
+
+Author feedback on the first version: the red glow was too big. Wanted
+instead: the glow on the antenna, and a beeping warning sound.
+
+- The warning now lives on the antenna only. While the drone strains at
+  its tether the beacon turns red and flashes on each alarm beat inside a
+  small red glow (7 cm, centred on the beacon). The eye, stripe,
+  thrusters and hover light keep their normal colours; the body-sized
+  halo is gone.
+- `player/warningBeat.ts` (pure): one rhythm drives both the flash and
+  the beep, so they land together. First beat the moment strain begins;
+  then every 0.9 s at first strain down to 0.18 s at the limit, like a
+  parking sensor (`droneLook.warningBeat`).
+- `audio/warningBeep.ts`: a short synthesized chirp (two sines a fifth
+  apart, 80 ms), rising from 1250 to 1650 Hz with strain
+  (`audio.warningBeep`; `enabled: false` silences it). It is the drone's
+  own alarm, so it plays outside in vacuum too. No audio file; without
+  Web Audio it warns once and stays silent.
+- `droneAnimation.warningLevel` removed (replaced by WarningBeat).
+- 555 tests passing; lint, format, types and build clean.
+
+Checked in the page: beeps fire and slow as the tether pulls the drone
+back in; the antenna glows red. Not checked by ear: the beep's sound.

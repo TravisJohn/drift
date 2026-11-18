@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { gameConfig } from '../../src/config/gameConfig';
 import { vec3 } from '../../src/physics/vec3';
 import {
-  warningLevel,
   beaconLevel,
   blinkAmount,
   exhaustIntensity,
@@ -158,26 +157,5 @@ describe('eyeOffset (the drone looks where it is going)', () => {
       const { x, y } = eyeOffset(t, 0, 1);
       expect(Math.hypot(x, y)).toBeLessThanOrEqual(look.idleGazeDistance * 1.2);
     }
-  });
-});
-
-describe('warningLevel (the red glow builds as the drone nears its tether limit)', () => {
-  const samples = (strain: number) =>
-    Array.from({ length: 200 }, (_, i) => warningLevel(i * 0.013, strain));
-
-  it('is zero with no strain, so the drone keeps its normal colours', () => {
-    expect(samples(0).every((w) => w === 0)).toBe(true);
-  });
-
-  it('stays within 0..1 and grows with strain', () => {
-    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    for (const w of samples(1)) expect(w).toBeGreaterThanOrEqual(0);
-    for (const w of samples(1)) expect(w).toBeLessThanOrEqual(1);
-    expect(avg(samples(0.8))).toBeGreaterThan(avg(samples(0.3)));
-  });
-
-  it('pulses over time rather than holding still', () => {
-    const xs = samples(0.6);
-    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(0.05);
   });
 });

@@ -88,7 +88,7 @@ describe('DroneVisual', () => {
     visual.dispose();
   });
 
-  it('glows red at the tether limit and returns to blue once back in reach', () => {
+  it('warns on the antenna only: a red beacon in a small glow, gone when back in reach', () => {
     const visual = new DroneVisual();
     const snapshot = {
       position: vec3(0, 1, 0),
@@ -100,29 +100,38 @@ describe('DroneVisual', () => {
       bobOffset: 0,
       tetherStrain: 1,
     };
-    const glow = (): THREE.PointLight => {
-      let found: THREE.PointLight | null = null;
+    const find = <T extends THREE.Object3D>(test: (o: THREE.Object3D) => boolean): T => {
+      let found: THREE.Object3D | null = null;
       visual.group.traverse((o) => {
-        if ((o as THREE.PointLight).isPointLight) found = o as THREE.PointLight;
+        if (test(o)) found = o;
       });
-      if (!found) throw new Error('no hover glow light');
-      return found;
+      if (!found) throw new Error('part not found');
+      return found as T;
     };
-    visual.apply(snapshot, 1, 3);
-    expect(glow().color.r).toBeGreaterThan(glow().color.b);
-    visual.apply({ ...snapshot, tetherStrain: 0 }, 1, 3);
-    expect(glow().color.getHex()).toBe(gameConfig.droneLook.exhaustColor);
-    // The halo is hidden again, so it costs nothing in normal flight.
-    let haloShown = false;
-    visual.group.traverse((o) => {
-      if (
+    const halo = find<THREE.Mesh>(
+      (o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).material instanceof THREE.ShaderMaterial,
+    );
+    const beacon = find<THREE.Mesh>(
+      (o) =>
         (o as THREE.Mesh).isMesh &&
-        o.visible &&
-        (o as THREE.Mesh).material instanceof THREE.ShaderMaterial
-      )
-        haloShown = true;
-    });
-    expect(haloShown).toBe(false);
+        ((o as THREE.Mesh).material as THREE.MeshStandardMaterial).emissive?.getHex() ===
+          gameConfig.droneLook.beaconColor,
+    );
+    const beaconMaterial = beacon.material as THREE.MeshStandardMaterial;
+    const hoverLight = find<THREE.PointLight>((o) => (o as THREE.PointLight).isPointLight);
+
+    visual.apply(snapshot, 1, 3, 1);
+    expect(beaconMaterial.emissive.getHex()).toBe(gameConfig.droneLook.warningColor);
+    expect(halo.visible).toBe(true);
+    // The glow sits on the antenna, and is small: about the size of the beacon's glow, not the drone.
+    expect(halo.position.distanceTo(beacon.position)).toBeLessThan(1e-9);
+    expect(gameConfig.droneLook.warningHaloRadius).toBeLessThan(gameConfig.drone.radius / 2);
+    // The rest of the drone keeps its colours.
+    expect(hoverLight.color.getHex()).toBe(gameConfig.droneLook.exhaustColor);
+
+    visual.apply({ ...snapshot, tetherStrain: 0 }, 1, 3, 0);
+    expect(beaconMaterial.emissive.getHex()).toBe(gameConfig.droneLook.beaconColor);
+    expect(halo.visible).toBe(false);
     visual.dispose();
   });
 });

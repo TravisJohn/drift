@@ -37,10 +37,10 @@ export interface DroneModel {
   readonly eyeRest: THREE.Vector3;
   /** One pivot per thruster, at the duct's centre; rotate to tilt. */
   readonly thrusters: readonly THREE.Group[];
-  readonly eyeMaterial: THREE.MeshStandardMaterial;
-  readonly accentMaterial: THREE.MeshStandardMaterial;
   readonly exhaustMaterial: THREE.MeshStandardMaterial;
   readonly beaconMaterial: THREE.MeshStandardMaterial;
+  /** Centre of the antenna beacon, in root space. */
+  readonly beaconPosition: THREE.Vector3;
 }
 
 /** Bake a position, rotation and scale into a geometry (for merging). */
@@ -306,9 +306,8 @@ export function buildDroneModel(): DroneModel {
     eye,
     eyeRest,
     thrusters,
-    eyeMaterial: m.eye,
-    accentMaterial: m.accent,
     exhaustMaterial: m.exhaust,
     beaconMaterial: m.beacon,
+    beaconPosition: beacon.position.clone(),
   };
 }

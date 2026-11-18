@@ -85,12 +85,16 @@ export const gameConfig = {
       doubleChance: 0.22,
       seed: 7,
     },
-    /** Colour the eye and glows shift to as the drone nears its tether limit. */
+    /** Colour of the antenna beacon while the drone strains at its tether. */
     warningColor: 0xff2414,
-    /** Radius (m) of the red halo around the drone at full warning. */
-    warningHaloRadius: 0.55,
-    /** Brightness of that halo at full warning (bloom spreads it further). */
-    warningHaloStrength: 0.85,
+    /** Radius (m) of the red glow round the antenna beacon. */
+    warningHaloRadius: 0.07,
+    /** Brightness of that glow on each alarm beat (bloom spreads it further). */
+    warningHaloStrength: 1.6,
+    /** Extra beacon brightness on each alarm beat, as a multiple of beaconPeak. */
+    warningBeaconBoost: 1.5,
+    /** The alarm rhythm: slow at first strain, fast at the limit (player/warningBeat.ts). */
+    warningBeat: { slowInterval: 0.9, fastInterval: 0.18, flashSeconds: 0.16 },
     /** Metres the eye slides across the visor when banking into a turn. */
     glanceDistance: 0.016,
     /** Metres of slow idle wander in the eye while the drone is still. */
@@ -162,6 +166,14 @@ export const gameConfig = {
      * hum, ventilation air and engine rumble. Plays alongside any files in
      * public/audio/amb_ship_hum; set `enabled: false` to rely on files only.
      */
+    /** The drone's tether alarm, synthesized live (audio/warningBeep.ts). */
+    warningBeep: {
+      enabled: true,
+      level: 0.16,
+      lowHz: 1250,
+      highHz: 1650,
+      durationSeconds: 0.08,
+    },
     shipHum: {
       enabled: true,
       level: 0.55,

@@ -4,7 +4,9 @@
  * Puts the model from droneModel.ts where the controller says the drone
  * is, and brings it to life each frame with the values from
  * droneAnimation.ts: the eye blinks and glances into turns, the thrusters
- * tilt and glow harder with speed, and the antenna beacon flashes.
+ * tilt and glow harder with speed, and the antenna beacon flashes. Near
+ * the tether limit the beacon turns red and flashes with the alarm beat
+ * (WarningBeat), inside a small red glow.
  * Nose points -Z to match DroneController's yaw convention.
  */
 import * as THREE from 'three';
@@ -13,7 +15,6 @@ import type { DroneSnapshot } from './droneController';
 import {
   beaconLevel,
   blinkAmount,
-  warningLevel,
   exhaustIntensity,
   eyeOffset,
   thrustLevel,
@@ -30,11 +31,8 @@ const BLINK_DEPTH = 0.92;
 /** Speed (m/s) below which the drone counts as still, for the idle gaze. */
 const IDLE_SPEED = 0.6;
 
-/** The accent stripe's normal self-light (see droneModel). */
-const ACCENT_GLOW = 0.18;
-
-// Warning halo: a soft red sphere, brightest where it covers the drone and
-// fading to nothing at its rim, so it reads as glow rather than a ball.
+// Warning glow round the antenna beacon: a small soft red sphere, brightest
+// at its centre and fading to nothing at its rim, so it reads as glow.
 const HALO_VERTEX = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vView;
@@ -99,11 +97,8 @@ export class DroneVisual {
   private readonly glowBase: number;
   private readonly halo: THREE.Mesh;
   private readonly haloMaterial: THREE.ShaderMaterial;
+  /** Normal and warning beacon colours, so the warning can blend between them. */
   private readonly beaconColor = new THREE.Color(gameConfig.droneLook.beaconColor);
-  private readonly accentColor = new THREE.Color(gameConfig.droneLook.accentColor);
-  /** Normal and warning colours, so the warning can blend between them. */
-  private readonly eyeColor = new THREE.Color(gameConfig.droneLook.eyeColor);
-  private readonly exhaustColor = new THREE.Color(gameConfig.droneLook.exhaustColor);
   private readonly warningColor = new THREE.Color(gameConfig.droneLook.warningColor);
 
   constructor() {
@@ -141,6 +136,7 @@ export class DroneVisual {
       new THREE.SphereGeometry(gameConfig.droneLook.warningHaloRadius, 24, 16),
       this.haloMaterial,
     );
+    this.halo.position.copy(this.model.beaconPosition);
     this.halo.visible = false;
     this.group.add(this.halo);
 
@@ -161,8 +157,9 @@ export class DroneVisual {
   /**
    * Apply controller state; `alpha` interpolates between fixed steps and
    * `time` (seconds, any steady clock) drives blinking and the beacon.
+   * `warningFlash` (0..1) is the tether alarm beat from WarningBeat.
    */
-  apply(snapshot: DroneSnapshot, alpha: number, time: number): void {
+  apply(snapshot: DroneSnapshot, alpha: number, time: number, warningFlash = 0): void {
     const p = lerp(snapshot.prevPosition, snapshot.position, alpha);
     this.group.position.set(p.x, p.y + snapshot.bobOffset, p.z);
     this.group.rotation.set(snapshot.leanPitch, snapshot.yaw, snapshot.leanRoll, 'YXZ');
@@ -171,6 +168,7 @@ export class DroneVisual {
     this.groundShadowMaterial.uniforms.uStrength!.value = groundShadowStrength(p.y);
 
     this.animateParts(snapshot, time);
+    this.applyWarning(snapshot.tetherStrain, warningFlash);
   }
 
   private animateParts(snapshot: DroneSnapshot, time: number): void {
@@ -191,33 +189,24 @@ export class DroneVisual {
     const look = gameConfig.droneLook;
     model.beaconMaterial.emissiveIntensity =
       look.beaconRest + (look.beaconPeak - look.beaconRest) * beaconLevel(time);
-
-    this.applyWarning(warningLevel(time, snapshot.tetherStrain), level);
   }
 
   /**
-   * Tether warning: the eye, stripe, beacon, thruster glow and hover light
-   * shift to a pulsing red as the drone nears the limit, inside a soft red
-   * halo - so it reads from any side, even with the drone small on screen.
+   * Tether warning, on the antenna only: while the drone strains at its
+   * tether the beacon is red, flashing bright on each alarm beat inside a
+   * small red glow. With no strain the beacon keeps its normal flash.
    */
-  private applyWarning(warning: number, thrust: number): void {
-    const { model } = this;
-    model.eyeMaterial.emissive.copy(this.eyeColor).lerp(this.warningColor, warning);
-    model.eyeMaterial.emissiveIntensity = gameConfig.droneLook.eyeIntensity * (1 + 0.6 * warning);
-    model.exhaustMaterial.emissive.copy(this.exhaustColor).lerp(this.warningColor, warning);
-    if (warning > 0) {
-      model.exhaustMaterial.emissiveIntensity = Math.max(
-        model.exhaustMaterial.emissiveIntensity,
-        exhaustIntensity(thrust) * (1 + 1.2 * warning),
-      );
+  private applyWarning(strain: number, flash: number): void {
+    const look = gameConfig.droneLook;
+    const { beaconMaterial } = this.model;
+    const warning = strain > 0;
+    beaconMaterial.emissive.copy(warning ? this.warningColor : this.beaconColor);
+    if (warning) {
+      beaconMaterial.emissiveIntensity =
+        look.beaconPeak * (0.35 + strain * 0.3 + look.warningBeaconBoost * flash);
     }
-    model.accentMaterial.emissive.copy(this.accentColor).lerp(this.warningColor, warning);
-    model.accentMaterial.emissiveIntensity = ACCENT_GLOW + 2.4 * warning;
-    model.beaconMaterial.emissive.copy(this.beaconColor).lerp(this.warningColor, warning);
-    this.glow.color.copy(this.exhaustColor).lerp(this.warningColor, warning);
-    this.glow.intensity *= 1 + 2 * warning;
-    this.halo.visible = warning > 0.001;
-    this.haloMaterial.uniforms.uLevel!.value = warning * gameConfig.droneLook.warningHaloStrength;
+    this.halo.visible = warning;
+    this.haloMaterial.uniforms.uLevel!.value = look.warningHaloStrength * (0.2 * strain + flash);
   }
 
   dispose(): void {

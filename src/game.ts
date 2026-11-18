@@ -45,6 +45,8 @@ import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
 import { IntercomEffect } from './audio/intercomEffect';
 import { ShipHum } from './audio/shipHum';
+import { WarningBeep } from './audio/warningBeep';
+import { WarningBeat } from './player/warningBeat';
 import { chooseView } from './rendering/viewMode';
 import { connectAudioLibrary } from './audio/audioLibrarySource';
 import { connectArt } from './art/surfaceArt';
@@ -105,6 +107,9 @@ export class Game {
   private readonly intercom = new IntercomEffect();
   /** The ship's own synthesized hum: electrical, air, engine rumble. */
   private readonly hum = new ShipHum();
+  /** The drone's tether alarm: one beat drives the beep and the antenna flash. */
+  private readonly warningBeep = new WarningBeep();
+  private readonly warningBeat = new WarningBeat();
   // Music is piped through the intercom; every other sound stays direct.
   private readonly audio = new AudioManager(
     undefined,
@@ -154,6 +159,7 @@ export class Game {
     this.audio.unlock();
     this.intercom.resume();
     this.hum.resume();
+    this.warningBeep.resume();
   };
   /** A hand on the view while it is being dragged round. */
   private readonly onLookChange = (looking: boolean): void => {
@@ -369,6 +375,7 @@ export class Game {
     this.audio.unlock();
     this.intercom.resume();
     this.hum.resume();
+    this.warningBeep.resume();
     this.appState.start();
     this.events.emit('app:started');
   }
@@ -388,6 +395,7 @@ export class Game {
     this.audio.dispose();
     this.intercom.dispose();
     this.hum.dispose();
+    this.warningBeep.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -464,7 +472,7 @@ export class Game {
       }
     }
     this.refreshStatus();
-    this.checkTether();
+    this.updateTether(dt);
 
     // M5: the ship AI's subtitle (null = silence).
     this.hud.setSubtitle(this.narrative.update(dt));
@@ -741,7 +749,7 @@ export class Game {
     this.lastFrameAt = now;
 
     const snapshot = this.drone.snapshot;
-    this.droneVisual.apply(snapshot, alpha, now / 1000);
+    this.droneVisual.apply(snapshot, alpha, now / 1000, this.warningBeat.flash);
 
     // Cinematic: only the space scene, from the orbiting exterior camera.
     if (this.cinematicPose !== null) {
@@ -810,11 +818,13 @@ export class Game {
   }
 
   /**
-   * The ship AI speaks once when the drone strains at its tether, and may
-   * speak again only after the drone has come back within easy reach.
+   * The tether alarm: the drone beeps (and its antenna flashes) faster the
+   * nearer it is to the limit. The ship AI speaks once when the strain is
+   * serious, and may speak again only after the drone has come back.
    */
-  private checkTether(): void {
+  private updateTether(dt: number): void {
     const strain = this.drone.snapshot.tetherStrain;
+    if (this.warningBeat.update(dt, strain)) this.warningBeep.beep(strain);
     if (!this.tetherWarned && strain >= gameConfig.drone.tether.speakAtStrain) {
       this.tetherWarned = true;
       this.narrative.trigger('tetherWarning');
