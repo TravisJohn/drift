@@ -1324,4 +1324,17 @@ display. The cockpit caches the metalwork at the current viewport size
 and moves it with the existing seat sway.
 
 All 707 tests passed. Lint, TypeScript and the production build passed.
-The author's in-game visual review is pending.
+The author playtested and approved the cockpit interior before the scenery pass.
+
+## 2026-11-19 - Space scenery through the canopy (branch `experiment/graphics`)
+
+A blue-violet nebula crosses the port sky. A banded gas giant sits above
+the starboard horizon, with a lit limb, a night side and shadows across
+its rings. Fine background stars sit behind the brighter stars that streak
+during boost. The centre of the sky stays dark for tracking incoming ships.
+
+The cockpit loads two local WebP textures (195 kB total). The clouds and
+planet are pre-rendered, including the ring shadows. The planet keeps its
+aspect ratio as the viewport changes. Checked the sky composition at
+1280 × 720 and 400 × 900. The scenery awaits the author's cockpit playtest.
+All 707 tests passed, along with lint, TypeScript and the production build.
