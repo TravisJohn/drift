@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { gameConfig } from '../../config/gameConfig';
 import type { ShipLayout } from '../../content/shipLayout';
+import type { Vec3 } from '../../physics/vec3';
 import { mulberry32 } from '../../core/random';
 import { disposeObject3D } from '../../rendering/dispose';
 import { flashLevel } from '../../rendering/pulse';
@@ -26,7 +27,13 @@ import {
   prepare,
   spineGeometry,
 } from './exterior/hullGeometry';
-import { type EngineMount, type HullPlan, type WindowLight, planHull } from './exterior/hullPlan';
+import {
+  type EngineMount,
+  type HullPlan,
+  type WindowLight,
+  hullContains,
+  planHull,
+} from './exterior/hullPlan';
 import { createHullTexture } from './exterior/hullTexture';
 
 const PLUME_VERTEX = /* glsl */ `
@@ -63,6 +70,8 @@ const PLUME_LENGTH = 6;
 export class ShipExterior {
   readonly group = new THREE.Group();
 
+  private readonly plan: HullPlan;
+
   private readonly hullTexture: THREE.DataTexture;
   private readonly engineCore: THREE.MeshBasicMaterial;
   private readonly plumeMaterial: THREE.ShaderMaterial;
@@ -74,6 +83,7 @@ export class ShipExterior {
   constructor(layout: ShipLayout) {
     const cfg = gameConfig.exterior;
     const plan = planHull(layout, cfg.hullSeed);
+    this.plan = plan;
     const tile = cfg.hullTileSize;
 
     this.hullTexture = createHullTexture(cfg.textureSize, cfg.textureSeed);
@@ -147,6 +157,11 @@ export class ShipExterior {
 
     this.setEngineIntensity(0);
     this.update(0);
+  }
+
+  /** True when `point` (ship coordinates) lies inside the hull. */
+  contains(point: Vec3): boolean {
+    return hullContains(this.plan, point);
   }
 
   /** `intensity` is 0..1 from the TravelDirector. */

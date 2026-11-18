@@ -65,6 +65,20 @@ describe('ShipExterior', () => {
     exterior.dispose();
   });
 
+  it('knows inside from outside (what decides the exterior view)', () => {
+    const exterior = new ShipExterior(shipLayout);
+    const bridge = shipLayout.rooms.find((r) => r.id === 'bridge')!;
+    const inBridge = new THREE.Vector3((bridge.minX + bridge.maxX) / 2, 1.5, bridge.minZ + 1);
+    expect(exterior.contains(inBridge)).toBe(true);
+    // Just past a window: out of the room but still in the hull skin.
+    const cargo = shipLayout.rooms.find((r) => r.id === 'cargo')!;
+    expect(exterior.contains(new THREE.Vector3(cargo.maxX + 0.2, 1.5, -5))).toBe(true);
+    // Out in space beside the ship, and far above it.
+    expect(exterior.contains(new THREE.Vector3(cargo.maxX + 3, 1.5, -5))).toBe(false);
+    expect(exterior.contains(new THREE.Vector3(0, 20, 0))).toBe(false);
+    exterior.dispose();
+  });
+
   it('takes engine intensity and time without complaint, clamping out-of-range input', () => {
     const exterior = new ShipExterior(shipLayout);
     expect(() => {

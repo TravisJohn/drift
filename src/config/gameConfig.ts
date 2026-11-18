@@ -151,6 +151,8 @@ export const gameConfig = {
       rumbleIdle: 0.25,
       rumbleCruise: 0.85,
       engineRoomBoost: 0.8,
+      /** Outside the ship, in vacuum: only a faint thrum gets through. */
+      outsideLevel: 0.2,
     },
     intercom: {
       enabled: true,

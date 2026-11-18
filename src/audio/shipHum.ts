@@ -31,6 +31,11 @@ export interface ShipHumSettings {
   readonly rumbleCruise: number;
   /** How much louder everything is at the engine end of the ship, 0..1. */
   readonly engineRoomBoost: number;
+  /**
+   * Share of the hum still heard with the drone out in space: no air
+   * carries it, only the faint thrum through the drone's own frame.
+   */
+  readonly outsideLevel: number;
 }
 
 export interface HumState {
@@ -38,6 +43,8 @@ export interface HumState {
   readonly engine: number;
   /** Where the listener is: 0 at the bow, 1 at the engine room. */
   readonly nearEngine: number;
+  /** The drone is outside the ship, in vacuum. */
+  readonly outside?: boolean;
 }
 
 export interface HumMix {
@@ -57,7 +64,7 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 export function humMix(state: HumState, s: ShipHumSettings = gameConfig.audio.shipHum): HumMix {
   const engine = clamp01(state.engine);
   const room = 1 + s.engineRoomBoost * clamp01(state.nearEngine);
-  const level = s.enabled ? s.level : 0;
+  const level = (s.enabled ? s.level : 0) * (state.outside ? s.outsideLevel : 1);
   return {
     electrical: level * s.electricalLevel * room,
     air: level * s.airLevel,

@@ -27,6 +27,13 @@ describe('humMix (how the ship sounds at a given moment)', () => {
     expect(quietest.rumble).toBeGreaterThan(0);
   });
 
+  it('is only a faint thrum with the drone outside, in vacuum', () => {
+    const inside = humMix({ engine: 1, nearEngine: 0.5, outside: false }, settings);
+    const outside = humMix({ engine: 1, nearEngine: 0.5, outside: true }, settings);
+    expect(outside.rumble).toBeCloseTo(inside.rumble * settings.outsideLevel, 9);
+    expect(outside.air).toBeLessThan(inside.air);
+  });
+
   it('is silent when switched off in the config', () => {
     const off = humMix({ engine: 1, nearEngine: 1 }, { ...settings, enabled: false });
     expect(off.electrical + off.air + off.rumble).toBe(0);

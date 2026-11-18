@@ -910,3 +910,40 @@ and the running lights.
 Not checked: the hum by ear (the Web Audio graph was confirmed running
 in the page with the expected levels, but nobody has listened to it),
 and the exterior in motion at full frame rate in a normal browser.
+
+## 2026-11-18 - Going outside shows the same ship (branch `experiment/star-hull`)
+
+**Author report:** the new exterior only appeared with V. The author
+also flies the drone out of the ship and likes doing so, but out there
+the ship looked like the old open-topped rooms. Inside and outside must
+agree.
+
+How the drone gets out: window openings have glass for looks but no
+collider, so the drone can fly through any window. Kept as a feature.
+
+- `rendering/viewMode.ts` (pure): each frame is 'cinematic', 'dashboard',
+  'interior' or 'exterior'. The follow camera's position decides: inside
+  the hull (`ShipExterior.contains`, from the hull plan) is 'interior',
+  beyond it is 'exterior'. Between a room's wall and the hull skin still
+  counts as inside, so the switch happens in open space, not inside the
+  hull's thickness.
+- Exterior view: the space scene is drawn from the follow camera's real
+  position with the hull shown and the interior not drawn at all. The
+  drone moves into the space scene while outside, so it is drawn and lit
+  with the hull (its headlight falls on the plating); its deck shadow is
+  hidden. It moves back on re-entry. The V shot also shows the drone when
+  it is outside.
+- Hull visibility is now one rule in game.ts: shown during the cinematic
+  shot or while the drone's camera is outside.
+- Hum: outside, in vacuum, the synthesized hum drops to 20 %
+  (`shipHum.outsideLevel`): only a faint thrum through the drone's frame.
+- 531 tests passing (6 new); lint, format, types and build clean.
+
+Checked in the page by placing the drone: inside the cargo bay and just
+through its window (interior view), beside the ship and above it
+(exterior view, drone in the space scene). Not checked: flying out and
+back in by hand at full frame rate.
+
+Open question for the author: the drone can fly away from the ship
+without limit. A soft tether (a limit on how far it can drift) would be
+a small follow-up if wanted.

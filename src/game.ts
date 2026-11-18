@@ -45,6 +45,7 @@ import { NarrativeDirector } from './narrative/narrativeDirector';
 import { AudioManager } from './audio/audioManager';
 import { IntercomEffect } from './audio/intercomEffect';
 import { ShipHum } from './audio/shipHum';
+import { chooseView } from './rendering/viewMode';
 import { connectAudioLibrary } from './audio/audioLibrarySource';
 import { connectArt } from './art/surfaceArt';
 import type { RoomSpec } from './content/shipLayout';
@@ -88,6 +89,8 @@ export class Game {
   private resizeTimer: number | undefined;
   private readonly cinematicCamera = new CinematicCamera();
   private cinematicPose: CameraPose | null = null;
+  /** True while the follow camera is out in space, beyond the hull. */
+  private droneOutside = false;
   private travelView: TravelView;
   private readonly playerMode = new PlayerMode();
   private readonly interaction = new InteractionSystem();
@@ -572,7 +575,7 @@ export class Game {
     this.intercom.setLevel(this.audio.categoryLevel('music'));
     // The hum grows toward the engine room (0 at the bow, 1 at the stern).
     const nearEngine = (position.z - this.shipBowZ) / (this.shipSternZ - this.shipBowZ);
-    this.hum.update({ engine: way, nearEngine });
+    this.hum.update({ engine: way, nearEngine, outside: this.droneOutside });
 
     this.audio.update(dt);
   }
@@ -586,14 +589,14 @@ export class Game {
     }
     this.cinematicCamera.reset();
     this.cinematicPose = this.cinematicCamera.update(0);
-    this.spaceScene.setExteriorVisible(true);
+    this.updateExteriorVisibility();
     this.hud.setPrompt('[V] Return inside');
   }
 
   private exitCinematic(): void {
     this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
     this.cinematicPose = null;
-    this.spaceScene.setExteriorVisible(false);
+    this.updateExteriorVisibility();
     this.hud.setPrompt(null);
   }
 
@@ -765,12 +768,46 @@ export class Game {
       this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
     }
 
+    const view = chooseView({
+      cinematic: false,
+      dashboard: this.dashboardView !== null,
+      cameraInsideHull: this.spaceScene.hullContains(this.camera.position),
+    });
+    this.setDroneOutside(view === 'exterior');
+    if (view === 'exterior') {
+      // Out in space: the ship from outside, the same hull the V shot shows,
+      // with the drone beside it. Nothing of the interior is drawn.
+      this.spaceCamera.position.copy(this.camera.position);
+      this.spaceCamera.quaternion.copy(this.camera.quaternion);
+      this.pipeline.render(false);
+      return;
+    }
+
     // Layered render (D2): space from the origin with the interior camera's
     // rotation, then depth cleared and the interior drawn on top - so space
     // is only visible through the real window openings.
     this.spaceCamera.position.set(0, 0, 0);
     this.spaceCamera.quaternion.copy(this.camera.quaternion);
     this.pipeline.render(true);
+  }
+
+  /**
+   * Move the drone between the interior and the space scene as its camera
+   * leaves or re-enters the ship. Outside, it is drawn and lit with the
+   * hull (its headlight falls on the plating); its deck shadow is hidden,
+   * as there is no deck under it.
+   */
+  private setDroneOutside(outside: boolean): void {
+    if (outside === this.droneOutside) return;
+    this.droneOutside = outside;
+    (outside ? this.spaceScene.scene : this.scene).add(this.droneVisual.group);
+    this.droneVisual.groundShadow.visible = !outside;
+    this.updateExteriorVisibility();
+  }
+
+  /** The hull is drawn whenever the ship is seen from outside. */
+  private updateExteriorVisibility(): void {
+    this.spaceScene.setExteriorVisible(this.cinematicPose !== null || this.droneOutside);
   }
 
   /** The sharpest pixel ratio this screen can show, within the game's cap. */
