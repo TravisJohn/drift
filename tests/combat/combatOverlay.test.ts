@@ -157,8 +157,22 @@ describe('CombatOverlay', () => {
     expect(onEnd).toHaveBeenCalledWith('retreated', expect.any(Number));
   });
 
-  it('leaving the window pauses the fight', () => {
+  it('losing focus does not pause (focus can flicker away by itself), but lets go of held keys', () => {
+    key('keydown', 'KeyW'); // held, never released here
     window.dispatchEvent(new Event('blur'));
+    expect(overlay.isPaused).toBe(false);
+    const before = overlay.snapshot?.player.vel;
+    const speedBefore = Math.hypot(before?.x ?? 0, before?.y ?? 0);
+    steps(1);
+    const after = overlay.snapshot?.player.vel;
+    // W was let go on blur, so no thrust: the speed holds (no drag).
+    expect(Math.hypot(after?.x ?? 0, after?.y ?? 0)).toBeCloseTo(speedBefore, 3);
+  });
+
+  it('the page going out of sight (another tab, minimised) pauses the fight', () => {
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    hidden.mockRestore();
     expect(overlay.isPaused).toBe(true);
   });
 

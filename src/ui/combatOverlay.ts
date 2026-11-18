@@ -14,7 +14,8 @@
  * Controls in both: W / ↑ thrust, S / ↓ flip (swing the nose against the
  * drift; W then slows the ship), A D / ← → turn; left click or Space
  * fires; right click or R launches a missile once locked; Shift boosts;
- * Esc or P pauses (Q there retreats). Leaving the window pauses too.
+ * Esc or P pauses (Q there retreats). Hiding the page (another tab,
+ * minimised) pauses too; losing focus only lets go of held keys.
  */
 import { gameConfig } from '../config/gameConfig';
 import { stickTurn } from '../combat/cockpitCamera';
@@ -168,6 +169,7 @@ export class CombatOverlay {
     document.addEventListener('keydown', this.onKeyDown);
     document.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
     window.addEventListener('resize', this.onResize);
     this.canvas.addEventListener('mousemove', this.onMouseMove);
     this.canvas.addEventListener('mousedown', this.onMouseDown);
@@ -182,6 +184,7 @@ export class CombatOverlay {
     document.removeEventListener('keydown', this.onKeyDown);
     document.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('mouseup', this.onMouseUp);
     this.canvas?.removeEventListener('mousemove', this.onMouseMove);
@@ -515,8 +518,19 @@ export class CombatOverlay {
     event.preventDefault();
   };
 
-  /** Leaving the window pauses: keys released elsewhere never reach us. */
+  /**
+   * Losing focus only lets go of the controls (a key released elsewhere
+   * never reaches us, so it would stay "held"). It does not pause: focus
+   * can flicker away without the player doing anything (the author saw
+   * random pauses on engaging, playing in an app's embedded browser).
+   */
   private readonly onBlur = (): void => {
+    this.clearInput();
+  };
+
+  /** The page actually going out of sight (minimised, another tab) pauses. */
+  private readonly onVisibilityChange = (): void => {
+    if (document.visibilityState !== 'hidden') return;
     if (!this.paused && this.sim && !this.sim.isOver) this.togglePause();
     this.clearInput();
   };
