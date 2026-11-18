@@ -2,6 +2,8 @@
  * CombatSim - the tactical fight's rules, one fixed step at a time.
  *
  * Owns the player's ship, the raiders, every shot and the drifting rocks.
+ * The ship flies forward and never turns (flight.ts); space is endless,
+ * so rocks that fall far behind are recycled ahead of it.
  * `step(dt, input)` advances the fight and returns what happened as
  * CombatEvents; the renderer, the sounds and the ship AI's lines all react
  * to those, so this file never draws, plays or speaks anything.
@@ -11,33 +13,23 @@
  */
 import { gameConfig } from '../config/gameConfig';
 import { angleBetween, clamp, intercept, segmentDistance } from './combatMath';
-import type {
-  CombatEvent,
-  CombatInput,
-  CombatPhase,
-  CombatSettings,
-  CombatSnapshot,
-  DifficultyId,
-  LockState,
-  PlayerShip,
-  Raider,
-  Rock,
-  Shot,
-} from './combatTypes';
-import { raiderShot, steerRaider } from './enemyAi';
 import {
-  type Vec2,
-  add,
-  angleOf,
-  clampLength,
-  distance,
-  fromAngle,
-  length,
-  normalize,
-  scale,
-  sub,
-  vec2,
-} from './vec2';
+  type CombatEvent,
+  type CombatInput,
+  type CombatPhase,
+  type CombatSettings,
+  type CombatSnapshot,
+  type DifficultyId,
+  FORWARD,
+  type LockState,
+  type PlayerShip,
+  type Raider,
+  type Rock,
+  type Shot,
+} from './combatTypes';
+import { raiderMissile, raiderShot, steerEnemyMissile, steerRaider } from './enemyAi';
+import { approachVelocity, setVelocity, sideOf, stepStrafe, stepThrottle } from './flight';
+import { type Vec2, add, angleOf, distance, fromAngle, normalize, scale, sub, vec2 } from './vec2';
 import {
   coolLasers,
   fireLasers,
@@ -53,6 +45,8 @@ const ROCK_CLEARANCE = 320;
 const ROCK_SCRAPE_COOLDOWN = 0.6;
 /** Outline points per rock. */
 const ROCK_POINTS = 9;
+/** Recycled rocks reappear within this angle either side of the nose. */
+const ROCK_RESPAWN_ARC = 1.2;
 
 export class CombatSim {
   private phase: CombatPhase = 'fighting';
@@ -78,10 +72,11 @@ export class CombatSim {
     if (s.waves.length === 0) throw new Error('CombatSim: no waves configured');
     this.player = {
       pos: vec2(),
-      // Already under way: a ship in space is never parked.
-      vel: scale(fromAngle(-Math.PI / 2), s.ship.launchSpeed),
-      heading: -Math.PI / 2, // nose up the screen
-      spin: 0,
+      // Already under way at the starting notch: the ship is never parked.
+      vel: setVelocity(s.ship.startThrottle, 0, false, s.ship),
+      aim: FORWARD,
+      throttle: s.ship.startThrottle,
+      strafe: 0,
       shield: s.defence.shieldMax,
       hull: s.defence.hullMax,
       heat: 0,
@@ -153,75 +148,19 @@ export class CombatSim {
   private movePlayer(dt: number, input: CombatInput): void {
     const p = this.player;
     const ship = this.s.ship;
-    const wanted = this.wantedSpin(input);
-    const spinStep = ship.turnAccel * dt;
-    p.spin += clamp(wanted - p.spin, -spinStep, spinStep);
-    p.heading = angleOf(fromAngle(p.heading + p.spin * dt));
+    p.throttle = stepThrottle(p.throttle, input.throttle, ship);
+    p.strafe = stepStrafe(p.strafe, input.strafe, ship);
+    if (input.aimAngle !== null) p.aim = input.aimAngle;
 
     const d = this.s.defence;
     p.boosting = input.boost && p.energy > 1;
     p.energy = clamp(p.energy + (p.boosting ? -d.boostDrain : d.energyRefill) * dt, 0, d.energyMax);
 
-    // Newtonian: thrust only ever pushes along the nose, turning leaves the
-    // drift alone, and nothing else changes the velocity (no drag).
-    const push = p.boosting ? ship.boostThrust : Math.max(0, input.thrust);
-    if (push > 0) {
-      const speedBefore = length(p.vel);
-      const pushed = add(p.vel, scale(fromAngle(p.heading), ship.thrust * push * dt));
-      // The engine can't push past its limit, but never takes speed away:
-      // already faster (after a boost), a burn can only hold or lower it.
-      const limit = Math.max(speedBefore, p.boosting ? ship.boostSpeed : ship.maxSpeed);
-      p.vel = clampLength(pushed, limit);
-    }
+    // The engines bring the motion round to the set notches at a limited
+    // rate, so a change (or a knock from a rock) takes a moment.
+    const target = setVelocity(p.throttle, p.strafe, p.boosting, ship);
+    p.vel = approachVelocity(p.vel, target, ship.accel, dt);
     p.pos = add(p.pos, scale(p.vel, dt));
-    this.keepInArena(dt);
-  }
-
-  /**
-   * The spin the pilot is asking for. S (flip) swings the nose round to
-   * face against the drift, so a burn then slows the ship. Otherwise A/D
-   * or the cockpit stick ask for a share of the top rate, and mouse aim
-   * swings toward the pointer.
-   */
-  private wantedSpin(input: CombatInput): number {
-    const ship = this.s.ship;
-    const p = this.player;
-    if (input.thrust < 0) {
-      if (length(p.vel) < ship.flipMinSpeed) return 0;
-      return this.spinToward(angleOf(scale(p.vel, -1)));
-    }
-    const turn = clamp(input.turn, -1, 1);
-    if (turn !== 0) return turn * ship.turnRate;
-    if (input.aimAngle === null) return 0;
-    return this.spinToward(input.aimAngle);
-  }
-
-  /**
-   * Spin that brings the nose onto `target` and settles there: less the
-   * closer it gets, and never more than the ship could still stop from in
-   * the angle left (v = sqrt(2 a d)), so it doesn't overshoot.
-   */
-  private spinToward(target: number): number {
-    const ship = this.s.ship;
-    const diff = angleBetween(this.player.heading, target);
-    const off = Math.abs(diff);
-    const stoppable = Math.sqrt(2 * ship.turnAccel * off);
-    return Math.sign(diff) * Math.min(ship.turnRate, off * ship.aimGain, stoppable);
-  }
-
-  /**
-   * Past the arena's edge, a growing pull back toward the middle (the
-   * edge of sensor range), and a hard stop a little further out.
-   */
-  private keepInArena(dt: number): void {
-    const p = this.player;
-    const r = length(p.pos);
-    const limit = this.s.arenaRadius;
-    if (r <= limit) return;
-    const outward = normalize(p.pos);
-    p.vel = sub(p.vel, scale(outward, (r - limit) * 6 * dt));
-    const hardStop = limit + 120;
-    if (r > hardStop) p.pos = scale(outward, hardStop);
   }
 
   private updateDefences(dt: number): void {
@@ -265,14 +204,14 @@ export class CombatSim {
   }
 
   /**
-   * Where the cannons point: straight ahead, or - when a raider sits
-   * almost on the nose - where that raider will be (aim help).
+   * Where the cannons point: along the aim, or - when a raider sits almost
+   * on the aim - where that raider will be (aim help).
    */
   private laserAim(candidate: Raider | null): Vec2 {
     const p = this.player;
-    const ahead = add(p.pos, scale(fromAngle(p.heading), 1000));
+    const ahead = add(p.pos, scale(fromAngle(p.aim), 1000));
     if (!candidate) return ahead;
-    const off = Math.abs(angleBetween(p.heading, angleOf(sub(candidate.pos, p.pos))));
+    const off = Math.abs(angleBetween(p.aim, angleOf(sub(candidate.pos, p.pos))));
     if (off > this.s.lasers.assistAngle) return ahead;
     const relative = sub(candidate.vel, p.vel);
     return intercept(p.pos, candidate.pos, relative, this.s.lasers.speed);
@@ -285,6 +224,7 @@ export class CombatSim {
     for (const r of this.raiders) {
       if (r.dead) continue;
       steerRaider(r, this.player.pos, this.time, dt, this.s.enemy);
+      this.launchRaiderMissile(r, dt);
       const angle = raiderShot(r, this.player, dt, this.s.enemy, diff, this.random);
       if (angle !== null) {
         const dir = fromAngle(angle);
@@ -304,6 +244,32 @@ export class CombatSim {
     }
   }
 
+  /** A raider's homing missile, if it decides to launch one this step. */
+  private launchRaiderMissile(r: Raider, dt: number): void {
+    const diff = this.s.difficulty[this.difficulty];
+    const inFlight = this.shots.filter((s) => s.owner === 'enemy' && s.missile).length;
+    const angle = raiderMissile(r, this.player, inFlight, dt, this.s.enemy, diff, this.random);
+    if (angle === null) return;
+    const m = this.s.enemy.missile;
+    const dir = fromAngle(angle);
+    const origin = add(r.pos, scale(dir, r.radius + m.radius));
+    this.shots.push({
+      pos: origin,
+      prev: origin,
+      vel: scale(dir, m.speed),
+      life: m.life,
+      owner: 'enemy',
+      damage: diff.missileDamage,
+      missile: true,
+      targetId: null,
+    });
+    this.events.push({
+      type: 'enemyMissileLaunched',
+      at: origin,
+      from: sideOf(origin, this.player.pos),
+    });
+  }
+
   // --- Rocks ---
 
   private makeRocks(): Rock[] {
@@ -312,7 +278,7 @@ export class CombatSim {
     for (let i = 0; i < cfg.count; i++) {
       const radius = cfg.minRadius + this.random() * (cfg.maxRadius - cfg.minRadius);
       const range =
-        ROCK_CLEARANCE + radius + this.random() * (this.s.arenaRadius * 0.9 - ROCK_CLEARANCE);
+        ROCK_CLEARANCE + radius + this.random() * (this.s.fieldRadius * 0.9 - ROCK_CLEARANCE);
       rocks.push({
         pos: scale(fromAngle(this.random() * Math.PI * 2), range),
         vel: scale(fromAngle(this.random() * Math.PI * 2), cfg.drift * (0.4 + this.random())),
@@ -329,9 +295,11 @@ export class CombatSim {
     for (const rock of this.rocks) {
       rock.pos = add(rock.pos, scale(rock.vel, dt));
       rock.angle += rock.spin * dt;
-      // Rocks drift back in when they reach the edge of the arena.
-      if (length(rock.pos) > this.s.arenaRadius) {
-        rock.vel = scale(normalize(rock.pos), -length(rock.vel));
+      // Space is endless: a rock left far behind is recycled ahead.
+      if (distance(rock.pos, this.player.pos) > this.s.fieldRadius) {
+        const angle = FORWARD + (this.random() * 2 - 1) * ROCK_RESPAWN_ARC;
+        const range = this.s.fieldRadius * (0.75 + this.random() * 0.2);
+        rock.pos = add(this.player.pos, scale(fromAngle(angle), range));
       }
     }
   }
@@ -340,7 +308,10 @@ export class CombatSim {
 
   private updateShots(dt: number): void {
     for (const shot of this.shots) {
-      if (shot.missile) {
+      if (shot.life <= 0) continue; // shot down earlier this step
+      if (shot.missile && shot.owner === 'enemy') {
+        steerEnemyMissile(shot, this.player.pos, dt, this.s.enemy);
+      } else if (shot.missile) {
         const target = this.raiders.find((r) => r.id === shot.targetId && !r.dead);
         steerMissile(shot, target ? target.pos : null, dt, this.s.missiles);
       }
@@ -363,12 +334,14 @@ export class CombatSim {
       }
     }
     if (shot.owner === 'enemy') {
-      if (span(this.player.pos) < this.s.ship.radius) {
+      const reach = this.s.ship.radius + (shot.missile ? this.s.enemy.missile.radius : 0);
+      if (span(this.player.pos) < reach) {
         shot.life = 0;
         this.damagePlayer(shot.damage, shot.pos);
       }
       return;
     }
+    if (!shot.missile && this.shootDownMissile(shot, span)) return;
     for (const r of this.raiders) {
       if (r.dead) continue;
       const reach = r.radius + (shot.missile ? this.s.missiles.hitRadius : 4);
@@ -378,6 +351,21 @@ export class CombatSim {
         return;
       }
     }
+  }
+
+  /** A laser bolt meeting a raider's missile destroys both. */
+  private shootDownMissile(bolt: Shot, span: (target: Vec2) => number): boolean {
+    const reach = this.s.enemy.missile.radius + 4;
+    for (const m of this.shots) {
+      if (m.owner !== 'enemy' || !m.missile || m.life <= 0) continue;
+      if (span(m.pos) < reach) {
+        bolt.life = 0;
+        m.life = 0;
+        this.events.push({ type: 'enemyMissileDown', at: m.pos });
+        return true;
+      }
+    }
+    return false;
   }
 
   // --- Bodies bumping into each other ---
@@ -465,11 +453,8 @@ export class CombatSim {
       const commander = last && i === 0;
       const angle = this.random() * Math.PI * 2;
       const range = e.spawnMin + this.random() * (e.spawnMax - e.spawnMin);
-      // Arrive from somewhere inside the arena, even if the ship is at its edge.
-      const pos = clampLength(
-        add(this.player.pos, scale(fromAngle(angle), range)),
-        this.s.arenaRadius,
-      );
+      // From any side, behind included.
+      const pos = add(this.player.pos, scale(fromAngle(angle), range));
       const hp = commander ? diff.commanderHp : diff.enemyHp;
       return {
         id: this.nextId++,
@@ -482,6 +467,7 @@ export class CombatSim {
         hp,
         // Stagger the first shots so a wave doesn't fire all at once.
         fireIn: diff.fireMin * 0.5 + this.random() * diff.fireMax,
+        missileIn: diff.missileMin * 0.5 + this.random() * diff.missileMax,
         phase: (i / count) * Math.PI * 2,
         dead: false,
       };

@@ -5,6 +5,7 @@ import {
   type CombatEvent,
   type CombatInput,
   type CombatSettings,
+  FORWARD,
   IDLE_COMBAT_INPUT,
   type PlayerShip,
   type Raider,
@@ -12,9 +13,9 @@ import {
   type Shot,
 } from '../../src/combat/combatTypes';
 import { steerRaider } from '../../src/combat/enemyAi';
+import { setVelocity } from '../../src/combat/flight';
 import { mulberry32 } from '../../src/core/random';
-import { angleOf, distance, length, scale, sub, vec2 } from '../../src/combat/vec2';
-import { angleBetween } from '../../src/combat/combatMath';
+import { angleOf, distance, length, sub, vec2 } from '../../src/combat/vec2';
 
 const DT = 1 / 60;
 
@@ -35,6 +36,14 @@ function newSim(
   sim.begin();
   return sim;
 }
+
+/**
+ * Test rig for the weapons: the ship holds still, so ranges set up in a
+ * test stay as set. (In play the ship is always moving forward.)
+ */
+const holdStill = (s: Mutable<CombatSettings>) => {
+  s.ship.forwardSpeeds = [0, 0, 0];
+};
 
 /** Writable handles on the simulation's own objects, for arranging scenes. */
 const player = (sim: CombatSim) => sim.snapshot.player as PlayerShip;
@@ -58,7 +67,34 @@ function oneRaiderAhead(sim: CombatSim, range = 260): Raider {
   if (!first) throw new Error('no raider');
   first.pos = vec2(0, -range); // the ship's nose points up (−y)
   first.fireIn = 999;
+  first.missileIn = 999;
   return first;
+}
+
+/** No raider shoots or launches for the rest of the test. */
+function quiet(sim: CombatSim): void {
+  for (const r of raiders(sim)) {
+    r.fireIn = 999;
+    r.missileIn = 999;
+  }
+}
+
+/** A raider's missile at `pos`, flying toward the ship at the origin. */
+function enemyMissile(sim: CombatSim, pos: ReturnType<typeof vec2>): Shot {
+  const m = gameConfig.combat.enemy.missile;
+  const away = length(pos) || 1;
+  const missile: Shot = {
+    pos,
+    prev: pos,
+    vel: vec2((-pos.x / away) * m.speed, (-pos.y / away) * m.speed),
+    life: m.life,
+    owner: 'enemy',
+    damage: gameConfig.combat.difficulty.rookie.missileDamage,
+    missile: true,
+    targetId: null,
+  };
+  shots(sim).push(missile);
+  return missile;
 }
 
 /** Hold a raider still (raiders steer every step; tests need a sitting target). */
@@ -69,6 +105,7 @@ function freeze(sim: CombatSim, raider: Raider, input: Partial<CombatInput> = {}
     raider.pos = where;
     raider.vel = vec2();
     raider.fireIn = 999;
+    raider.missileIn = 999;
     events.push(...sim.step(DT, { ...IDLE_COMBAT_INPUT, ...input }));
   }
   return events;
@@ -92,7 +129,7 @@ describe('CombatSim: starting a fight', () => {
   it('the same seed and input play out identically (fights are reproducible)', () => {
     const a = newSim();
     const b = newSim();
-    const input = { thrust: 1, fire: true, aimAngle: 0.3 };
+    const input = { strafe: 1, fire: true, aimAngle: 0.3 };
     run(a, 6, input);
     run(b, 6, input);
     expect(a.snapshot.player.pos).toEqual(b.snapshot.player.pos);
@@ -100,119 +137,78 @@ describe('CombatSim: starting a fight', () => {
   });
 });
 
-describe('CombatSim: flying', () => {
+describe('CombatSim: forward flight', () => {
   const ship = gameConfig.combat.ship;
-  const NOSE_UP = -Math.PI / 2;
+  const cruise = ship.forwardSpeeds[ship.startThrottle] ?? 0;
 
-  it('a turn builds up: the first tenth of a second turns far less than full spin would', () => {
+  it('the fight opens already cruising forward, guns pointing ahead: the ship is never parked', () => {
     const sim = newSim();
-    run(sim, 0.1, { turn: 1 });
-    const turned = player(sim).heading - NOSE_UP;
-    expect(turned).toBeGreaterThan(0);
-    expect(turned).toBeLessThan(ship.turnRate * 0.1 * 0.5);
+    expect(player(sim).vel.y).toBeCloseTo(-cruise);
+    expect(player(sim).vel.x).toBeCloseTo(0);
+    expect(player(sim).aim).toBe(FORWARD);
   });
 
-  it('spin never passes the top turn rate, however long the turn is held', () => {
+  it('one W tap steps the speed up a notch and it stays set without holding the key', () => {
     const sim = newSim();
-    run(sim, 3, { turn: 1 });
-    expect(player(sim).spin).toBeCloseTo(ship.turnRate, 5);
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, throttle: 1 });
+    run(sim, 2);
+    expect(player(sim).vel.y).toBeCloseTo(-(ship.forwardSpeeds[2] ?? 0));
   });
 
-  it('letting go of a turn, the spin settles to zero over time instead of stopping dead', () => {
+  it('a notch change takes a moment: the engines ease the motion round', () => {
     const sim = newSim();
-    run(sim, 2, { turn: 1 });
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, throttle: 1 });
     run(sim, 0.1);
-    expect(player(sim).spin).toBeGreaterThan(0); // still coasting round
+    const speed = -player(sim).vel.y;
+    expect(speed).toBeGreaterThan(cruise);
+    expect(speed).toBeLessThan(ship.forwardSpeeds[2] ?? 0);
+  });
+
+  it('S slows the ship to the slow notch but never stops it', () => {
+    const sim = newSim();
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, throttle: -5 });
+    run(sim, 2);
+    expect(player(sim).vel.y).toBeCloseTo(-(ship.forwardSpeeds[0] ?? 0));
+    expect(-player(sim).vel.y).toBeGreaterThan(0);
+  });
+
+  it('an A tap sets a drift left that stays, while the ship keeps moving forward', () => {
+    const sim = newSim();
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, strafe: -1 });
+    run(sim, 2);
+    expect(player(sim).vel.x).toBeCloseTo(-ship.strafeStep);
+    expect(player(sim).vel.y).toBeCloseTo(-cruise);
+  });
+
+  it('a D tap takes the drift back a notch: the pilot keeps correcting', () => {
+    const sim = newSim();
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, strafe: -1 });
     run(sim, 1);
-    expect(player(sim).spin).toBe(0);
+    sim.step(DT, { ...IDLE_COMBAT_INPUT, strafe: 1 });
+    run(sim, 1);
+    expect(player(sim).vel.x).toBeCloseTo(0);
   });
 
-  it('the nose swings onto the mouse aim and settles there without overshooting', () => {
+  it('the hull never rotates: aiming swings the guns, not the ship', () => {
     const sim = newSim();
-    const aim = 0; // a quarter turn right of nose-up
-    let furthest = -Infinity;
-    for (let i = 0; i < 4 * 60; i++) {
-      sim.step(DT, { ...IDLE_COMBAT_INPUT, aimAngle: aim });
-      furthest = Math.max(furthest, player(sim).heading);
-    }
-    expect(player(sim).heading).toBeCloseTo(aim, 2);
-    expect(furthest).toBeLessThan(aim + 0.02);
+    run(sim, 1, { aimAngle: 1 });
+    expect(player(sim).aim).toBe(1);
+    expect(player(sim).vel.x).toBeCloseTo(0);
+    expect(player(sim).vel.y).toBeCloseTo(-cruise);
   });
 
-  it('momentum carries: turning the nose does not change the direction of drift', () => {
+  it('a knock (a rock, a ram) is flown out of: the engines restore the set motion', () => {
     const sim = newSim();
-    run(sim, 1, { thrust: 1 }); // drifting up the map
-    const before = angleOf(player(sim).vel);
-    run(sim, 1.5, { turn: 1 }); // swing the nose round, engines off
-    expect(Math.abs(player(sim).heading - NOSE_UP)).toBeGreaterThan(1);
-    expect(angleOf(player(sim).vel)).toBeCloseTo(before, 5);
+    player(sim).vel = vec2(120, 80);
+    run(sim, 2);
+    expect(player(sim).vel).toEqual(setVelocity(ship.startThrottle, 0, false, ship));
   });
 
-  it('the fight opens with the ship already cruising nose-first: a ship in space is never parked', () => {
+  it('boost adds forward speed while it drains energy', () => {
     const sim = newSim();
-    expect(length(player(sim).vel)).toBeCloseTo(ship.launchSpeed, 5);
-    expect(angleOf(player(sim).vel)).toBeCloseTo(NOSE_UP, 5);
-  });
-
-  it('with the engines off nothing slows the ship: no drag, the speed is the same seconds later', () => {
-    const sim = newSim();
-    run(sim, 2, { thrust: 1 });
-    const cruising = length(player(sim).vel);
-    run(sim, 3);
-    expect(length(player(sim).vel)).toBeCloseTo(cruising, 5);
-  });
-
-  it('S swings the nose round to face against the drift, without changing the speed by itself', () => {
-    const sim = newSim();
-    run(sim, 2, { thrust: 1 });
-    const cruising = length(player(sim).vel);
-    player(sim).pos = vec2(); // keep clear of the arena edge
-    // A half turn takes about 3.5 s: spin up, swing, settle.
-    run(sim, 4, { thrust: -1 });
-    const backwards = angleOf(scale(player(sim).vel, -1));
-    expect(Math.abs(angleBetween(player(sim).heading, backwards))).toBeLessThan(0.02);
-    expect(length(player(sim).vel)).toBeCloseTo(cruising, 5);
-  });
-
-  it('flipped, a burn slows the ship, and burning too long starts it moving the other way (no magic stop)', () => {
-    const sim = newSim();
-    run(sim, 2, { thrust: 1 });
-    run(sim, 3, { thrust: -1 }); // flip
-    player(sim).pos = vec2(); // keep clear of the arena edge
-    const drift = angleOf(player(sim).vel);
-    const cruising = length(player(sim).vel);
-    run(sim, 0.5, { thrust: 1 });
-    expect(length(player(sim).vel)).toBeLessThan(cruising - 50);
-    run(sim, 2, { thrust: 1 });
-    expect(Math.abs(angleBetween(angleOf(player(sim).vel), drift))).toBeGreaterThan(3);
-  });
-
-  it('with the ship all but still, S holds the nose rather than spinning about', () => {
-    const sim = newSim();
-    const p = player(sim);
-    p.vel = vec2();
-    run(sim, 1, { thrust: -1 });
-    expect(p.heading).toBeCloseTo(NOSE_UP, 5);
-  });
-
-  it('thrust is capped at top speed, and boost raises the cap while it drains energy', () => {
-    const sim = newSim();
-    run(sim, 3, { thrust: 1 });
-    expect(length(player(sim).vel)).toBeCloseTo(ship.maxSpeed, 0);
-    run(sim, 1, { thrust: 1, boost: true });
-    expect(length(player(sim).vel)).toBeGreaterThan(ship.maxSpeed + 50);
+    run(sim, 1.5, { boost: true });
+    expect(-player(sim).vel.y).toBeGreaterThan(cruise + ship.boostExtra * 0.9);
     expect(player(sim).energy).toBeLessThan(80);
-  });
-
-  it('after a boost the extra speed is kept: the engine cannot push past its limit, but never takes speed away', () => {
-    const sim = newSim();
-    run(sim, 2.5, { thrust: 1, boost: true });
-    const boosted = length(player(sim).vel);
-    expect(boosted).toBeGreaterThan(ship.maxSpeed + 100);
-    // Near the bottom edge, flying up, so the arena's pull stays out of it.
-    player(sim).pos = vec2(0, gameConfig.combat.arenaRadius - 100);
-    run(sim, 2, { thrust: 1 });
-    expect(length(player(sim).vel)).toBeCloseTo(boosted, 5);
   });
 
   it('boost energy refills after boosting stops', () => {
@@ -223,13 +219,14 @@ describe('CombatSim: flying', () => {
     expect(player(sim).energy).toBeGreaterThan(drained);
   });
 
-  it('flying past the arena edge pulls the ship back in', () => {
-    const sim = newSim();
+  it('space is endless: a rock left far behind is recycled ahead of the ship', () => {
+    const sim = newSim((s) => (s.rocks.count = 1));
+    const rock = rocks(sim)[0] as Rock;
+    rock.pos = vec2(0, gameConfig.combat.fieldRadius + 200); // far behind
+    sim.step(DT, IDLE_COMBAT_INPUT);
     const p = player(sim);
-    p.pos = vec2(0, -(gameConfig.combat.arenaRadius + 100));
-    p.vel = vec2(0, -100);
-    run(sim, 2);
-    expect(length(p.pos)).toBeLessThan(gameConfig.combat.arenaRadius + 100);
+    expect(rock.pos.y).toBeLessThan(p.pos.y); // now ahead
+    expect(distance(rock.pos, p.pos)).toBeLessThanOrEqual(gameConfig.combat.fieldRadius);
   });
 });
 
@@ -245,6 +242,7 @@ describe('raider flight', () => {
     heading: 0,
     hp: 1,
     fireIn: 99,
+    missileIn: 99,
     phase: 0,
     dead: false,
   });
@@ -267,7 +265,7 @@ describe('raider flight', () => {
 
 describe('CombatSim: lasers', () => {
   it('sustained fire overheats the cannons, which then go quiet until they cool', () => {
-    const sim = newSim();
+    const sim = newSim(holdStill);
     oneRaiderAhead(sim).pos = vec2(5000, 5000); // nothing to hit
     // About 3.6 s of held fire: heat builds faster than it cools.
     const events = run(sim, 5, { fire: true });
@@ -287,7 +285,7 @@ describe('CombatSim: lasers', () => {
   });
 
   it('lasers on target wear a raider down and destroy it for points', () => {
-    const sim = newSim();
+    const sim = newSim(holdStill);
     const target = oneRaiderAhead(sim);
     const events = freeze(sim, target, { fire: true }, 2);
     expect(types(events)).toContain('hit');
@@ -296,8 +294,19 @@ describe('CombatSim: lasers', () => {
     expect(sim.snapshot.score).toBeGreaterThanOrEqual(gameConfig.combat.score.raider);
   });
 
+  it('the guns swivel: a raider behind the ship is shot by aiming back at it', () => {
+    const sim = newSim(holdStill);
+    const target = oneRaiderAhead(sim);
+    target.pos = vec2(0, 260); // behind
+    const events = freeze(sim, target, { fire: true, aimAngle: -FORWARD }, 2);
+    expect(types(events)).toContain('raiderDestroyed');
+  });
+
   it('rocks stop laser fire', () => {
-    const sim = newSim((s) => (s.rocks.count = 1));
+    const sim = newSim((s) => {
+      holdStill(s);
+      s.rocks.count = 1;
+    });
     const target = oneRaiderAhead(sim, 500);
     const rock = rocks(sim)[0] as Rock;
     rock.pos = vec2(0, -250);
@@ -310,23 +319,32 @@ describe('CombatSim: lasers', () => {
 
 describe('CombatSim: missile lock', () => {
   it('a missile without a lock is refused', () => {
-    const sim = newSim();
+    const sim = newSim(holdStill);
     oneRaiderAhead(sim).pos = vec2(5000, 0);
     const events = sim.step(DT, { ...IDLE_COMBAT_INPUT, missile: true });
     expect(events).toContainEqual({ type: 'missileDenied', reason: 'noLock' });
     expect(player(sim).missiles).toBe(gameConfig.combat.missiles.count);
   });
 
-  it('holding a raider on the nose locks it after about a second', () => {
-    const sim = newSim();
+  it('holding the aim on a raider locks it after about a second', () => {
+    const sim = newSim(holdStill);
     const target = oneRaiderAhead(sim, 500);
     expect(types(freeze(sim, target, {}, 0.8))).not.toContain('lockAcquired');
     expect(types(freeze(sim, target, {}, 0.4))).toContain('lockAcquired');
     expect(sim.snapshot.lock.targetId).toBe(target.id);
   });
 
+  it('the lock follows the aim, not the hull: a raider off to the side locks when aimed at', () => {
+    const sim = newSim(holdStill);
+    const target = oneRaiderAhead(sim);
+    target.pos = vec2(500, 0); // off to the right
+    freeze(sim, target, { aimAngle: 0 }, 1.2);
+    expect(sim.snapshot.lock.progress).toBe(1);
+    expect(sim.snapshot.lock.targetId).toBe(target.id);
+  });
+
   it('a locked missile flies to its raider and destroys it', () => {
-    const sim = newSim();
+    const sim = newSim(holdStill);
     const target = oneRaiderAhead(sim, 600);
     freeze(sim, target, {}, 1.2);
     const launch = sim.step(DT, { ...IDLE_COMBAT_INPUT, missile: true });
@@ -338,7 +356,7 @@ describe('CombatSim: missile lock', () => {
   });
 
   it('with no missiles left the launcher reports empty', () => {
-    const sim = newSim();
+    const sim = newSim(holdStill);
     const target = oneRaiderAhead(sim, 500);
     player(sim).missiles = 0;
     freeze(sim, target, {}, 1.2);
@@ -364,7 +382,7 @@ describe('CombatSim: taking damage', () => {
 
   it('shields take the damage before the hull', () => {
     const sim = newSim();
-    for (const r of raiders(sim)) r.fireIn = 999;
+    quiet(sim);
     incoming(sim, 30);
     const events = run(sim, 0.2);
     expect(player(sim).shield).toBe(70);
@@ -374,7 +392,7 @@ describe('CombatSim: taking damage', () => {
 
   it('once the shields are gone, damage reaches the hull and the shields-down call is made', () => {
     const sim = newSim();
-    for (const r of raiders(sim)) r.fireIn = 999;
+    quiet(sim);
     player(sim).shield = 10;
     player(sim).lastDamageAt = 0; // no recharge before the hit lands
     incoming(sim, 30);
@@ -385,7 +403,7 @@ describe('CombatSim: taking damage', () => {
 
   it('shields only recharge after a quiet spell', () => {
     const sim = newSim();
-    for (const r of raiders(sim)) r.fireIn = 999;
+    quiet(sim);
     incoming(sim, 40);
     run(sim, 3);
     expect(player(sim).shield).toBe(60);
@@ -401,7 +419,7 @@ describe('CombatSim: taking damage', () => {
     const events = run(sim, 0.2);
     expect(types(events)).toContain('lost');
     expect(sim.snapshot.phase).toBe('lost');
-    expect(sim.step(DT, { ...IDLE_COMBAT_INPUT, thrust: 1 })).toEqual([]);
+    expect(sim.step(DT, { ...IDLE_COMBAT_INPUT, throttle: 1 })).toEqual([]);
   });
 
   it('left alone, the raiders close in and shoot the ship (the enemy AI works)', () => {
@@ -417,6 +435,98 @@ describe('CombatSim: taking damage', () => {
     expect(raiders(ace)[0]?.maxHp).toBeGreaterThan(raiders(rookie)[0]?.maxHp ?? Infinity);
     const c = gameConfig.combat.difficulty;
     expect(c.ace.shotDamage).toBeGreaterThan(c.rookie.shotDamage);
+  });
+});
+
+describe('CombatSim: raider missiles', () => {
+  const m = gameConfig.combat.enemy.missile;
+  /** Hits from a missile (raiders still circle, and a ram also does damage). */
+  const missileHits = (events: CombatEvent[]) =>
+    events.filter(
+      (e) =>
+        e.type === 'playerDamaged' &&
+        e.amount === gameConfig.combat.difficulty.rookie.missileDamage,
+    );
+
+  it('a raider in range launches a homing missile, and the event says which side it comes from', () => {
+    const sim = newSim(holdStill);
+    const r = oneRaiderAhead(sim);
+    r.pos = vec2(0, 600); // behind the ship
+    r.missileIn = 0;
+    const events = freeze(sim, r, {}, DT);
+    r.missileIn = 0;
+    const launch = sim.step(DT, IDLE_COMBAT_INPUT);
+    const all = [...events, ...launch];
+    expect(all).toContainEqual(
+      expect.objectContaining({ type: 'enemyMissileLaunched', from: 'behind' }),
+    );
+    expect(shots(sim).some((s) => s.owner === 'enemy' && s.missile)).toBe(true);
+  });
+
+  it('a raider holds its missile while the most allowed are already in flight', () => {
+    const sim = newSim(holdStill);
+    const r = oneRaiderAhead(sim, 600);
+    enemyMissile(sim, vec2(1200, 0)); // rookie allows one at a time
+    r.missileIn = 0;
+    const events = sim.step(DT, IDLE_COMBAT_INPUT);
+    expect(types(events)).not.toContain('enemyMissileLaunched');
+  });
+
+  it('a missile homes on the ship and hits for missile damage', () => {
+    const sim = newSim(holdStill);
+    quiet(sim);
+    enemyMissile(sim, vec2(400, -400));
+    const events = run(sim, 4);
+    const hit = events.find((e) => e.type === 'playerDamaged');
+    expect(hit).toMatchObject({ amount: gameConfig.combat.difficulty.rookie.missileDamage });
+  });
+
+  it('flying straight at a missile coming head on, it hits (the dodge below is the drift, not luck)', () => {
+    const sim = newSim();
+    quiet(sim);
+    enemyMissile(sim, vec2(0, -500));
+    expect(missileHits(run(sim, 3))).toHaveLength(1);
+  });
+
+  it('drifting hard sideways dodges a missile coming head on: it can only turn so fast', () => {
+    const sim = newSim();
+    quiet(sim);
+    const ship = gameConfig.combat.ship;
+    player(sim).strafe = ship.strafeNotches;
+    player(sim).vel = setVelocity(ship.startThrottle, ship.strafeNotches, false, ship);
+    enemyMissile(sim, vec2(0, -500));
+    const events = run(sim, m.life);
+    expect(missileHits(events)).toHaveLength(0);
+  });
+
+  it('at the fast notch the ship outruns a missile from behind', () => {
+    const sim = newSim();
+    quiet(sim);
+    const ship = gameConfig.combat.ship;
+    const top = ship.forwardSpeeds.length - 1;
+    player(sim).throttle = top;
+    player(sim).vel = setVelocity(top, 0, false, ship);
+    enemyMissile(sim, vec2(0, 300));
+    const events = run(sim, m.life);
+    expect(missileHits(events)).toHaveLength(0);
+  });
+
+  it('lasers shoot a missile down before it lands', () => {
+    const sim = newSim(holdStill);
+    quiet(sim);
+    enemyMissile(sim, vec2(0, -500));
+    const events = run(sim, 2, { fire: true });
+    expect(types(events)).toContain('enemyMissileDown');
+    expect(types(events)).not.toContain('playerDamaged');
+    expect(shots(sim).some((s) => s.owner === 'enemy' && s.missile)).toBe(false);
+  });
+
+  it('Ace raiders launch missiles more often, and more at once, than Rookie ones', () => {
+    const c = gameConfig.combat.difficulty;
+    const meanGap = (d: { missileMin: number; missileMax: number }) =>
+      (d.missileMin + d.missileMax) / 2;
+    expect(meanGap(c.ace)).toBeLessThan(meanGap(c.rookie));
+    expect(c.ace.maxMissiles).toBeGreaterThan(c.rookie.maxMissiles);
   });
 });
 

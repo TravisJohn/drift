@@ -131,16 +131,27 @@ reusing what we can from STARFALL (an earlier cockpit shooter prototype).
 - **Where:** a new Tactical tab on the command deck. The drone runs the
   ship's defences from the hologram; the 3D game stays calm, and combat
   lives inside a top-down holographic view.
-- **Play:** steer the ship (mouse aims, W thrust, S flips the nose
-  against the drift, A/D turn; real-space flight: no drag, the ship never
-  stops by itself, and slowing down means turning round and burning),
-  twin lasers that overheat, seeker missiles after a lock, boost energy,
-  shields that recharge after a quiet spell, then hull. Three waves of
+- **Play (forward flight, revised 2026-11-18 on the author's playtest):**
+  the ship always faces forward and never rotates, and it is always
+  moving forward. W and S step the forward speed through notches (slow,
+  cruise, fast) that stay set; S never stops the ship. A and D step a
+  sideways drift (two notches each way) that stays until changed, so the
+  pilot keeps navigating. Shift boosts. The twin lasers swivel to the
+  mouse, so raiders on any side can be shot; they overheat. Seeker
+  missiles fly after holding the aim on a raider for about a second.
+  Raiders come from all sides and also launch slow homing missiles that
+  can be dodged by drifting, outrun, or shot down, with a warning sound,
+  an AI line and a flashing mark. Space is endless (no arena edge).
+  Shields recharge after a quiet spell, then hull. Three waves of
   raiders (5, 7, 9) with a commander in the last; Rookie and Ace.
 - **Two views of the same fight** (added the same day, author: "i also
   love this format, can we have both?"): the top-down tactical hologram,
-  and STARFALL's first-person cockpit. C switches at any time. In the
-  cockpit the mouse is a flight stick. The rules stay 2D, so in the
+  and STARFALL's first-person cockpit. C switches at any time. The
+  cockpit always looks forward with a wide view (about 120 degrees); the
+  mouse moves the aim ring, and a small 2D holographic map on the
+  console shows everything around the ship, incoming missiles flashing.
+  Raiders behind are seen on that map and are dealt with by changing
+  speed, by missile, or from the tactical view. The rules stay 2D, so in the
   cockpit raiders fly on one level near the horizon rather than above
   and below; a full 3D fight would be a separate, larger piece of work.
 - **Consequences:** none that last in this version. Losing or retreating

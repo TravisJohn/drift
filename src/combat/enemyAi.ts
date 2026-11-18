@@ -7,9 +7,12 @@
  * around the ship instead of queueing in a line. Turning is rate-limited,
  * so a raider has to come about before it can shoot, and its motion lags
  * its nose (momentum), so it swings wide through a turn.
+ *
+ * Raiders also launch slow homing missiles now and then, from a band of
+ * range; those turn gently, so a sideways drift can dodge them.
  */
 import { angleBetween, approach, intercept, turnToward } from './combatMath';
-import type { CombatSettings, DifficultySettings, PlayerShip, Raider } from './combatTypes';
+import type { CombatSettings, DifficultySettings, PlayerShip, Raider, Shot } from './combatTypes';
 import { type Vec2, add, angleOf, distance, fromAngle, scale, sub } from './vec2';
 
 type EnemySettings = CombatSettings['enemy'];
@@ -63,4 +66,42 @@ export function raiderShot(
   if (Math.abs(angleBetween(raider.heading, aimAngle)) > s.fireAngle) return null;
   raider.fireIn = d.fireMin + random() * (d.fireMax - d.fireMin);
   return aimAngle + (random() * 2 - 1) * d.spread;
+}
+
+/**
+ * Whether this raider launches a missile this step; the launch direction
+ * as an angle, or null. Counts down its missile timer; launches only from
+ * the missile range band and while fewer than `maxMissiles` are already
+ * in flight (it waits, ready, until both hold).
+ */
+export function raiderMissile(
+  raider: Raider,
+  player: Readonly<PlayerShip>,
+  inFlight: number,
+  dt: number,
+  s: EnemySettings,
+  d: DifficultySettings,
+  random: () => number,
+): number | null {
+  raider.missileIn -= dt;
+  if (raider.missileIn > 0) return null;
+  const range = distance(raider.pos, player.pos);
+  if (range < s.missile.minRange || range > s.missile.maxRange) return null;
+  if (inFlight >= d.maxMissiles) return null;
+  raider.missileIn = d.missileMin + random() * (d.missileMax - d.missileMin);
+  return angleOf(sub(player.pos, raider.pos));
+}
+
+/**
+ * Steer a raider's missile at the ship for one step: constant speed, and
+ * it can only turn so fast (pure pursuit), so drifting across its path
+ * makes it swing wide and miss.
+ */
+export function steerEnemyMissile(shot: Shot, target: Vec2, dt: number, s: EnemySettings): void {
+  const heading = turnToward(
+    angleOf(shot.vel),
+    angleOf(sub(target, shot.pos)),
+    s.missile.turnRate * dt,
+  );
+  shot.vel = scale(fromAngle(heading), s.missile.speed);
 }

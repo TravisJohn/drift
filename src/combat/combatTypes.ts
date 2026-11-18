@@ -27,13 +27,22 @@ export type CombatSettings = Widen<typeof gameConfig.combat>;
 export type DifficultyId = keyof CombatSettings['difficulty'];
 export type DifficultySettings = CombatSettings['difficulty'][DifficultyId];
 
+/**
+ * The way the ship always faces: up the map (headings grow clockwise from
+ * +x, with +y down the screen). The hull never rotates.
+ */
+export const FORWARD = -Math.PI / 2;
+
+/** Which side of the ship something is on, relative to FORWARD. */
+export type Side = 'ahead' | 'left' | 'right' | 'behind';
+
 /** What the player is asking for this step. */
 export interface CombatInput {
-  /** 1 thrust forward, −1 flip (turn the nose against the drift), 0 coast. */
-  readonly thrust: number;
-  /** Keyboard turn: −1 left .. 1 right. Overrides the mouse aim while held. */
-  readonly turn: number;
-  /** Heading the mouse points at (radians), or null when it isn't steering. */
+  /** Throttle notches to step this step: +1 per W tap, −1 per S tap. */
+  readonly throttle: number;
+  /** Drift notches to step this step: +1 per D tap (right), −1 per A tap. */
+  readonly strafe: number;
+  /** Where the guns should point (map radians), or null to leave them be. */
   readonly aimAngle: number | null;
   readonly fire: boolean;
   readonly boost: boolean;
@@ -42,8 +51,8 @@ export interface CombatInput {
 }
 
 export const IDLE_COMBAT_INPUT: CombatInput = {
-  thrust: 0,
-  turn: 0,
+  throttle: 0,
+  strafe: 0,
   aimAngle: null,
   fire: false,
   boost: false,
@@ -53,9 +62,12 @@ export const IDLE_COMBAT_INPUT: CombatInput = {
 export interface PlayerShip {
   pos: Vec2;
   vel: Vec2;
-  heading: number;
-  /** Turning speed now, radians a second (clockwise positive). */
-  spin: number;
+  /** Where the swivelling guns point (map radians). The hull faces FORWARD. */
+  aim: number;
+  /** Throttle notch: an index into ship.forwardSpeeds. */
+  throttle: number;
+  /** Drift notch: −strafeNotches (left) .. strafeNotches (right). */
+  strafe: number;
   shield: number;
   hull: number;
   heat: number;
@@ -82,6 +94,8 @@ export interface Raider {
   hp: number;
   /** Seconds until it may fire again. */
   fireIn: number;
+  /** Seconds until it may launch a missile. */
+  missileIn: number;
   /** Its own offset in the circling pattern, so raiders spread out. */
   readonly phase: number;
   dead: boolean;
@@ -95,8 +109,9 @@ export interface Shot {
   life: number;
   readonly owner: 'player' | 'enemy';
   readonly damage: number;
+  /** A homing missile: the player's (at a raider) or a raider's (at the ship). */
   readonly missile: boolean;
-  /** A missile's quarry (raider id); null for lasers. */
+  /** A player missile's quarry (raider id); null otherwise. */
   readonly targetId: number | null;
 }
 
@@ -124,6 +139,8 @@ export type CombatEvent =
   | { readonly type: 'waveCleared'; readonly wave: number; readonly last: boolean }
   | { readonly type: 'laserFired'; readonly at: Vec2 }
   | { readonly type: 'enemyFired'; readonly at: Vec2 }
+  | { readonly type: 'enemyMissileLaunched'; readonly at: Vec2; readonly from: Side }
+  | { readonly type: 'enemyMissileDown'; readonly at: Vec2 }
   | { readonly type: 'missileFired'; readonly at: Vec2 }
   | { readonly type: 'missileDenied'; readonly reason: 'noLock' | 'empty' }
   | { readonly type: 'lockAcquired'; readonly targetId: number }

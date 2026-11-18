@@ -33,6 +33,20 @@ describe('combat lines: what the ship AI says', () => {
     expect(momentFor({ ...hit, shieldsDown: false, hullCritical: true }, 0)).toBe('hullCritical');
   });
 
+  it('a raider missile is called out by the side it comes from, so the pilot knows which way to drift', () => {
+    const launch = (from: 'ahead' | 'left' | 'right' | 'behind') =>
+      momentFor({ type: 'enemyMissileLaunched', at, from }, 0);
+    expect(launch('ahead')).toBe('missileAhead');
+    expect(launch('left')).toBe('missileLeft');
+    expect(launch('right')).toBe('missileRight');
+    expect(launch('behind')).toBe('missileBehind');
+    expect(new CombatVoice().say('missileBehind')).toMatch(/tail|aft/i);
+  });
+
+  it('shooting a missile down gets a word of thanks', () => {
+    expect(momentFor({ type: 'enemyMissileDown', at }, 0)).toBe('missileDown');
+  });
+
   it('lines rotate and fill in the wave and score', () => {
     const voice = new CombatVoice();
     const first = voice.say('nextWave', { wave: 2 });
@@ -52,6 +66,8 @@ describe('combat sounds', () => {
       { type: 'enemyFired', at },
       { type: 'lockAcquired', targetId: 1 },
       { type: 'missileFired', at },
+      { type: 'enemyMissileLaunched', at, from: 'behind' },
+      { type: 'enemyMissileDown', at },
       { type: 'raiderDestroyed', at, commander: false },
       { type: 'won', score: 1 },
     ];

@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   NEAR,
   bearing,
+  bearingToScreenX,
   clipToNear,
-  compassDegrees,
   project,
+  screenBearing,
   skyToCamera,
-  stickTurn,
   toCamera,
 } from '../../src/combat/cockpitCamera';
 import { vec2 } from '../../src/combat/vec2';
@@ -66,34 +66,28 @@ describe('cockpit camera: seeing the map from the pilot seat', () => {
     expect(q.x).toBeCloseTo(0);
     expect(skyToCamera(NOSE_UP, NOSE_UP, 0.5).y).toBeGreaterThan(0);
   });
-
-  it('the compass reads 0 when the nose points up the map and 90 when it points right', () => {
-    expect(compassDegrees(NOSE_UP)).toBe(0);
-    expect(compassDegrees(0)).toBe(90);
-    expect(compassDegrees(Math.PI)).toBe(270);
-  });
 });
 
-describe('mouse as a flight stick', () => {
-  it('near the centre the ship flies straight (dead zone)', () => {
-    expect(stickTurn(10, 1000)).toBe(0);
+describe('aiming the guns from the cockpit with the mouse', () => {
+  it('the middle of the view is straight ahead', () => {
+    expect(screenBearing(frame.cx, frame)).toBeCloseTo(0);
   });
 
-  it('right of centre turns right, left turns left, harder the further out', () => {
-    const gentle = stickTurn(120, 1000);
-    const hard = stickTurn(250, 1000);
-    expect(gentle).toBeGreaterThan(0);
-    expect(hard).toBeGreaterThan(gentle);
-    expect(stickTurn(-250, 1000)).toBeCloseTo(-hard);
+  it('right of the middle aims right, left aims left', () => {
+    expect(screenBearing(frame.cx + 200, frame)).toBeGreaterThan(0);
+    expect(screenBearing(frame.cx - 200, frame)).toBeLessThan(0);
   });
 
-  it('small stick moves give gentle turns: a quarter of the way out asks for under a tenth of full spin', () => {
-    expect(stickTurn(250, 2000)).toBeGreaterThan(0);
-    expect(stickTurn(250, 2000)).toBeLessThan(0.1);
+  it('a bearing turned into a screen column and back is the same bearing', () => {
+    for (const angle of [-0.9, -0.3, 0, 0.5, 1]) {
+      expect(screenBearing(bearingToScreenX(angle, frame), frame)).toBeCloseTo(angle);
+    }
   });
 
-  it('the turn never exceeds full rate, however far the pointer goes', () => {
-    expect(stickTurn(5000, 1000)).toBe(1);
-    expect(stickTurn(-5000, 1000)).toBe(-1);
+  it('the aim lands where the raider is drawn: a raider projected on screen is aimed at by its column', () => {
+    const raider = vec2(150, -400); // ahead and to the right
+    const at = project(toCamera(cam, raider), frame);
+    expect(at).not.toBeNull();
+    expect(screenBearing(at?.x ?? 0, frame)).toBeCloseTo(bearing(cam, raider));
   });
 });

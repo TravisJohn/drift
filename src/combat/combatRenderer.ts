@@ -4,28 +4,33 @@
  *
  * Canvas 2D, in the command deck's projector colours: the ship and its
  * fire in cyan, raiders and their fire in warm orange so friend and foe
- * read at a glance. The view follows the ship. Off-screen raiders get an
- * arrow at the edge, and a small radar shows the whole arena.
+ * read at a glance; raider missiles flash red. The view follows the ship,
+ * which always points up the screen (it never turns; its gun swivels to
+ * the mouse). Off-screen raiders and missiles get an arrow at the edge,
+ * and the holographic map (holoMap.ts) in the corner shows all around.
  *
  * Explosions and sparks are visual only: they are spawned from the
  * simulation's events (`react`) and live here, not in the rules.
  */
 import { gameConfig } from '../config/gameConfig';
-import type {
-  CombatEvent,
-  CombatSettings,
-  CombatSnapshot,
-  PlayerShip,
-  Raider,
-  Rock,
-  Shot,
+import {
+  type CombatEvent,
+  type CombatSettings,
+  type CombatSnapshot,
+  FORWARD,
+  type PlayerShip,
+  type Raider,
+  type Rock,
+  type Shot,
 } from './combatTypes';
 import type { CombatView } from './combatView';
-import { type Vec2, add, fromAngle, length, scale, sub, vec2 } from './vec2';
+import { drawHoloMap } from './holoMap';
+import { type Vec2, add, angleOf, fromAngle, length, scale, sub, vec2 } from './vec2';
 
 const CYAN = '127, 220, 255';
 const WARM = '255, 150, 90';
 const WHITE = '235, 250, 255';
+const RED = '255, 70, 70';
 const GRID_STEP = 150;
 /** Most particles alive at once (old ones give way): keeps big fights cheap. */
 const MAX_PARTICLES = 500;
@@ -43,8 +48,10 @@ interface Particle {
 
 const rgba = (rgb: string, a: number): string => `rgba(${rgb}, ${a.toFixed(3)})`;
 
-/** Seconds ahead the tactical drift line reaches. */
+/** Seconds ahead the drift line reaches. */
 const DRIFT_LOOKAHEAD = 1.5;
+/** The pointer this close to the ship (CSS px) asks for no aim. */
+const AIM_DEAD_ZONE = 6;
 
 export class CombatRenderer implements CombatView {
   private width = 1;
@@ -83,6 +90,13 @@ export class CombatRenderer implements CombatView {
     );
   }
 
+  /** The gun angle toward the pointer, from the ship (the view's centre). */
+  aimAt(pointer: Vec2, view: CombatSnapshot): number | null {
+    const toward = sub(pointer, this.toScreen(view.player.pos));
+    if (length(toward) < AIM_DEAD_ZONE) return null;
+    return angleOf(toward);
+  }
+
   /** Turn this step's events into sparks, explosions and flashes. */
   react(events: readonly CombatEvent[]): void {
     for (const e of events) {
@@ -91,7 +105,8 @@ export class CombatRenderer implements CombatView {
       else if (e.type === 'playerDamaged') {
         this.hitFlash = HIT_FLASH;
         this.burst(e.at, 10, CYAN, 0.7);
-      } else if (e.type === 'lost') this.burst(this.camera, 90, CYAN, 2.2); // the ship breaks up
+      } else if (e.type === 'enemyMissileDown') this.burst(e.at, 18, RED, 0.9);
+      else if (e.type === 'lost') this.burst(this.camera, 90, CYAN, 2.2); // the ship breaks up
     }
   }
 
@@ -107,7 +122,6 @@ export class CombatRenderer implements CombatView {
     c.fillRect(0, 0, this.width, this.height);
 
     this.drawGrid();
-    this.drawArenaEdge();
     for (const rock of view.rocks) this.drawRock(rock);
     for (const shot of view.shots) this.drawShot(shot);
     for (const r of view.raiders) if (!r.dead) this.drawRaider(r, view);
@@ -117,8 +131,8 @@ export class CombatRenderer implements CombatView {
     }
     this.drawParticles();
     this.drawLock(view);
-    this.drawEdgeArrows(view.raiders);
-    this.drawRadar(view);
+    this.drawEdgeArrows(view);
+    this.drawMap(view);
     if (this.hitFlash > 0) this.drawHitFlash();
   }
 
@@ -142,19 +156,6 @@ export class CombatRenderer implements CombatView {
       c.lineTo(this.width, y);
     }
     c.stroke();
-  }
-
-  private drawArenaEdge(): void {
-    const c = this.ctx;
-    const centre = this.toScreen(vec2(0, 0));
-    c.save();
-    c.setLineDash([10, 8]);
-    c.lineWidth = 2;
-    c.strokeStyle = rgba(CYAN, 0.35);
-    c.beginPath();
-    c.arc(centre.x, centre.y, this.s.arenaRadius * this.zoom, 0, Math.PI * 2);
-    c.stroke();
-    c.restore();
   }
 
   // --- Bodies ---
@@ -185,6 +186,12 @@ export class CombatRenderer implements CombatView {
     const head = this.toScreen(shot.pos);
     if (!this.onScreen(head, 40)) return;
     const mine = shot.owner === 'player';
+    if (shot.missile && !mine) {
+      // A raider's missile: a flashing red glow and a smoky red trail.
+      this.glow(head, 12, RED, 0.6 + 0.4 * Math.sin(performance.now() / 70));
+      if (Math.random() < 0.8) this.spawn(shot.pos, scale(shot.vel, -0.08), 0.5, 2, RED);
+      return;
+    }
     if (shot.missile) {
       this.glow(head, 9, WHITE, 0.9);
       // Exhaust trail along where it came from.
@@ -243,14 +250,11 @@ export class CombatRenderer implements CombatView {
     }
   }
 
-  /** The ship from above: a plated freighter with side modules and an engine. */
   /**
    * A dashed line from the ship showing where it will be in a second and a
-   * half: with no drag the nose and the motion part ways, and this is the
-   * motion.
+   * half: with a sideways drift set, the motion is not straight ahead.
    */
   private drawDrift(p: Readonly<PlayerShip>): void {
-    if (length(p.vel) < this.s.ship.flipMinSpeed) return;
     const c = this.ctx;
     const from = this.toScreen(p.pos);
     const to = this.toScreen(add(p.pos, scale(p.vel, DRIFT_LOOKAHEAD)));
@@ -270,15 +274,19 @@ export class CombatRenderer implements CombatView {
     c.restore();
   }
 
+  /** The ship from above: a plated freighter with side modules and an engine. */
   private drawShip(p: Readonly<PlayerShip>): void {
     const c = this.ctx;
     const at = this.toScreen(p.pos);
     const u = this.s.ship.radius * this.zoom;
+    this.drawGun(at, p.aim, u);
     c.save();
     c.translate(at.x, at.y);
-    c.rotate(p.heading);
+    c.rotate(FORWARD); // the hull never turns
 
-    const speed = length(p.vel) / this.s.ship.maxSpeed;
+    const ship = this.s.ship;
+    const top = Math.max(...ship.forwardSpeeds) + ship.boostExtra;
+    const speed = length(p.vel) / top;
     const plume = (p.boosting ? 1.6 : 0.5 + speed * 0.6) * u;
     const gradient = c.createLinearGradient(-u * 0.9, 0, -u * 0.9 - plume, 0);
     gradient.addColorStop(0, rgba(p.boosting ? WHITE : CYAN, 0.85));
@@ -321,6 +329,34 @@ export class CombatRenderer implements CombatView {
     }
   }
 
+  /** The swivelling twin gun on its turret: barrels toward the aim. */
+  private drawGun(at: Vec2, aim: number, u: number): void {
+    const c = this.ctx;
+    const dir = fromAngle(aim);
+    const side = vec2(-dir.y, dir.x);
+    c.save();
+    c.lineCap = 'round';
+    c.lineWidth = 2;
+    c.strokeStyle = rgba(WHITE, 0.9);
+    c.beginPath();
+    for (const k of [-1, 1]) {
+      const base = add(at, scale(side, k * u * 0.16));
+      const tip = add(base, scale(dir, u * 1.1));
+      c.moveTo(base.x, base.y);
+      c.lineTo(tip.x, tip.y);
+    }
+    c.stroke();
+    // A faint line of fire, so the aim reads at a glance.
+    const far = add(at, scale(dir, u * 6));
+    c.lineWidth = 1;
+    c.strokeStyle = rgba(CYAN, 0.18);
+    c.beginPath();
+    c.moveTo(at.x, at.y);
+    c.lineTo(far.x, far.y);
+    c.stroke();
+    c.restore();
+  }
+
   // --- Targeting ---
 
   private drawLock(view: CombatSnapshot): void {
@@ -358,57 +394,51 @@ export class CombatRenderer implements CombatView {
     }
   }
 
-  /** Arrows on the screen edge pointing at raiders out of view. */
-  private drawEdgeArrows(raiders: readonly Readonly<Raider>[]): void {
+  /** Arrows on the screen edge pointing at raiders and missiles out of view. */
+  private drawEdgeArrows(view: CombatSnapshot): void {
+    for (const r of view.raiders) {
+      if (!r.dead) this.edgeArrow(r.pos, rgba(WARM, r.commander ? 0.95 : 0.7));
+    }
+    const flash = 0.55 + 0.45 * Math.sin(view.time * 14);
+    for (const shot of view.shots) {
+      if (shot.owner === 'enemy' && shot.missile) this.edgeArrow(shot.pos, rgba(RED, flash));
+    }
+  }
+
+  private edgeArrow(pos: Vec2, fill: string): void {
+    const at = this.toScreen(pos);
+    if (at.x > 0 && at.x < this.width && at.y > 0 && at.y < this.height) return;
     const c = this.ctx;
     const cx = this.width / 2;
     const cy = this.height / 2;
     const margin = 26;
-    for (const r of raiders) {
-      if (r.dead) continue;
-      const at = this.toScreen(r.pos);
-      if (at.x > 0 && at.x < this.width && at.y > 0 && at.y < this.height) continue;
-      const a = Math.atan2(at.y - cy, at.x - cx);
-      // Where the ray from the centre leaves the screen (inset by the margin).
-      const sx = (cx - margin) / Math.abs(Math.cos(a) || 1e-6);
-      const sy = (cy - margin) / Math.abs(Math.sin(a) || 1e-6);
-      const reach = Math.min(sx, sy);
-      c.save();
-      c.translate(cx + Math.cos(a) * reach, cy + Math.sin(a) * reach);
-      c.rotate(a);
-      c.fillStyle = rgba(WARM, r.commander ? 0.95 : 0.7);
-      c.beginPath();
-      c.moveTo(9, 0);
-      c.lineTo(-5, -6);
-      c.lineTo(-5, 6);
-      c.closePath();
-      c.fill();
-      c.restore();
-    }
+    const a = Math.atan2(at.y - cy, at.x - cx);
+    // Where the ray from the centre leaves the screen (inset by the margin).
+    const sx = (cx - margin) / Math.abs(Math.cos(a) || 1e-6);
+    const sy = (cy - margin) / Math.abs(Math.sin(a) || 1e-6);
+    const reach = Math.min(sx, sy);
+    c.save();
+    c.translate(cx + Math.cos(a) * reach, cy + Math.sin(a) * reach);
+    c.rotate(a);
+    c.fillStyle = fill;
+    c.beginPath();
+    c.moveTo(9, 0);
+    c.lineTo(-5, -6);
+    c.lineTo(-5, 6);
+    c.closePath();
+    c.fill();
+    c.restore();
   }
 
-  private drawRadar(view: CombatSnapshot): void {
-    const c = this.ctx;
-    const size = Math.min(150, Math.min(this.width, this.height) * 0.2);
-    const cx = 24 + size / 2;
-    const cy = this.height - 24 - size / 2;
-    const k = size / 2 / (this.s.arenaRadius + 120);
-    c.fillStyle = rgba(CYAN, 0.06);
-    c.strokeStyle = rgba(CYAN, 0.45);
-    c.lineWidth = 1;
-    c.beginPath();
-    c.arc(cx, cy, size / 2, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
-    const dot = (p: Vec2, rgb: string, r: number) => {
-      c.fillStyle = rgba(rgb, 0.95);
-      c.beginPath();
-      c.arc(cx + p.x * k, cy + p.y * k, r, 0, Math.PI * 2);
-      c.fill();
-    };
-    for (const rock of view.rocks) dot(rock.pos, CYAN, 1.5);
-    for (const r of view.raiders) if (!r.dead) dot(r.pos, WARM, r.commander ? 3.5 : 2.2);
-    dot(view.player.pos, WHITE, 3);
+  /** The holographic map in the corner: everything around the ship. */
+  private drawMap(view: CombatSnapshot): void {
+    const radius = Math.min(80, Math.min(this.width, this.height) * 0.11);
+    drawHoloMap(
+      this.ctx,
+      view,
+      { cx: 24 + radius, cy: this.height - 24 - radius, radius, range: this.s.fieldRadius },
+      view.time,
+    );
   }
 
   private drawHitFlash(): void {

@@ -1,6 +1,6 @@
 /**
  * The cockpit view's geometry: seeing the flat (2D) fight from the pilot's
- * seat, and turning the mouse into a flight stick.
+ * seat, and turning a mouse position into a gun bearing (and back).
  *
  * The fight happens on a plane. The pilot's eye sits a little above it at
  * the ship's position, looking along the ship's heading; things can also
@@ -9,7 +9,6 @@
  *
  * Camera space: +x right of the nose, +y up, +z ahead.
  */
-import { clamp } from './combatMath';
 import { type Vec2, dot, sub, vec2 } from './vec2';
 
 export interface CameraPoint {
@@ -104,23 +103,16 @@ export function bearing(cam: CockpitCamera, target: Vec2): number {
   return Math.atan2(q.x, q.z);
 }
 
-/** Compass heading in whole degrees: 0 is up the tactical map, 90 right. */
-export function compassDegrees(heading: number): number {
-  const deg = ((heading + Math.PI / 2) * 180) / Math.PI;
-  return ((Math.round(deg) % 360) + 360) % 360;
+/**
+ * The bearing (radians right of straight ahead) of screen column `x`: the
+ * inverse of projecting a point on the horizon. Used to aim the guns with
+ * the mouse in the cockpit.
+ */
+export function screenBearing(x: number, frame: ScreenFrame): number {
+  return Math.atan2(x - frame.cx, frame.focal);
 }
 
-/**
- * The mouse as a flight stick (STARFALL's steering): how far the pointer
- * sits from the centre of the view sets the turn rate. A dead zone lets
- * the ship fly straight; at `full` of the half-width it turns as hard as
- * it can. The response is squared, so small moves give gentle turns and
- * only a big push asks for full spin. Returns −1 (hard left) .. 1 (hard right).
- */
-export function stickTurn(offsetX: number, width: number, deadZone = 0.08, full = 0.85): number {
-  const half = Math.max(1, width / 2);
-  const k = offsetX / half;
-  if (Math.abs(k) <= deadZone) return 0;
-  const past = clamp((Math.abs(k) - deadZone) / (full - deadZone), 0, 1);
-  return Math.sign(k) * past * past;
+/** The screen column of a bearing (radians right of ahead, within ±90°). */
+export function bearingToScreenX(angle: number, frame: ScreenFrame): number {
+  return frame.cx + Math.tan(angle) * frame.focal;
 }

@@ -47,6 +47,14 @@ export function recipeFor(event: CombatEvent): readonly SoundRecipe[] {
       return [tone(800, 140, 0.13, 0.22, 'sawtooth')];
     case 'enemyFired':
       return [tone(420, 90, 0.16, 0.12, 'square')];
+    case 'enemyMissileLaunched':
+      // A warning warble: loud enough to turn the pilot's head.
+      return [tone(1000, 700, 0.28, 0.3, 'square'), tone(500, 350, 0.28, 0.15, 'sawtooth')];
+    case 'enemyMissileDown':
+      return [
+        { kind: 'noise', seconds: 0.3, volume: 0.6, cutoffHz: 900 },
+        tone(600, 200, 0.15, 0.2, 'triangle'),
+      ];
     case 'lockAcquired':
       return [tone(950, 950, 0.08, 0.25)];
     case 'missileFired':

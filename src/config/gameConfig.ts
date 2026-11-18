@@ -431,37 +431,32 @@ export const gameConfig = {
    * the STARFALL prototype, re-tuned for a flat view.
    */
   combat: {
-    /** The fight stays inside this circle; past it, a pull back to the middle. */
-    arenaRadius: 1500,
+    /**
+     * Space is endless: the fight moves with the ship. Rocks further than
+     * this from the ship are recycled ahead of it; the radar shows this far.
+     */
+    fieldRadius: 1500,
     /** Units of the arena visible across the narrower side of the screen. */
     viewSpan: 1100,
     ship: {
       radius: 26,
-      // Flight follows real-space rules on purpose (author: "it won't stop
-      // in actual life"): nothing slows the ship but its own engine. The
-      // hull spins up and down to turn, momentum carries forever, and to
-      // slow down you turn round and burn against the drift (S flips).
-      /** Top spin rate, radians a second (about 75 degrees). */
-      turnRate: 1.3,
-      /** How fast the spin builds or settles, radians a second, per second. */
-      turnAccel: 2.6,
-      /** Mouse aim: spin asked for per radian off target (eases in at the end). */
-      aimGain: 2.5,
-      /** Main engine push along the nose, per second. */
-      thrust: 220,
-      /** Boost multiplies the main engine's push. */
-      boostThrust: 1.7,
-      /**
-       * The fastest the main engine (or boost) can push the ship. A limit on
-       * the engine, not on the ship: speed above it (after a boost) is kept
-       * until the pilot burns against it.
-       */
-      maxSpeed: 260,
-      boostSpeed: 470,
-      /** The fight opens with the ship already cruising forward at this speed. */
-      launchSpeed: 120,
-      /** S flips the nose to face against the drift; below this speed it holds. */
-      flipMinSpeed: 5,
+      // Forward flight (author's design after playtesting): the hull always
+      // faces forward and never rotates, and the ship is always moving
+      // forward. W/S step the forward speed through notches that stay set
+      // (S never stops it); A/D step a sideways drift that stays until
+      // changed, so the pilot keeps navigating.
+      /** Forward speed at each throttle notch, and the notch names shown. */
+      forwardSpeeds: [90, 160, 240],
+      throttleNames: ['Slow', 'Cruise', 'Fast'],
+      /** The fight opens at this notch (cruise). */
+      startThrottle: 1,
+      /** Sideways speed added per A/D notch, and how many notches each way. */
+      strafeStep: 70,
+      strafeNotches: 2,
+      /** Shift (while energy lasts) adds this much forward speed. */
+      boostExtra: 150,
+      /** How fast the engines bring the motion to the set speeds (units/s, per s). */
+      accel: 240,
     },
     defence: {
       shieldMax: 100,
@@ -487,9 +482,9 @@ export const gameConfig = {
       /** Overheated cannons cool a little faster, and fire again below this heat. */
       overheatedCoolRate: 28,
       resumeHeat: 25,
-      /** Twin cannons: this far either side of the nose. */
+      /** Twin cannons: this far either side of the hull's centre line. */
       spread: 11,
-      /** Aim help: a target this close to the nose (radians) is led automatically. */
+      /** Aim help: a target this close to the aim (radians) is led automatically. */
       assistAngle: 0.1,
     },
     missiles: {
@@ -502,7 +497,7 @@ export const gameConfig = {
       life: 5,
       damage: 8,
       hitRadius: 30,
-      /** Hold a raider within this angle of the nose and range to lock. */
+      /** Hold the aim within this angle of a raider, in range, to lock it. */
       lockAngle: 0.22,
       lockRange: 900,
       lockSeconds: 1.05,
@@ -510,7 +505,8 @@ export const gameConfig = {
     enemy: {
       radius: 20,
       commanderRadius: 30,
-      speed: 210,
+      /** Faster than the ship's top notch, so raiders keep up; boost outruns them. */
+      speed: 300,
       turnRate: 1.4,
       /**
        * How quickly a raider's motion swings round to where its nose points
@@ -528,6 +524,22 @@ export const gameConfig = {
       /** Where a wave appears: this far from the ship. */
       spawnMin: 900,
       spawnMax: 1250,
+      /**
+       * Raider missiles: slow and turning gently, so a sideways drift dodges
+       * them, the fast notch outruns one from behind, and lasers shoot them
+       * down. How often they fly is set per difficulty.
+       */
+      missile: {
+        speed: 230,
+        /** Most a missile can turn, radians a second. */
+        turnRate: 1.1,
+        life: 7,
+        /** Size as a target for the ship's lasers. */
+        radius: 12,
+        /** Raiders launch only from this band of range. */
+        minRange: 300,
+        maxRange: 950,
+      },
     },
     /** Raiders per wave; the last wave is led by a commander. */
     waves: [5, 7, 9],
@@ -544,6 +556,11 @@ export const gameConfig = {
         /** Random aim error, radians either way. */
         spread: 0.09,
         shotDamage: 13,
+        /** Seconds between one raider's missiles, and most in flight at once. */
+        missileMin: 10,
+        missileMax: 18,
+        maxMissiles: 1,
+        missileDamage: 16,
       },
       ace: {
         enemyHp: 4,
@@ -552,6 +569,10 @@ export const gameConfig = {
         fireMax: 3.5,
         spread: 0.04,
         shotDamage: 20,
+        missileMin: 6,
+        missileMax: 11,
+        maxMissiles: 3,
+        missileDamage: 22,
       },
     },
     score: { hit: 10, raider: 150, commander: 500, hullBonus: 10, shieldBonus: 5 },

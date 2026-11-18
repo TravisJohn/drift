@@ -1174,3 +1174,51 @@ around or look around." 658 tests passing; lint, types and build clean.
 - Checked in the browser pane by stepping the fight (the pane gave the
   page 1 animation frame a second this time, a pane throttle; the fight
   itself costs 0.04 ms a step and 0.2 ms to draw).
+
+## 2026-11-18 - Combat: forward flight redesign (branch `experiment/combat`)
+
+**Author feedback** on real-space flight: the fight paused at random on
+engage, and the ship turned far too fast. Asked for: always flying
+forward, up the screen; W/S and A/D that set a speed and a drift that
+stay until changed (S slows but never stops); enemies that come from
+behind and the sides; a wider cockpit view with a small 2D holographic
+map that shows missiles coming from the sides and the rear. Choices
+made with the author: guns swivel to the mouse, speed notches, a 120
+degree cockpit view plus hologram, raiders fire slow homing missiles.
+684 tests passing; lint, types and build clean.
+
+- Pause fix (committed on its own first): losing focus only clears the
+  held keys; the fight pauses only when the page is actually hidden.
+- The hull never turns: it always points up the map (FORWARD). The
+  rotation complaint goes away with the rotation.
+- Speed notches: W/S step Slow 90 / Cruise 160 / Fast 240 and never
+  reach zero. A/D step a sideways drift (two notches each way, 70 each)
+  that stays set. Shift boost adds 150 forward. The ship eases toward
+  the set velocity at a limited acceleration. New module
+  `src/combat/flight.ts` holds this as pure functions.
+- Guns swivel to the mouse in both views. Aim assist, missile lock and
+  missile launch follow the aim, not the hull.
+- Endless space: no arena edge. Rocks left behind are recycled ahead.
+- Raider missiles: slow homing (230 speed, limited turn rate, 7 s
+  life). Raiders launch from 300 to 950 range. Rookie: one in flight at
+  a time, every 10 to 18 s. Ace: up to three, every 6 to 11 s. They can
+  be dodged with drift, outrun at Fast, or shot down with the lasers.
+  The wingman calls the side ("Missile from port").
+- Holographic map (`src/combat/holoMap.ts`): a ship-centred, nose-up
+  disc shared by both views (bottom-left). Things out of range sit on
+  the rim, missiles flash red, and a "MISSILE - PORT/STARBOARD/AFT/
+  AHEAD" label calls the nearest. The cockpit's map also shows the
+  view's wedge.
+- Cockpit: 120 degree view, always forward. The aim ring moves along
+  the horizon with the mouse, and the view banks with the drift. Red
+  arrows round the edge point at missiles out of sight. The old drift
+  markers and radar are gone (the hologram replaces them).
+- Trade-offs flagged to the author: in the cockpit you can only aim
+  inside the 120 degree view; threats behind are fought from the
+  tactical view (C) or dodged. Speeds, drift and missile numbers are
+  first guesses for the next playtest.
+- Checked in the browser pane by stepping the fight: notches and drift
+  reach the set velocities, the aim follows the mouse in both views, a
+  25 s rookie fight with continuous fire reached wave 2 with two raider
+  missiles launched, and both views draw the hologram and missile
+  warnings.

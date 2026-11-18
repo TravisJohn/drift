@@ -10,10 +10,8 @@ export type CombatViewId = 'tactical' | 'cockpit';
 
 /** What the pilot's hands are doing, for views that show it. */
 export interface PilotState {
-  /** Current turn, −1..1 (the cockpit banks with it). */
-  readonly turn: number;
-  /** The flight stick's position, −1..1 each way, or null if the mouse isn't steering. */
-  readonly stick: Vec2 | null;
+  /** The mouse over the view (CSS px), or null before it moves. */
+  readonly pointer: Vec2 | null;
 }
 
 export interface CombatView {
@@ -21,6 +19,11 @@ export interface CombatView {
   resize(width: number, height: number, pixelRatio: number): void;
   /** Turn this step's events into visual effects. */
   react(events: readonly CombatEvent[]): void;
+  /**
+   * The gun angle (map radians) the mouse at `pointer` asks for in this
+   * view, or null when it asks for nothing (e.g. sitting on the ship).
+   */
+  aimAt(pointer: Vec2, view: CombatSnapshot): number | null;
   /** Draw one frame; `dt` moves visual-only effects. */
   draw(view: CombatSnapshot, dt: number, pilot: PilotState): void;
 }

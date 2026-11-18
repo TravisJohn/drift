@@ -3,14 +3,19 @@
  *
  * Ported from the STARFALL prototype's cockpit: a nebula and starfield, a
  * ringed planet and a far sun, raiders drawn as small 3D fighters from
- * projected vertices, laser bolts converging ahead, a canopy frame and
- * instrument console, a heading-up radar, the targeting ring and arrows
- * to hostiles out of view.
+ * projected vertices, laser bolts, a canopy frame and instrument console,
+ * the aim ring and arrows to hostiles out of view.
+ *
+ * The ship never turns, so the view always looks forward, wide (about 120
+ * degrees). The mouse moves the aim ring along the horizon (the guns
+ * swivel); the sides and the tail are watched on the holographic map
+ * (holoMap.ts) projected above the console, where raider missiles flash.
  *
  * The rules stay flat (2D): everything that matters sits on one plane at
  * about eye level. Depth comes from things that don't (stars, the planet,
- * debris drifting above and below) and from the view banking into turns.
- * Raiders bob a little for life; never enough to look like a miss.
+ * debris drifting above and below) and from the view banking with the
+ * sideways drift. Raiders bob a little for life; never enough to look
+ * like a miss.
  */
 import { gameConfig } from '../config/gameConfig';
 import { mulberry32 } from '../core/random';
@@ -19,41 +24,41 @@ import {
   type CockpitCamera,
   type ScreenFrame,
   bearing,
+  bearingToScreenX,
   clipToNear,
-  compassDegrees,
   project,
+  screenBearing,
   skyToCamera,
   toCamera,
 } from './cockpitCamera';
 import { angleBetween, approach, clamp } from './combatMath';
-import type {
-  CombatEvent,
-  CombatSettings,
-  CombatSnapshot,
-  PlayerShip,
-  Raider,
-  Rock,
-  Shot,
+import {
+  type CombatEvent,
+  type CombatSettings,
+  type CombatSnapshot,
+  FORWARD,
+  type Raider,
+  type Rock,
+  type Shot,
 } from './combatTypes';
-import type { CombatView, PilotState } from './combatView';
-import { type Vec2, add, angleOf, fromAngle, length, normalize, scale, sub, vec2 } from './vec2';
+import type { CombatView } from './combatView';
+import { drawHoloMap } from './holoMap';
+import { type Vec2, add, fromAngle, length, normalize, scale, sub, vec2 } from './vec2';
 
 /** Eye height above the plane the fight happens on. */
 const EYE = 4;
 /** How far a raider bobs above and below the plane (visual only). */
 const RAIDER_BOB = 4;
-/** Visual roll into a full-rate turn, radians. */
-const MAX_BANK = 0.14;
-/** How far out along the drift the horizon markers are placed (any far point works). */
-const DRIFT_MARKER_DISTANCE = 100_000;
+/** Visual roll at the widest sideways drift, radians. */
+const MAX_BANK = 0.1;
+/** Half the view's width as an angle: a 120 degree view. */
+export const VIEW_HALF_ANGLE = Math.PI / 3;
 const STAR_COUNT = 900;
 const DEBRIS_COUNT = 36;
 /** Debris repeats in a square this wide around the ship, so it is always about. */
 const DEBRIS_TILE = 2600;
 const MAX_PARTICLES = 500;
 const HIT_FLASH = 0.28;
-/** Radar range: raiders further than this sit on the radar's rim. */
-const RADAR_RANGE = 1900;
 
 /** The raider fighter from STARFALL: vertices (x right, y up, −z forward). */
 const RAIDER_VERTS: readonly (readonly [number, number, number])[] = [
@@ -172,9 +177,15 @@ export class CockpitRenderer implements CombatView {
     this.frame = {
       cx: this.width / 2,
       cy: this.height * 0.46,
-      focal: Math.max(this.width * 0.62, this.height * 0.8),
+      // Wide: the screen's half-width spans VIEW_HALF_ANGLE.
+      focal: this.width / 2 / Math.tan(VIEW_HALF_ANGLE),
     };
     this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  }
+
+  /** The gun angle for the pointer: its bearing from straight ahead. */
+  aimAt(pointer: Vec2): number {
+    return FORWARD + screenBearing(pointer.x, this.frame);
   }
 
   react(events: readonly CombatEvent[]): void {
@@ -184,20 +195,24 @@ export class CockpitRenderer implements CombatView {
       else if (e.type === 'hit' && e.on === 'raider') this.spark(e.at, '#d2f7ff');
       else if (e.type === 'hit') this.spark(e.at, '#8fa3ad');
       else if (e.type === 'playerDamaged') this.flash = HIT_FLASH;
+      else if (e.type === 'enemyMissileDown') this.burst(e.at, 18, 0.7);
     }
   }
 
-  draw(view: CombatSnapshot, dt: number, pilot: PilotState): void {
+  draw(view: CombatSnapshot, dt: number): void {
     this.time += dt;
     this.flash = Math.max(0, this.flash - dt);
     const p = view.player;
-    this.cam = { pos: p.pos, heading: p.heading, eye: EYE };
-    this.bank += (pilot.turn * MAX_BANK - this.bank) * approach(4, dt);
+    this.cam = { pos: p.pos, heading: FORWARD, eye: EYE };
+    // Bank with the sideways drift: −1 hard left .. 1 hard right.
+    const ship = this.s.ship;
+    const drift = clamp(p.vel.x / (ship.strafeNotches * ship.strafeStep), -1, 1);
+    this.bank += (drift * MAX_BANK - this.bank) * approach(4, dt);
     this.updateParticles(dt);
 
     const c = this.ctx;
     c.save();
-    // Shake on a hit; bank the whole outside world into the turn.
+    // Shake on a hit; bank the whole outside world with the drift.
     if (this.flash > 0) {
       const k = (this.flash / HIT_FLASH) * 5;
       c.translate((Math.random() * 2 - 1) * k, (Math.random() * 2 - 1) * k);
@@ -210,12 +225,11 @@ export class CockpitRenderer implements CombatView {
     for (const shot of view.shots) this.drawShot(shot);
     this.drawParticles();
     this.drawLock(view);
-    this.drawDrift(p);
     c.restore();
 
-    this.drawReticle(view, pilot);
-    this.drawCockpit(pilot.turn);
-    this.drawRadar(view);
+    this.drawReticle(view);
+    this.drawCockpit(drift);
+    this.drawMap(view);
     if (this.flash > 0) {
       const a = this.flash / HIT_FLASH;
       c.fillStyle = `rgba(255, 90, 60, ${(a * 0.3).toFixed(3)})`;
@@ -632,44 +646,6 @@ export class CockpitRenderer implements CombatView {
     c.globalAlpha = 1;
   }
 
-  // --- Flight ---
-
-  /**
-   * Where the ship is actually going. With no drag the nose and the motion
-   * part ways, so two markers sit on the horizon: a ring with wings for the
-   * drift ahead (prograde), a crossed ring for the way back (retrograde,
-   * where S swings the nose; burn there to slow down).
-   */
-  private drawDrift(p: Readonly<PlayerShip>): void {
-    const speed = length(p.vel);
-    if (speed < this.s.ship.flipMinSpeed) return;
-    const dir = scale(p.vel, 1 / speed);
-    for (const way of [1, -1] as const) {
-      // A far point along the drift, at eye height: it lands on the horizon.
-      const far = add(p.pos, scale(dir, way * DRIFT_MARKER_DISTANCE));
-      const at = project(toCamera(this.cam, far, EYE), this.frame);
-      if (!at || !this.onScreen(at, 20)) continue;
-      const color = way > 0 ? '#9fe3d6dd' : '#ffc39add';
-      const c = this.ctx;
-      c.save();
-      c.strokeStyle = color;
-      c.lineWidth = 1.3;
-      c.beginPath();
-      c.arc(at.x, at.y, 7, 0, Math.PI * 2);
-      c.stroke();
-      if (way > 0) {
-        this.line(at.x - 17, at.y, at.x - 7, at.y, color, 1.3);
-        this.line(at.x + 7, at.y, at.x + 17, at.y, color, 1.3);
-        this.line(at.x, at.y - 7, at.x, at.y - 13, color, 1.3);
-      } else {
-        const k = 7 * Math.SQRT1_2;
-        this.line(at.x - k, at.y - k, at.x + k, at.y + k, color, 1.3);
-        this.line(at.x - k, at.y + k, at.x + k, at.y - k, color, 1.3);
-      }
-      c.restore();
-    }
-  }
-
   // --- Targeting and the head-up display ---
 
   /** Brackets around the raider being locked, closing as the lock builds. */
@@ -699,67 +675,17 @@ export class CockpitRenderer implements CombatView {
     c.stroke();
   }
 
-  private drawReticle(view: CombatSnapshot, pilot: PilotState): void {
+  private drawReticle(view: CombatSnapshot): void {
     const c = this.ctx;
     const { cx: x, cy: y } = this.frame;
     const p = view.player;
-    const locked = view.lock.progress >= 1;
-    const r = 27;
     c.save();
-    c.strokeStyle = p.overheated ? '#ff7955aa' : locked ? '#ffae7a' : '#a6d2d080';
-    c.lineWidth = 0.8;
-    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-      c.beginPath();
-      c.arc(x, y, r, a + 0.22, a + 1.1);
-      c.stroke();
-    }
-    // Lock progress fills the ring.
-    if (view.lock.progress > 0) {
-      c.lineWidth = 2;
-      c.strokeStyle = locked ? '#ffae7a' : '#a6d2d0cc';
-      c.beginPath();
-      c.arc(x, y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * view.lock.progress);
-      c.stroke();
-    }
-    this.line(x - 6, y, x - 2, y, '#c1efea');
-    this.line(x + 2, y, x + 6, y, '#c1efea');
-    this.line(x, y - 6, x, y - 2, '#c1efea');
-    this.line(x, y + 2, x, y + 6, '#c1efea');
-    this.line(x - 48, y, x - 36, y, '#a6d2d055');
-    this.line(x + 36, y, x + 48, y, '#a6d2d055');
-
-    if (pilot.stick) {
-      const sx = x + pilot.stick.x * 65;
-      const sy = y + pilot.stick.y * 65;
-      this.line(x, y, sx, sy, '#83d7db23');
-      c.beginPath();
-      c.arc(sx, sy, 3, 0, Math.PI * 2);
-      c.strokeStyle = '#8dc8ce66';
-      c.stroke();
-    }
-
-    // Heading tape across the top.
-    c.font = '9px ui-monospace, Consolas, monospace';
-    c.textAlign = 'center';
-    const compass = compassDegrees(p.heading);
-    const base = Math.round(compass / 10) * 10;
-    const tapeY = this.height * 0.16;
-    for (let i = -2; i <= 2; i++) {
-      const tx = x + (i * 10 - (compass - base)) * 3.8;
-      this.line(tx, tapeY, tx, tapeY + 4, '#7fa5ad50');
-      c.fillStyle = '#7fa5ad80';
-      c.fillText(String((base + i * 10 + 360) % 360).padStart(3, '0'), tx, tapeY - 6);
-    }
-    // Drift: speed, and how far the motion is off the nose.
-    const speed = length(p.vel);
-    c.fillStyle = '#9fe3d6bb';
-    c.fillText(`DRIFT ${Math.round(speed)} M/S`, x, tapeY + 18);
-    if (speed >= this.s.ship.flipMinSpeed) {
-      const off = Math.round((angleBetween(p.heading, angleOf(p.vel)) * 180) / Math.PI);
-      const side = off === 0 ? 'ON NOSE' : `${Math.abs(off)}° ${off > 0 ? 'RIGHT' : 'LEFT'}`;
-      c.fillStyle = '#7fa5ad99';
-      c.fillText(side, x, tapeY + 30);
-    }
+    // Boresight: a small fixed cross where the nose points.
+    this.line(x - 6, y, x - 2, y, '#c1efea88');
+    this.line(x + 2, y, x + 6, y, '#c1efea88');
+    this.line(x, y - 6, x, y - 2, '#c1efea88');
+    this.line(x, y + 2, x, y + 6, '#c1efea88');
+    this.drawAimRing(view);
     // Side ladder ticks.
     for (const side of [-1, 1]) {
       for (let i = -2; i <= 2; i++) {
@@ -769,38 +695,22 @@ export class CockpitRenderer implements CombatView {
       }
     }
 
-    // Arrows round the reticle toward hostiles out of view.
-    const rx = Math.min(this.width * 0.36, 500);
-    const ry = this.height * 0.26;
+    // Arrows round the view toward raiders and missiles out of sight.
     for (const e of view.raiders) {
-      if (e.dead) continue;
-      const at = project(toCamera(this.cam, e.pos), this.frame);
-      if (
-        at &&
-        at.x > this.width * 0.12 &&
-        at.x < this.width * 0.88 &&
-        at.y > this.height * 0.22 &&
-        at.y < this.height * 0.72
-      )
-        continue;
-      const a = bearing(this.cam, e.pos) - Math.PI / 2;
-      c.save();
-      c.translate(x + Math.cos(a) * rx, y + Math.sin(a) * ry);
-      c.rotate(a);
-      this.path(
-        [
-          [7, 0],
-          [-4, -5],
-          [-4, 5],
-        ],
-        e.commander ? '#ffae7aee' : '#e38d6488',
-      );
-      c.restore();
+      if (!e.dead) this.offViewArrow(e.pos, e.commander ? '#ffae7aee' : '#e38d6488');
+    }
+    const flash = 0.55 + 0.45 * Math.sin(this.time * 14);
+    for (const shot of view.shots) {
+      if (shot.owner === 'enemy' && shot.missile) {
+        this.offViewArrow(shot.pos, `rgba(255, 70, 70, ${flash.toFixed(3)})`);
+      }
     }
 
-    // Target readout under the reticle.
+    // Target readout under the centre.
+    const locked = view.lock.progress >= 1;
     const target = view.raiders.find((e) => e.id === view.lock.targetId && !e.dead);
     c.font = '600 10px ui-monospace, Consolas, monospace';
+    c.textAlign = 'center';
     c.fillStyle = locked ? '#ffc39a' : '#c6e9ef';
     if (target) {
       const kind = target.commander ? 'COMMANDER' : 'RAIDER';
@@ -817,7 +727,7 @@ export class CockpitRenderer implements CombatView {
       c.fillText('NO TARGET', x, y + 72);
       c.font = '9px ui-monospace, Consolas, monospace';
       c.fillStyle = '#7fa5adaa';
-      c.fillText('SEARCHING FOR HOSTILES', x, y + 86);
+      c.fillText('AIM AT A RAIDER TO LOCK', x, y + 86);
     }
     c.fillStyle = '#ff9b76';
     if (p.overheated) c.fillText('CANNONS COOLING', x, y + 102);
@@ -826,13 +736,79 @@ export class CockpitRenderer implements CombatView {
     c.restore();
   }
 
+  /**
+   * The aim ring: where the guns point, on the horizon. When the guns
+   * point outside the view (aimed by the tactical view, say) it waits at
+   * the view's edge, dimmed.
+   */
+  private drawAimRing(view: CombatSnapshot): void {
+    const c = this.ctx;
+    const p = view.player;
+    const off = angleBetween(FORWARD, p.aim);
+    const edge = VIEW_HALF_ANGLE * 0.97;
+    const inView = Math.abs(off) <= edge;
+    const x = bearingToScreenX(clamp(off, -edge, edge), this.frame);
+    const y = this.frame.cy;
+    const locked = view.lock.progress >= 1;
+    const r = 27;
+    c.globalAlpha = inView ? 1 : 0.4;
+    c.strokeStyle = p.overheated ? '#ff7955aa' : locked ? '#ffae7a' : '#a6d2d0aa';
+    c.lineWidth = 1;
+    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      c.beginPath();
+      c.arc(x, y, r, a + 0.22, a + 1.1);
+      c.stroke();
+    }
+    // Lock progress fills the ring.
+    if (view.lock.progress > 0) {
+      c.lineWidth = 2;
+      c.strokeStyle = locked ? '#ffae7a' : '#a6d2d0cc';
+      c.beginPath();
+      c.arc(x, y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * view.lock.progress);
+      c.stroke();
+    }
+    c.fillStyle = '#c1efea';
+    c.fillRect(x - 1, y - 1, 2, 2);
+    c.globalAlpha = 1;
+  }
+
+  /** An arrow round the view's edge toward something out of sight. */
+  private offViewArrow(pos: Vec2, color: string): void {
+    const at = project(toCamera(this.cam, pos), this.frame);
+    if (
+      at &&
+      at.x > this.width * 0.12 &&
+      at.x < this.width * 0.88 &&
+      at.y > this.height * 0.22 &&
+      at.y < this.height * 0.72
+    )
+      return;
+    const c = this.ctx;
+    const { cx: x, cy: y } = this.frame;
+    const rx = Math.min(this.width * 0.36, 500);
+    const ry = this.height * 0.26;
+    const a = bearing(this.cam, pos) - Math.PI / 2;
+    c.save();
+    c.translate(x + Math.cos(a) * rx, y + Math.sin(a) * ry);
+    c.rotate(a);
+    this.path(
+      [
+        [7, 0],
+        [-4, -5],
+        [-4, 5],
+      ],
+      color,
+    );
+    c.restore();
+  }
+
   /** The canopy frame and instrument console (STARFALL's cockpit). */
-  private drawCockpit(turn: number): void {
+  private drawCockpit(drift: number): void {
     const c = this.ctx;
     const w = this.width;
     const h = this.height;
     c.save();
-    c.translate(turn * 5, 0);
+    c.translate(drift * 5, 0);
     const metal = c.createLinearGradient(0, h * 0.7, 0, h);
     metal.addColorStop(0, '#182430');
     metal.addColorStop(0.2, '#111e2a');
@@ -966,49 +942,21 @@ export class CockpitRenderer implements CombatView {
     c.restore();
   }
 
-  /** Heading-up radar in the console: the ship at the centre, ahead is up. */
-  private drawRadar(view: CombatSnapshot): void {
-    const c = this.ctx;
-    const x = this.width * 0.5;
-    const y = this.height * 0.92;
-    const r = Math.max(46, Math.min(this.width * 0.06, this.height * 0.09));
-    const squash = 0.43;
-    c.save();
-    c.strokeStyle = '#6c9baa45';
-    c.lineWidth = 0.7;
-    for (const k of [0.5, 1]) {
-      c.beginPath();
-      c.ellipse(x, y, r * k, r * k * squash, 0, 0, Math.PI * 2);
-      c.stroke();
-    }
-    this.line(x - r, y, x + r, y, '#6c9baa25');
-    this.line(x, y - r * squash, x, y + r * squash, '#6c9baa25');
-    c.beginPath();
-    c.ellipse(x, y, r, r * squash, 0, this.time * 0.4, this.time * 0.4 + 0.6);
-    c.strokeStyle = '#8acbd577';
-    c.lineWidth = 2;
-    c.stroke();
-    const blip = (pos: Vec2, color: string, size: number) => {
-      const q = toCamera(this.cam, pos);
-      const k = Math.min(1, Math.hypot(q.x, q.z) / RADAR_RANGE);
-      const a = Math.atan2(q.x, q.z);
-      c.fillStyle = color;
-      c.fillRect(x + Math.sin(a) * r * k - size / 2, y - Math.cos(a) * r * k * squash - 1, size, 2);
-    };
-    for (const rock of view.rocks) blip(rock.pos, '#6c9baa66', 2);
-    for (const e of view.raiders) {
-      if (!e.dead)
-        blip(e.pos, e.id === view.lock.targetId ? '#ffc499' : '#ff815d', e.commander ? 5 : 3);
-    }
-    this.path(
-      [
-        [x, y - 3],
-        [x - 2, y + 2],
-        [x + 2, y + 2],
-      ],
-      '#9bd7dc',
+  /** The holographic map, projected above the console's left bay. */
+  private drawMap(view: CombatSnapshot): void {
+    const radius = Math.min(90, Math.min(this.width, this.height) * 0.13);
+    drawHoloMap(
+      this.ctx,
+      view,
+      {
+        cx: 24 + radius,
+        cy: this.height - 24 - radius,
+        radius,
+        range: this.s.fieldRadius,
+      },
+      this.time,
+      { viewCone: VIEW_HALF_ANGLE },
     );
-    c.restore();
   }
 
   // --- Drawing helpers ---

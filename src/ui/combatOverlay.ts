@@ -7,20 +7,19 @@
  * fixed step (the rules) and `render(now)` once per frame (the drawing).
  *
  * Two views of the same fight, switched with C at any time: the tactical
- * hologram (top-down; the ship turns toward the mouse pointer) and the
- * cockpit (first person; the mouse is a flight stick - the further from
- * the centre, the harder the turn). The choice is kept between fights.
+ * hologram (top-down) and the cockpit (first person, always looking
+ * forward). The choice is kept between fights. In both the mouse aims the
+ * swivelling guns; the hull never turns.
  *
- * Controls in both: W / ↑ thrust, S / ↓ flip (swing the nose against the
- * drift; W then slows the ship), A D / ← → turn; left click or Space
- * fires; right click or R launches a missile once locked; Shift boosts;
- * Esc or P pauses (Q there retreats). Hiding the page (another tab,
- * minimised) pauses too; losing focus only lets go of held keys.
+ * Controls in both (taps, not holds - each setting stays until changed):
+ * W / ↑ and S / ↓ step the forward speed, A / ← and D / → step the
+ * sideways drift. Left click or Space fires; right click or R launches a
+ * missile once locked; Shift boosts while held; Esc or P pauses (Q there
+ * retreats). Hiding the page (another tab, minimised) pauses too; losing
+ * focus only lets go of held keys.
  */
 import { gameConfig } from '../config/gameConfig';
-import { stickTurn } from '../combat/cockpitCamera';
 import { CockpitRenderer } from '../combat/cockpitRenderer';
-import { clamp } from '../combat/combatMath';
 import { CombatRenderer } from '../combat/combatRenderer';
 import type { CombatView, CombatViewId, PilotState } from '../combat/combatView';
 import { CombatSim } from '../combat/combatSim';
@@ -29,8 +28,9 @@ import {
   type CombatInput,
   type CombatSnapshot,
   type DifficultyId,
+  type PlayerShip,
 } from '../combat/combatTypes';
-import { type Vec2, angleOf, sub, vec2 } from '../combat/vec2';
+import { type Vec2, vec2 } from '../combat/vec2';
 import { CombatVoice, momentFor } from '../content/combatLines';
 import { el } from './dashboard/panel';
 
@@ -61,18 +61,25 @@ const READOUT_SECONDS = 0.1;
 /** Highest canvas pixel ratio: integrated graphics is the target. */
 const MAX_PIXEL_RATIO = 1.5;
 
-const TURN_LEFT = ['KeyA', 'ArrowLeft'];
-const TURN_RIGHT = ['KeyD', 'ArrowRight'];
-const THRUST = ['KeyW', 'ArrowUp'];
-const BRAKE = ['KeyS', 'ArrowDown'];
+/** Tap keys: each press steps a setting (throttle or drift) by one notch. */
+const NOTCH_KEYS: Record<string, { readonly throttle: number; readonly strafe: number }> = {
+  KeyW: { throttle: 1, strafe: 0 },
+  ArrowUp: { throttle: 1, strafe: 0 },
+  KeyS: { throttle: -1, strafe: 0 },
+  ArrowDown: { throttle: -1, strafe: 0 },
+  KeyA: { throttle: 0, strafe: -1 },
+  ArrowLeft: { throttle: 0, strafe: -1 },
+  KeyD: { throttle: 0, strafe: 1 },
+  ArrowRight: { throttle: 0, strafe: 1 },
+};
 const BOOST = ['ShiftLeft', 'ShiftRight'];
 /** Keys the browser would otherwise act on (scrolling, page down). */
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const HINTS: Record<CombatViewId, string> = {
   tactical:
-    'Mouse aim · W thrust · S flip · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
+    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost · C cockpit · Esc pause',
   cockpit:
-    'Mouse steer · W thrust · S flip · A/D turn · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
+    'Mouse aims guns · W/S speed · A/D drift · Click/Space fire · R/right-click missile · Shift boost · C tactical · Esc pause',
 };
 
 interface Readouts {
@@ -86,6 +93,15 @@ interface Readouts {
   line: HTMLDivElement;
 }
 
+/** The pilot's settings in words: "Cruise · Drift left 2", "Fast · No drift". */
+function flightSettings(p: Readonly<PlayerShip>): string {
+  const ship = gameConfig.combat.ship;
+  const speed = ship.throttleNames[p.throttle] ?? `Notch ${p.throttle}`;
+  const drift =
+    p.strafe === 0 ? 'No drift' : `Drift ${p.strafe < 0 ? 'left' : 'right'} ${Math.abs(p.strafe)}`;
+  return `${speed}${p.boosting ? ' + boost' : ''} · ${drift}`;
+}
+
 export class CombatOverlay {
   private root: HTMLDivElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
@@ -94,8 +110,6 @@ export class CombatOverlay {
   /** Which view is showing; kept between fights. */
   private viewId: CombatViewId = 'tactical';
   private hint: HTMLDivElement | null = null;
-  /** The turn last sent to the simulation (the cockpit banks with it). */
-  private lastTurn = 0;
   private sim: CombatSim | null = null;
   private callbacks: CombatCallbacks | null = null;
   private readouts: Readouts | null = null;
@@ -106,7 +120,10 @@ export class CombatOverlay {
   private readonly keys = new Set<string>();
   private mouseFire = false;
   private missileQueued = false;
-  /** Mouse position (CSS px); null until it moves, or after keyboard turning. */
+  /** Notch taps since the last step (W/S throttle, A/D drift). */
+  private throttleSteps = 0;
+  private strafeSteps = 0;
+  /** Mouse position (CSS px); null until it moves. */
   private pointer: Vec2 | null = null;
   private paused = false;
   private overFor = 0;
@@ -208,6 +225,8 @@ export class CombatOverlay {
     if (!this.sim || this.paused) return;
     const events = this.sim.step(dt, this.sampleInput());
     this.missileQueued = false;
+    this.throttleSteps = 0;
+    this.strafeSteps = 0;
     this.handle(events);
 
     if (this.sim.isOver && !this.resultsShown) {
@@ -247,25 +266,9 @@ export class CombatOverlay {
     return this.viewId === 'cockpit' ? this.cockpitView : this.tacticalView;
   }
 
-  /** The pilot's hands, for the cockpit to show. */
+  /** What the pilot's hands are doing, for the views to show. */
   private pilot(): PilotState {
-    const stick =
-      this.viewId === 'cockpit' && this.pointer ? this.stickPosition(this.pointer) : null;
-    return { turn: this.lastTurn, stick };
-  }
-
-  /**
-   * The pointer as a stick position, −1..1 each way from the view's centre.
-   * Sideways it reaches full tilt where stickTurn reaches full spin (0.85
-   * of the half-width), so the drawn stick matches what the ship does.
-   */
-  private stickPosition(pointer: Vec2): Vec2 {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    return vec2(
-      clamp((pointer.x - w / 2) / (w * 0.425), -1, 1),
-      clamp((pointer.y - h * 0.46) / (h * 0.3), -1, 1),
-    );
+    return { pointer: this.pointer };
   }
 
   // --- The fight ---
@@ -303,33 +306,21 @@ export class CombatOverlay {
   }
 
   private sampleInput(): CombatInput {
-    const held = (codes: readonly string[]) => codes.some((c) => this.keys.has(c));
-    const keyTurn = (held(TURN_RIGHT) ? 1 : 0) - (held(TURN_LEFT) ? 1 : 0);
-    const thrust = (held(THRUST) ? 1 : 0) - (held(BRAKE) ? 1 : 0);
-    const cockpit = this.viewId === 'cockpit';
-    // In the cockpit the mouse is a stick: it turns the ship directly.
-    const turn =
-      keyTurn !== 0 || !cockpit || !this.pointer
-        ? keyTurn
-        : stickTurn(this.pointer.x - window.innerWidth / 2, window.innerWidth);
-    this.lastTurn = turn;
     return {
-      thrust,
-      turn,
-      aimAngle: turn === 0 && !cockpit ? this.aimAngle() : null,
+      throttle: this.throttleSteps,
+      strafe: this.strafeSteps,
+      aimAngle: this.aimAngle(),
       fire: this.mouseFire || this.keys.has('Space'),
-      boost: held(BOOST),
+      boost: BOOST.some((code) => this.keys.has(code)),
       missile: this.missileQueued,
     };
   }
 
-  /** Heading from the ship (centre of the view) toward the pointer. */
+  /** Where the pointer asks the guns to point, as the active view reads it. */
   private aimAngle(): number | null {
-    if (!this.pointer || !this.sim || !this.tacticalView) return null;
-    const ship = this.tacticalView.toScreen(this.sim.snapshot.player.pos);
-    const toward = sub(this.pointer, ship);
-    if (Math.hypot(toward.x, toward.y) < 6) return null; // pointer on the ship itself
-    return angleOf(toward);
+    const view = this.activeView();
+    if (!this.pointer || !this.sim || !view) return null;
+    return view.aimAt(this.pointer, this.sim.snapshot);
   }
 
   // --- Pause and results ---
@@ -442,7 +433,7 @@ export class CombatOverlay {
     const r = this.readouts;
     const left = view.raiders.filter((x) => !x.dead).length;
     const level = this.difficulty === 'ace' ? 'Ace' : 'Rookie';
-    r.status.textContent = `Tactical · ${level} · Wave ${view.wave}/${view.waveCount} · Raiders ${left} · Score ${view.score}`;
+    r.status.textContent = `Tactical · ${level} · Wave ${view.wave}/${view.waveCount} · Raiders ${left} · Score ${view.score} · ${flightSettings(p)}`;
     r.shield.style.width = `${p.shield}%`;
     r.hull.style.width = `${p.hull}%`;
     r.hull.classList.toggle('low', p.hull < 30);
@@ -461,6 +452,8 @@ export class CombatOverlay {
     this.keys.clear();
     this.mouseFire = false;
     this.missileQueued = false;
+    this.throttleSteps = 0;
+    this.strafeSteps = 0;
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
@@ -487,9 +480,10 @@ export class CombatOverlay {
       return;
     }
     if (event.code === 'KeyR') this.missileQueued = true;
-    if (TURN_LEFT.includes(event.code) || TURN_RIGHT.includes(event.code)) {
-      // Keyboard steering takes over until the mouse moves again.
-      this.pointer = null;
+    const notch = NOTCH_KEYS[event.code];
+    if (notch) {
+      this.throttleSteps += notch.throttle;
+      this.strafeSteps += notch.strafe;
     }
     this.keys.add(event.code);
   };

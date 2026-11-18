@@ -2,9 +2,10 @@
  * The ship's weapons: twin lasers with heat, missile lock and homing.
  *
  * Rules from STARFALL: every laser shot adds heat; at full heat the
- * cannons lock out until they cool below a threshold. Holding one raider
- * near the nose builds a lock over about a second; a missile needs a full
- * lock and steers itself onto its target.
+ * cannons lock out until they cool below a threshold. The twin guns
+ * swivel (the hull never turns), so everything works from the guns' aim:
+ * holding the aim on one raider builds a lock over about a second; a
+ * missile needs a full lock and steers itself onto its target.
  *
  * These functions mutate the objects they are given (the simulation owns
  * them) and report what happened, so the simulation can turn that into
@@ -12,7 +13,7 @@
  */
 import { angleBetween, approach } from './combatMath';
 import type { CombatSettings, LockState, PlayerShip, Raider, Shot } from './combatTypes';
-import { type Vec2, add, angleOf, distance, scale, sub, vec2, normalize } from './vec2';
+import { type Vec2, add, angleOf, distance, fromAngle, scale, sub, vec2, normalize } from './vec2';
 
 type LaserSettings = CombatSettings['lasers'];
 type MissileSettings = CombatSettings['missiles'];
@@ -40,7 +41,7 @@ export interface LaserVolley {
 
 /**
  * Fire both cannons toward `aim` (a world point), if they are ready.
- * Each cannon sits `spread` units either side of the nose.
+ * The cannons sit `spread` units either side of the line of fire.
  */
 export function fireLasers(player: PlayerShip, aim: Vec2, s: LaserSettings): LaserVolley {
   if (player.overheated || player.shotCooldown > 0) return { shots: [], overheatedNow: false };
@@ -49,14 +50,14 @@ export function fireLasers(player: PlayerShip, aim: Vec2, s: LaserSettings): Las
   const overheatedNow = player.heat >= 100;
   if (overheatedNow) player.overheated = true;
 
-  const side = vec2(-Math.sin(player.heading), Math.cos(player.heading));
+  const side = vec2(-Math.sin(player.aim), Math.cos(player.aim));
   const shots: Shot[] = [-1, 1].map((k) => {
     const origin = add(player.pos, scale(side, k * s.spread));
     const dir = normalize(sub(aim, origin));
     return {
       pos: origin,
       prev: origin,
-      // Shots inherit the ship's own motion, so they leave the nose cleanly.
+      // Shots inherit the ship's own motion, so they leave the guns cleanly.
       vel: add(scale(dir, s.speed), player.vel),
       life: s.life,
       owner: 'player',
@@ -69,8 +70,8 @@ export function fireLasers(player: PlayerShip, aim: Vec2, s: LaserSettings): Las
 }
 
 /**
- * The raider a missile would lock: the one nearest the nose, within the
- * lock angle and range. Null when none qualifies.
+ * The raider a missile would lock: the one nearest the guns' aim, within
+ * the lock angle and range. Null when none qualifies.
  */
 export function lockCandidate(
   player: PlayerShip,
@@ -83,7 +84,7 @@ export function lockCandidate(
     if (r.dead) continue;
     const range = distance(r.pos, player.pos);
     if (range > s.lockRange) continue;
-    const off = Math.abs(angleBetween(player.heading, angleOf(sub(r.pos, player.pos))));
+    const off = Math.abs(angleBetween(player.aim, angleOf(sub(r.pos, player.pos))));
     if (off <= s.lockAngle && off < bestOff) {
       best = r;
       bestOff = off;
@@ -136,13 +137,14 @@ export function launchMissile(
   player.missiles -= 1;
   player.missileCooldown = s.cooldown;
   lock.progress = 0;
-  const forward = vec2(Math.cos(player.heading), Math.sin(player.heading));
+  // Out along the aim; it bends onto the target from there.
+  const out = fromAngle(player.aim);
   return {
     ok: true,
     shot: {
       pos: player.pos,
       prev: player.pos,
-      vel: add(player.vel, scale(forward, s.launchSpeed)),
+      vel: add(player.vel, scale(out, s.launchSpeed)),
       life: s.life,
       owner: 'player',
       damage: s.damage,

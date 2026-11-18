@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { CombatEvent } from '../../src/combat/combatTypes';
+import { type CombatEvent, FORWARD } from '../../src/combat/combatTypes';
 import { mulberry32 } from '../../src/core/random';
 import { gameConfig } from '../../src/config/gameConfig';
 import { type CombatCallbacks, CombatOverlay } from '../../src/ui/combatOverlay';
@@ -61,12 +61,33 @@ describe('CombatOverlay', () => {
   });
 
   it('runs the fight and draws frames without error', () => {
-    key('keydown', 'KeyW');
+    press('KeyW');
     steps(2);
     overlay.render(1000);
     overlay.render(1016);
-    key('keyup', 'KeyW');
     expect(overlay.snapshot?.time).toBeGreaterThan(1.9);
+  });
+
+  it('W and S are taps: each press steps the speed one notch, and holding does not keep stepping', () => {
+    key('keydown', 'KeyW');
+    steps(1); // held for a second: still one notch
+    key('keyup', 'KeyW');
+    expect(overlay.snapshot?.player.throttle).toBe(gameConfig.combat.ship.startThrottle + 1);
+    press('KeyS');
+    press('KeyS');
+    steps(DT);
+    expect(overlay.snapshot?.player.throttle).toBe(gameConfig.combat.ship.startThrottle - 1);
+  });
+
+  it('A and D step the sideways drift, and the status bar shows the speed and drift settings', () => {
+    press('KeyA');
+    press('KeyA');
+    steps(0.2);
+    expect(overlay.snapshot?.player.strafe).toBe(-2);
+    expect(text()).toContain('Drift left 2');
+    expect(text()).toContain(
+      gameConfig.combat.ship.throttleNames[gameConfig.combat.ship.startThrottle],
+    );
   });
 
   it('C switches between the tactical hologram and the cockpit, and back', () => {
@@ -75,7 +96,7 @@ describe('CombatOverlay', () => {
     press('KeyC');
     expect(overlay.view).toBe('cockpit');
     expect(document.getElementById('combat')?.classList.contains('cockpit')).toBe(true);
-    expect(text()).toContain('Mouse steer');
+    expect(text()).toContain('C tactical');
     press('KeyC');
     expect(overlay.view).toBe('tactical');
   });
@@ -91,27 +112,27 @@ describe('CombatOverlay', () => {
     expect(overlay.snapshot?.time).toBeGreaterThan(1.9);
   });
 
-  it('in the cockpit the mouse is a flight stick: right of centre turns the ship right', () => {
-    press('KeyC');
+  const moveMouse = (x: number, y: number): void => {
     const canvas = document.querySelector('#combat canvas') as HTMLCanvasElement;
-    const before = overlay.snapshot?.player.heading ?? 0;
-    canvas.dispatchEvent(
-      new MouseEvent('mousemove', { clientX: window.innerWidth * 0.9, clientY: 100 }),
-    );
-    // The hull takes a moment to spin up, so give the turn time to build.
-    steps(1.5);
-    // Headings grow clockwise on the map: a right turn increases it.
-    expect((overlay.snapshot?.player.heading ?? 0) - before).toBeGreaterThan(1);
+    canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y }));
+  };
+
+  it('in the tactical view the mouse swings the guns toward the pointer, even behind the ship', () => {
+    // Straight below the ship (it sits at the centre of the view): aft.
+    moveMouse(window.innerWidth / 2, window.innerHeight - 5);
+    steps(DT);
+    expect(overlay.snapshot?.player.aim).toBeCloseTo(Math.PI / 2);
   });
 
-  it('in the tactical view the same mouse position aims the ship at the pointer instead', () => {
-    const canvas = document.querySelector('#combat canvas') as HTMLCanvasElement;
-    // Straight above the ship (the ship sits at the centre of the view).
-    canvas.dispatchEvent(
-      new MouseEvent('mousemove', { clientX: window.innerWidth / 2, clientY: 10 }),
-    );
-    steps(1);
-    expect(overlay.snapshot?.player.heading).toBeCloseTo(-Math.PI / 2, 1);
+  it('in the cockpit, right of the middle aims the guns right of ahead; the hull never turns', () => {
+    press('KeyC');
+    overlay.render(1000); // the cockpit learns its frame size
+    moveMouse(window.innerWidth * 0.8, 100);
+    steps(0.5);
+    const aim = overlay.snapshot?.player.aim ?? FORWARD;
+    expect(aim).toBeGreaterThan(FORWARD);
+    expect(aim).toBeLessThan(FORWARD + Math.PI / 2);
+    expect(overlay.snapshot?.player.vel.x).toBeCloseTo(0);
   });
 
   it('the chosen view is kept for the next fight', () => {
@@ -134,7 +155,7 @@ describe('CombatOverlay', () => {
     press('KeyR');
     steps(DT);
     expect(played).toContainEqual({ type: 'missileDenied', reason: 'noLock' });
-    expect(text()).toContain('Hold one on the nose');
+    expect(text()).toContain('Hold the aim on one');
   });
 
   it('Esc pauses the fight (time stands still) and Esc resumes it', () => {
@@ -158,15 +179,13 @@ describe('CombatOverlay', () => {
   });
 
   it('losing focus does not pause (focus can flicker away by itself), but lets go of held keys', () => {
-    key('keydown', 'KeyW'); // held, never released here
+    key('keydown', 'Space'); // fire held, never released here
     window.dispatchEvent(new Event('blur'));
     expect(overlay.isPaused).toBe(false);
-    const before = overlay.snapshot?.player.vel;
-    const speedBefore = Math.hypot(before?.x ?? 0, before?.y ?? 0);
+    played = [];
     steps(1);
-    const after = overlay.snapshot?.player.vel;
-    // W was let go on blur, so no thrust: the speed holds (no drag).
-    expect(Math.hypot(after?.x ?? 0, after?.y ?? 0)).toBeCloseTo(speedBefore, 3);
+    // Space was let go on blur, so the cannons stay quiet.
+    expect(played.map((e) => e.type)).not.toContain('laserFired');
   });
 
   it('the page going out of sight (another tab, minimised) pauses the fight', () => {

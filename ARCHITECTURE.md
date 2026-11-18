@@ -281,8 +281,10 @@ Added 2026-11-18 (experiment branches, not yet on main):
   a 2D top-down fight on the hologram, reached from the dashboard's
   Tactical tab. `src/combat/` holds the rules and nothing else touches
   them: `combatSim.ts` (one fixed step in, CombatEvents out; seeded
-  random), `weapons.ts` (laser heat, lock, missiles), `enemyAi.ts`
-  (raiders circle and lead their shots), `combatMath.ts` + `vec2.ts`
+  random), `flight.ts` (forward flight: speed and drift notches, the
+  ship never rotates), `weapons.ts` (laser heat, aim-based lock,
+  missiles), `enemyAi.ts` (raiders circle, lead their shots and launch
+  homing missiles), `combatMath.ts` + `vec2.ts`
   (aim-ahead and swept hit tests, ported from the STARFALL prototype),
   `combatTypes.ts`. Reacting to events: `combatRenderer.ts` (Canvas 2D
   hologram, particles), `combatSounds.ts` (synthesized),
@@ -291,8 +293,11 @@ Added 2026-11-18 (experiment branches, not yet on main):
   in `render`, and skips the 3D view while it is open. Two views share
   one fight behind `combatView.ts` (`CombatView`): `combatRenderer.ts`
   (tactical, top-down) and `cockpitRenderer.ts` (first person, ported
-  from STARFALL), with `cockpitCamera.ts` for its projection and the
-  mouse-as-flight-stick maths; C switches. Player mode
+  from STARFALL), with `cockpitCamera.ts` for its projection and
+  screen-to-aim maths; C switches. `holoMap.ts` draws the small 2D map
+  of everything around the ship, used as the tactical corner radar and
+  the cockpit's console hologram. Space is endless: no arena edge, rocks
+  recycle around the ship. Player mode
   `inCombat`; events `combat:started` / `combat:ended`. All tuning in
   `gameConfig.combat` (and `audio.combatSounds`).
 

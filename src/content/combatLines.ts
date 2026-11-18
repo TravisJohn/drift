@@ -5,7 +5,7 @@
  * kind of moment has a few lines that rotate in order; a moment with no
  * entry stays silent. `{wave}` and `{score}` are filled in.
  */
-import type { CombatEvent } from '../combat/combatTypes';
+import type { CombatEvent, Side } from '../combat/combatTypes';
 
 export type CombatMoment =
   | 'engaged'
@@ -17,6 +17,11 @@ export type CombatMoment =
   | 'commanderDown'
   | 'locked'
   | 'noLock'
+  | 'missileAhead'
+  | 'missileLeft'
+  | 'missileRight'
+  | 'missileBehind'
+  | 'missileDown'
   | 'noMissiles'
   | 'overheated'
   | 'cooled'
@@ -36,7 +41,12 @@ export const combatLines: Record<CombatMoment, readonly string[]> = {
   kill: ['Raider down.', 'Another one gone.', 'Splash one. Find the next.'],
   commanderDown: ['Their commander is gone. The rest have lost their nerve.'],
   locked: ['Locked. Missile ready.'],
-  noLock: ['Hold one on the nose until the ring closes, then fire.'],
+  noLock: ['Hold the aim on one until the ring closes, then fire.'],
+  missileAhead: ['Missile, dead ahead. Drift off its line or shoot it down.', 'Missile ahead.'],
+  missileLeft: ['Missile, port side. Drift right.', 'Missile from port.'],
+  missileRight: ['Missile, starboard. Drift left.', 'Missile from starboard.'],
+  missileBehind: ['Missile on our tail. Open the throttle, or turn the guns aft.', 'Missile, aft.'],
+  missileDown: ['Missile down.', "Good shot. That one won't trouble us."],
   noMissiles: ['Missile racks are empty. The cannons still work.'],
   overheated: ['Cannons overheated. Give them a moment.'],
   cooled: ['Cannons cool. Weapons free.'],
@@ -44,6 +54,14 @@ export const combatLines: Record<CombatMoment, readonly string[]> = {
   hullCritical: ['Hull is getting thin. Boost out of their fire.'],
   won: ['Sector clear. The crew slept through all of it. Score {score}.'],
   lost: ['Hull breach drill failed. The real ship is fine. Shall we go again?'],
+};
+
+/** The warning for a raider missile coming from each side. */
+const MISSILE_FROM: Record<Side, CombatMoment> = {
+  ahead: 'missileAhead',
+  left: 'missileLeft',
+  right: 'missileRight',
+  behind: 'missileBehind',
 };
 
 /** Which moment an event is, if any. `firstKill` needs the running kill count. */
@@ -59,6 +77,10 @@ export function momentFor(event: CombatEvent, killsSoFar: number): CombatMoment 
       return killsSoFar <= 1 ? 'firstKill' : 'kill';
     case 'lockAcquired':
       return 'locked';
+    case 'enemyMissileLaunched':
+      return MISSILE_FROM[event.from];
+    case 'enemyMissileDown':
+      return 'missileDown';
     case 'missileDenied':
       return event.reason === 'empty' ? 'noMissiles' : 'noLock';
     case 'overheated':
