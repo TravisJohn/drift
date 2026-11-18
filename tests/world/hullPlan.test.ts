@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { shipLayout, type ShipLayout } from '../../src/content/shipLayout';
 import { vec3 } from '../../src/physics/vec3';
 import {
+  hullBounds,
   hullContains,
   isSpineRoom,
   planHull,
@@ -114,5 +115,19 @@ describe('spineSectionAt', () => {
     const [a, b] = [plan.spine[0]!, plan.spine[1]!];
     const mid = spineSectionAt(plan.spine, (a.z + b.z) / 2)!;
     expect(mid.halfWidth).toBeCloseTo((a.halfWidth + b.halfWidth) / 2, 6);
+  });
+});
+
+describe('hullBounds (the box the drone tether is measured from)', () => {
+  it('contains every room of the ship', () => {
+    const b = hullBounds(plan);
+    for (const room of shipLayout.rooms) {
+      expect(room.minX).toBeGreaterThanOrEqual(b.min.x);
+      expect(room.maxX).toBeLessThanOrEqual(b.max.x);
+      expect(room.minZ).toBeGreaterThanOrEqual(b.min.z);
+      expect(room.maxZ).toBeLessThanOrEqual(b.max.z);
+    }
+    expect(b.min.y).toBeLessThanOrEqual(0);
+    expect(b.max.y).toBeGreaterThanOrEqual(shipLayout.ceilingHeight);
   });
 });

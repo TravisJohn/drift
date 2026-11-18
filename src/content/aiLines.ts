@@ -15,7 +15,8 @@ export type NarrativeTrigger =
   | 'helmLocked'
   | 'terminalOpened'
   | 'dashboardOpened'
-  | 'terminalComplete';
+  | 'terminalComplete'
+  | 'tetherWarning';
 
 export interface AiLine {
   readonly text: string;
@@ -57,6 +58,12 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
   terminalComplete: [
     { text: 'Logged. One drill closer to that certification of yours.' },
     { text: 'Session saved. Back to your rounds, then.' },
+  ],
+  // The drone has drifted to the edge of its tether, out in space.
+  tetherWarning: [
+    { text: 'That is far enough, little one. Come back toward the hull.' },
+    { text: 'Your signal is thinning. I would rather you stayed close.' },
+    { text: 'Tether limit. The dark goes on forever; we do not.' },
   ],
 };
 

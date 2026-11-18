@@ -83,6 +83,11 @@ export class SpaceScene {
     this.exterior.group.visible = visible;
   }
 
+  /** The box around the whole hull (the drone's tether is measured from it). */
+  hullBounds(): { min: Vec3; max: Vec3 } {
+    return this.exterior.bounds();
+  }
+
   /** True when `point` (ship coordinates) is inside the hull. */
   hullContains(point: Vec3): boolean {
     return this.exterior.contains(point);

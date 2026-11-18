@@ -361,6 +361,26 @@ export function planHull(layout: ShipLayout, seed = 4127): HullPlan {
   };
 }
 
+/** The box around the whole hull: spine and every block. */
+export function hullBounds(plan: HullPlan): { min: Vec3; max: Vec3 } {
+  let min = vec3(Infinity, Infinity, Infinity);
+  let max = vec3(-Infinity, -Infinity, -Infinity);
+  const grow = (lo: Vec3, hi: Vec3) => {
+    min = vec3(Math.min(min.x, lo.x), Math.min(min.y, lo.y), Math.min(min.z, lo.z));
+    max = vec3(Math.max(max.x, hi.x), Math.max(max.y, hi.y), Math.max(max.z, hi.z));
+  };
+  for (const s of plan.spine)
+    grow(vec3(-s.halfWidth, s.bottom, s.z), vec3(s.halfWidth, s.top, s.z));
+  for (const b of plan.blocks) {
+    const h = vec3(b.size.x / 2, b.size.y / 2, b.size.z / 2);
+    grow(
+      vec3(b.center.x - h.x, b.center.y - h.y, b.center.z - h.z),
+      vec3(b.center.x + h.x, b.center.y + h.y, b.center.z + h.z),
+    );
+  }
+  return { min, max };
+}
+
 /** The spine's cross-section at `z`, interpolated, or null outside it. */
 export function spineSectionAt(spine: readonly HullSection[], z: number): HullSection | null {
   for (let i = 0; i < spine.length - 1; i++) {

@@ -31,6 +31,7 @@ import {
   type EngineMount,
   type HullPlan,
   type WindowLight,
+  hullBounds,
   hullContains,
   planHull,
 } from './exterior/hullPlan';
@@ -157,6 +158,11 @@ export class ShipExterior {
 
     this.setEngineIntensity(0);
     this.update(0);
+  }
+
+  /** The box around the whole hull. */
+  bounds(): { min: Vec3; max: Vec3 } {
+    return hullBounds(this.plan);
   }
 
   /** True when `point` (ship coordinates) lies inside the hull. */

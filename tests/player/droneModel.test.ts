@@ -81,9 +81,48 @@ describe('DroneVisual', () => {
       leanPitch: -0.1,
       leanRoll: 0.1,
       bobOffset: 0,
+      tetherStrain: 0,
     };
     visual.apply(snapshot, 0.5, 10);
     expect(visual.group.position.z).toBeCloseTo(1.025, 6);
+    visual.dispose();
+  });
+
+  it('glows red at the tether limit and returns to blue once back in reach', () => {
+    const visual = new DroneVisual();
+    const snapshot = {
+      position: vec3(0, 1, 0),
+      prevPosition: vec3(0, 1, 0),
+      velocity: vec3(0, 0, 0),
+      yaw: 0,
+      leanPitch: 0,
+      leanRoll: 0,
+      bobOffset: 0,
+      tetherStrain: 1,
+    };
+    const glow = (): THREE.PointLight => {
+      let found: THREE.PointLight | null = null;
+      visual.group.traverse((o) => {
+        if ((o as THREE.PointLight).isPointLight) found = o as THREE.PointLight;
+      });
+      if (!found) throw new Error('no hover glow light');
+      return found;
+    };
+    visual.apply(snapshot, 1, 3);
+    expect(glow().color.r).toBeGreaterThan(glow().color.b);
+    visual.apply({ ...snapshot, tetherStrain: 0 }, 1, 3);
+    expect(glow().color.getHex()).toBe(gameConfig.droneLook.exhaustColor);
+    // The halo is hidden again, so it costs nothing in normal flight.
+    let haloShown = false;
+    visual.group.traverse((o) => {
+      if (
+        (o as THREE.Mesh).isMesh &&
+        o.visible &&
+        (o as THREE.Mesh).material instanceof THREE.ShaderMaterial
+      )
+        haloShown = true;
+    });
+    expect(haloShown).toBe(false);
     visual.dispose();
   });
 });

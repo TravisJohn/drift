@@ -91,6 +91,8 @@ export class Game {
   private cinematicPose: CameraPose | null = null;
   /** True while the follow camera is out in space, beyond the hull. */
   private droneOutside = false;
+  /** True once the tether warning has been spoken for this excursion. */
+  private tetherWarned = false;
   private travelView: TravelView;
   private readonly playerMode = new PlayerMode();
   private readonly interaction = new InteractionSystem();
@@ -205,7 +207,8 @@ export class Game {
       { scene: this.scene, camera: this.camera },
     );
 
-    this.drone = new DroneController(this.ship.spawn);
+    // Out in space the drone is kept within reach of the hull's box.
+    this.drone = new DroneController(this.ship.spawn, this.spaceScene.hullBounds());
     this.droneVisual = new DroneVisual();
     this.scene.add(this.droneVisual.group, this.droneVisual.groundShadow);
 
@@ -461,6 +464,7 @@ export class Game {
       }
     }
     this.refreshStatus();
+    this.checkTether();
 
     // M5: the ship AI's subtitle (null = silence).
     this.hud.setSubtitle(this.narrative.update(dt));
@@ -803,6 +807,20 @@ export class Game {
     (outside ? this.spaceScene.scene : this.scene).add(this.droneVisual.group);
     this.droneVisual.groundShadow.visible = !outside;
     this.updateExteriorVisibility();
+  }
+
+  /**
+   * The ship AI speaks once when the drone strains at its tether, and may
+   * speak again only after the drone has come back within easy reach.
+   */
+  private checkTether(): void {
+    const strain = this.drone.snapshot.tetherStrain;
+    if (!this.tetherWarned && strain >= gameConfig.drone.tether.speakAtStrain) {
+      this.tetherWarned = true;
+      this.narrative.trigger('tetherWarning');
+    } else if (strain === 0) {
+      this.tetherWarned = false;
+    }
   }
 
   /** The hull is drawn whenever the ship is seen from outside. */

@@ -13,6 +13,7 @@ import type { DroneSnapshot } from './droneController';
 import {
   beaconLevel,
   blinkAmount,
+  warningLevel,
   exhaustIntensity,
   eyeOffset,
   thrustLevel,
@@ -28,6 +29,33 @@ const SHADOW_FADE_HEIGHT = 2.6;
 const BLINK_DEPTH = 0.92;
 /** Speed (m/s) below which the drone counts as still, for the idle gaze. */
 const IDLE_SPEED = 0.6;
+
+/** The accent stripe's normal self-light (see droneModel). */
+const ACCENT_GLOW = 0.18;
+
+// Warning halo: a soft red sphere, brightest where it covers the drone and
+// fading to nothing at its rim, so it reads as glow rather than a ball.
+const HALO_VERTEX = /* glsl */ `
+  varying vec3 vNormal;
+  varying vec3 vView;
+  void main() {
+    vec4 viewPos = modelViewMatrix * vec4(position, 1.0);
+    vNormal = normalize(normalMatrix * normal);
+    vView = normalize(-viewPos.xyz);
+    gl_Position = projectionMatrix * viewPos;
+  }
+`;
+
+const HALO_FRAGMENT = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uLevel;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  void main() {
+    float facing = max(dot(normalize(vNormal), normalize(vView)), 0.0);
+    gl_FragColor = vec4(uColor * pow(facing, 4.0) * uLevel, 1.0);
+  }
+`;
 
 const SHADOW_VERTEX = /* glsl */ `
   varying vec2 vUv;
@@ -69,6 +97,14 @@ export class DroneVisual {
   private readonly model: DroneModel;
   private readonly glow: THREE.PointLight;
   private readonly glowBase: number;
+  private readonly halo: THREE.Mesh;
+  private readonly haloMaterial: THREE.ShaderMaterial;
+  private readonly beaconColor = new THREE.Color(gameConfig.droneLook.beaconColor);
+  private readonly accentColor = new THREE.Color(gameConfig.droneLook.accentColor);
+  /** Normal and warning colours, so the warning can blend between them. */
+  private readonly eyeColor = new THREE.Color(gameConfig.droneLook.eyeColor);
+  private readonly exhaustColor = new THREE.Color(gameConfig.droneLook.exhaustColor);
+  private readonly warningColor = new THREE.Color(gameConfig.droneLook.warningColor);
 
   constructor() {
     this.model = buildDroneModel();
@@ -88,6 +124,25 @@ export class DroneVisual {
     headlight.position.copy(this.model.eyeRest);
     headlight.target.position.set(0, -0.6, -4);
     this.group.add(headlight, headlight.target);
+
+    // Hidden until the tether strains; additive, so it only ever adds light.
+    this.haloMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(gameConfig.droneLook.warningColor) },
+        uLevel: { value: 0 },
+      },
+      vertexShader: HALO_VERTEX,
+      fragmentShader: HALO_FRAGMENT,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.halo = new THREE.Mesh(
+      new THREE.SphereGeometry(gameConfig.droneLook.warningHaloRadius, 24, 16),
+      this.haloMaterial,
+    );
+    this.halo.visible = false;
+    this.group.add(this.halo);
 
     this.groundShadowMaterial = new THREE.ShaderMaterial({
       uniforms: { uStrength: { value: 0 } },
@@ -136,6 +191,33 @@ export class DroneVisual {
     const look = gameConfig.droneLook;
     model.beaconMaterial.emissiveIntensity =
       look.beaconRest + (look.beaconPeak - look.beaconRest) * beaconLevel(time);
+
+    this.applyWarning(warningLevel(time, snapshot.tetherStrain), level);
+  }
+
+  /**
+   * Tether warning: the eye, stripe, beacon, thruster glow and hover light
+   * shift to a pulsing red as the drone nears the limit, inside a soft red
+   * halo - so it reads from any side, even with the drone small on screen.
+   */
+  private applyWarning(warning: number, thrust: number): void {
+    const { model } = this;
+    model.eyeMaterial.emissive.copy(this.eyeColor).lerp(this.warningColor, warning);
+    model.eyeMaterial.emissiveIntensity = gameConfig.droneLook.eyeIntensity * (1 + 0.6 * warning);
+    model.exhaustMaterial.emissive.copy(this.exhaustColor).lerp(this.warningColor, warning);
+    if (warning > 0) {
+      model.exhaustMaterial.emissiveIntensity = Math.max(
+        model.exhaustMaterial.emissiveIntensity,
+        exhaustIntensity(thrust) * (1 + 1.2 * warning),
+      );
+    }
+    model.accentMaterial.emissive.copy(this.accentColor).lerp(this.warningColor, warning);
+    model.accentMaterial.emissiveIntensity = ACCENT_GLOW + 2.4 * warning;
+    model.beaconMaterial.emissive.copy(this.beaconColor).lerp(this.warningColor, warning);
+    this.glow.color.copy(this.exhaustColor).lerp(this.warningColor, warning);
+    this.glow.intensity *= 1 + 2 * warning;
+    this.halo.visible = warning > 0.001;
+    this.haloMaterial.uniforms.uLevel!.value = warning * gameConfig.droneLook.warningHaloStrength;
   }
 
   dispose(): void {

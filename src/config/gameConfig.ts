@@ -34,6 +34,20 @@ export const gameConfig = {
     leanPitchMax: 0.22,
     leanRollMax: 0.18,
     leanSmoothing: 6,
+    /**
+     * How far the drone may stray from the ship once outside, in metres
+     * from the hull (physics/tether.ts): the red warning starts at
+     * warnDistance, a soft pull back at pullDistance, a hard stop at
+     * maxDistance.
+     */
+    tether: {
+      warnDistance: 5,
+      pullDistance: 8,
+      maxDistance: 12,
+      pullStrength: 3,
+      /** Strain at which the ship AI tells the drone to come back. */
+      speakAtStrain: 0.5,
+    },
   },
 
   /**
@@ -71,6 +85,12 @@ export const gameConfig = {
       doubleChance: 0.22,
       seed: 7,
     },
+    /** Colour the eye and glows shift to as the drone nears its tether limit. */
+    warningColor: 0xff2414,
+    /** Radius (m) of the red halo around the drone at full warning. */
+    warningHaloRadius: 0.55,
+    /** Brightness of that halo at full warning (bloom spreads it further). */
+    warningHaloStrength: 0.85,
     /** Metres the eye slides across the visor when banking into a turn. */
     glanceDistance: 0.016,
     /** Metres of slow idle wander in the eye while the drone is still. */

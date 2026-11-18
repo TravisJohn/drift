@@ -100,6 +100,20 @@ export function thrusterTilt(velocity: Vec3, yaw: number): ThrusterTilt {
   };
 }
 
+/**
+ * How strongly the tether warning shows, 0..1, at time `t` for a tether
+ * strain of 0..1: nothing until strain passes 0, then a red pulse that
+ * grows deeper and quicker as the drone nears its limit.
+ */
+export function warningLevel(t: number, strain: number): number {
+  const s = Math.min(1, Math.max(0, strain));
+  if (s === 0) return 0;
+  const rate = 1.2 + 2.8 * s; // pulses per second
+  const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 2 * rate);
+  // Mostly steady colour, with a throb that deepens toward the limit.
+  return Math.min(1, s * (0.75 + 0.25 * pulse) + 0.35 * s * s * pulse);
+}
+
 export interface EyeOffset {
   readonly x: number;
   readonly y: number;

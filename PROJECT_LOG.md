@@ -947,3 +947,29 @@ back in by hand at full frame rate.
 Open question for the author: the drone can fly away from the ship
 without limit. A soft tether (a limit on how far it can drift) would be
 a small follow-up if wanted.
+
+## 2026-11-18 - Experiment: drone tether with a red warning glow (branch experiment/star-hull)
+
+Answers the open question above: the drone can no longer drift off
+forever. Approved by the author ("a soft limit ... a red warning glow").
+
+- `physics/tether.ts` (pure): distance is measured from the hull's
+  bounding box (`hullBounds` in hullPlan), so the margin is the same off
+  the nose, the sides and the stern. Config `drone.tether`:
+  warn at 5 m (strain starts rising from 0), soft spring pull from 8 m
+  (felt, not hit), hard stop at 12 m (held there, outward speed removed;
+  sideways drift kept). Inside the ship nothing changes.
+- `DroneController` takes the tether box and reports `tetherStrain` 0..1.
+- Red warning (`droneVisual`, timing in `droneAnimation.warningLevel`):
+  eye, stripe, beacon, thruster glow and hover light shift toward
+  `droneLook.warningColor`, pulsing faster as strain grows, inside a soft
+  additive red halo (hidden, so free, when there is no strain). First try
+  only recoloured the eye and lights; from behind in open space that did
+  not read, so the halo and stripe were added.
+- Ship AI: a new `tetherWarning` line, spoken once when strain reaches
+  `speakAtStrain` (0.5), re-armed after the drone comes back within reach.
+- 548 tests passing (17 new); lint, format, types and build clean.
+
+Checked in the page by placing the drone 11.5 m off the starboard side:
+the spring drew it back, the drone glowed red and the AI line fired.
+Not checked: flying out to the limit by hand at full frame rate.
