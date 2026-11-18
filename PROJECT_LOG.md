@@ -1046,3 +1046,42 @@ closed after each check now.
 `experiment/star-hull`) was merged into `main` and tagged
 `checkpoint-2026-11-18-b`. Next experiment: ship combat, on a new branch
 cut from that checkpoint.
+
+## 2026-11-18 - Experiment: tactical combat (branch `experiment/combat`)
+
+**Author request:** let the ship fight enemy ships, as a 2D game, reusing
+what we can from STARFALL (an earlier Codex cockpit shooter in
+Documents/Codex). Cut from `checkpoint-2026-11-18-b`. 628 tests passing
+(58 new); lint, types and build clean. Not merged into `main`.
+
+**PRD:** section 10 added. "Combat" left the out-of-scope list; flying
+the 3D ship by hand stays out of scope.
+
+**What was reused from STARFALL:** the rules and numbers, rewritten in
+TypeScript as 2D: aim-ahead (intercept) maths, swept hit tests, laser
+heat and overheat, missile lock (about a second on the nose) and homing,
+shields before hull with a 4.5 s recharge delay, boost energy, waves of
+5/7/9 with a commander last, Rookie/Ace numbers, the sound recipes and
+the shape of its tests. Not reused: its 3D projection and cockpit
+drawing, its one-big-function structure, its input and loop.
+
+**What was built:**
+- A fifth dashboard tab, Tactical, offering a Rookie and an Ace raider
+  patrol. Engaging opens the fight; leaving (retreat, win or loss)
+  returns to the deck on the Tactical tab. Nothing carries over.
+- The fight: a top-down hologram in the deck's cyan, raiders in warm
+  orange. Mouse aims (the ship turns toward the pointer), W/S thrust and
+  brake, A/D turn, click or Space fires, right click or R fires a missile
+  once locked, Shift boosts, Esc or P pauses (Q retreats). Radar, arrows
+  to off-screen raiders, lock brackets, readouts, drifting rocks that
+  block shots, and the ship AI's calm combat lines.
+- Design: `src/combat/` is pure rules (fixed step in, events out) plus a
+  renderer and sounds that only react to events; `ui/combatOverlay.ts`
+  owns the screen. The 3D view is not drawn while the fight is open, so
+  the fight costs about 0.4 ms of drawing a frame.
+
+**Checked in the browser** (pane hidden, so the loop was stepped by
+hand): tab, engage, lasers kill raiders, overheat line, lock and missile
+kill, pause and retreat to the deck, all three waves to a win, results,
+back to the deck, and mouse aim. No console errors. Not yet played by a
+person with real input, so feel and difficulty are untested.

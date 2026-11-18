@@ -275,8 +275,22 @@ Added 2026-11-18 (experiment branches, not yet on main):
   hub. `ui/dashboardOverlay.ts` is the shell (tabs, keys, status column);
   each tab is a panel in `ui/dashboard/` (`panel.ts` interface,
   `navigationPanel.ts` + `starChart.ts`, `simplePanels.ts` for cameras,
-  ship and training). Set course from it uses the same travel request as
+  ship, tactical and training). Set course from it uses the same travel request as
   the helm; places carry a `chart` position in `content/destinations.ts`.
+- Tactical combat (2026-11-18, branch experiment/combat; PRD section 10):
+  a 2D top-down fight on the hologram, reached from the dashboard's
+  Tactical tab. `src/combat/` holds the rules and nothing else touches
+  them: `combatSim.ts` (one fixed step in, CombatEvents out; seeded
+  random), `weapons.ts` (laser heat, lock, missiles), `enemyAi.ts`
+  (raiders circle and lead their shots), `combatMath.ts` + `vec2.ts`
+  (aim-ahead and swept hit tests, ported from the STARFALL prototype),
+  `combatTypes.ts`. Reacting to events: `combatRenderer.ts` (Canvas 2D
+  hologram, particles), `combatSounds.ts` (synthesized),
+  `content/combatLines.ts` (the AI's lines). `ui/combatOverlay.ts` owns
+  the screen, keys and mouse; the game steps it in `update` and draws it
+  in `render`, and skips the 3D view while it is open. Player mode
+  `inCombat`; events `combat:started` / `combat:ended`. All tuning in
+  `gameConfig.combat` (and `audio.combatSounds`).
 
 Rule of thumb for new work: anything static should be baked at startup,
 not paid for per frame - the target includes integrated graphics.
