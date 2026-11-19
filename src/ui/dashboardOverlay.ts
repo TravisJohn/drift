@@ -23,12 +23,19 @@ import {
   heading,
   wrapIndex,
 } from './dashboard/panel';
-import { CamerasPanel, ShipPanel, TacticalPanel, TrainingPanel } from './dashboard/simplePanels';
+import {
+  CamerasPanel,
+  ShipPanel,
+  TacticalPanel,
+  TrainingPanel,
+  type PowerCommand,
+} from './dashboard/simplePanels';
 import type { DifficultyId } from '../combat/combatTypes';
 
 export type { DashboardTabId } from './dashboard/panel';
 
 export interface DashboardCallbacks {
+  onPowerCommand(command: PowerCommand): void;
   /** A compartment was picked (lit on the hologram); null when none is. */
   onRoomSelected(roomId: string | null): void;
   /** Engage a course (only offered while docked). The dashboard stays open. */
@@ -87,7 +94,11 @@ export class DashboardOverlay {
     this.panels = [
       new NavigationPanel(data, (id) => this.callbacks?.onSetCourse(id)),
       new CamerasPanel(data, () => this.leave((c) => c.onExteriorView())),
-      new ShipPanel(data, (id) => this.callbacks?.onRoomSelected(id)),
+      new ShipPanel(
+        data,
+        (id) => this.callbacks?.onRoomSelected(id),
+        (command) => this.callbacks?.onPowerCommand(command),
+      ),
       new TacticalPanel(data, (difficulty) => this.leave((c) => c.onCombat(difficulty))),
       new TrainingPanel(data, (id) => this.leave((c) => c.onTraining(id))),
     ];
@@ -226,6 +237,8 @@ export class DashboardOverlay {
           panel?.move(1);
           break;
         case 'Enter':
+          if (event.target instanceof HTMLButtonElement && event.target.closest('.power-controls'))
+            return;
           panel?.activate();
           this.renderFooter();
           break;

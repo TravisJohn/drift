@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildShip } from '../../src/world/ship/shipBuilder';
 import { shipLayout } from '../../src/content/shipLayout';
-import { cabinLightLevel } from '../../src/world/ship/cabinLighting';
+import { cabinLightLevel, CabinPowerCycle } from '../../src/world/ship/cabinLighting';
 
 /** Collect every emissive mesh material under the ship group. */
 function emissiveIntensities(group: THREE.Group): number[] {
@@ -19,6 +19,46 @@ function emissiveIntensities(group: THREE.Group): number[] {
 }
 
 describe('ShipWorld animation (M6)', () => {
+  it('aligns the automatic voice countdown with the original two-minute pattern', () => {
+    const power = new CabinPowerCycle();
+    for (const time of [0, 112, 113, 115, 119, 120, 124, 144, 233, 240, 250, 264]) {
+      const sample = new CabinPowerCycle();
+      sample.advance(time);
+      expect(sample.level).toBeCloseTo(cabinLightLevel(time));
+    }
+    power.advance(113);
+    expect(power.voiceOffset).toBe(0);
+    power.advance(6);
+    expect(power.voiceOffset).toBe(6);
+    power.voice = false;
+    expect(power.voiceOffset).toBeNull();
+    power.voice = true;
+    power.advance(1);
+    expect(power.voiceOffset).toBeNull();
+  });
+
+  it('runs one requested cycle with auto off, then waits for a fresh automatic interval', () => {
+    const power = new CabinPowerCycle();
+    power.setAutomatic(false);
+    power.advance(165);
+    expect(power.snapshot.status).toBe('Full lighting');
+    power.startNow();
+    power.advance(2);
+    power.startNow();
+    expect(power.voiceOffset).toBe(2);
+    power.advance(10);
+    expect(power.level).toBeCloseTo(0.045);
+    power.advance(24);
+    expect(power.snapshot.status).toBe('Full lighting');
+    power.setAutomatic(true);
+    power.advance(113);
+    expect(power.voiceOffset).toBe(0);
+    power.setAutomatic(false);
+    power.advance(11);
+    expect(power.level).toBeCloseTo(0.045);
+    power.advance(120);
+    expect(power.snapshot.status).toBe('Full lighting');
+  });
   it('waits two minutes, fades down, holds, fades up and repeats', () => {
     expect(cabinLightLevel(0)).toBe(1);
     expect(cabinLightLevel(10)).toBe(1);

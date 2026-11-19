@@ -8,6 +8,7 @@
  * tactical (combat drills on the hologram) and training. Live journey and systems readouts sit beside all of them.
  */
 import type { DifficultyId } from '../combat/combatTypes';
+import type { CabinPowerStatus } from '../world/ship/cabinLighting';
 import type { RoomSpec } from '../content/shipLayout';
 import { VESSEL_NAME, roomReadouts } from '../content/shipSystems';
 
@@ -79,6 +80,7 @@ export interface DashboardEngagement {
 }
 
 export interface DashboardData {
+  readonly power: CabinPowerStatus;
   readonly vessel: string;
   readonly journey: readonly DashboardRow[];
   readonly systems: readonly DashboardRow[];
@@ -103,6 +105,7 @@ export interface PlaceInput {
 }
 
 export interface DashboardInput {
+  readonly power: CabinPowerStatus;
   readonly rooms: readonly RoomSpec[];
   /** Cryo pods aboard (counted from the layout). */
   readonly podCount: number;
@@ -262,6 +265,7 @@ function systemRows(input: DashboardInput): DashboardRow[] {
 export function buildDashboardData(input: DashboardInput): DashboardData {
   return {
     vessel: VESSEL_NAME,
+    power: input.power,
     journey: journeyRows(input),
     systems: systemRows(input),
     navigation: navigation(input),

@@ -1395,4 +1395,22 @@ in `gameConfig.interior.powerSave` for playtest tuning.
 Observed the first scheduled dip and recovery from the bridge. The helm
 readout, hologram and floor guides were visible at the darkest point.
 All 711 tests passed, along with lint, TypeScript and the production build.
-The author's power-cycle playtest is pending.
+The author playtested and approved the cabin lighting cycle.
+
+## 2026-11-19 - Command deck power controls and voice (branch `experiment/graphics`)
+
+The Ship tab now shows the time until cooldown, the low-power state and
+the recovery. Cabin power controls can toggle the automatic schedule,
+run a single cycle immediately or mute its voice. A new session starts
+with the two-minute schedule and the voice enabled. A cycle already
+announced completes even if the automatic schedule is switched off.
+
+A bundled seven-second recording uses Flite's synthetic female SLT voice
+with a filtered intercom sound. The lead-in occupies the first two seconds.
+Five through one land on one-second beats before the existing lighting fade.
+The voice follows the play clock when pausing or resuming.
+
+Tested a manual cycle through countdown, conservation and full lighting
+with auto off on the command deck. Verified the timing of the five recorded
+beats. All 714 tests, lint, TypeScript and the production build passed.
+The author's listening and dashboard playtest is pending.

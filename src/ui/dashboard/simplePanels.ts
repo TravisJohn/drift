@@ -113,23 +113,47 @@ export class CamerasPanel extends ListPanel<DashboardCamera> {
   }
 }
 
+export type PowerCommand = 'start' | 'automatic' | 'voice';
+
 export class ShipPanel extends ListPanel<DashboardRoom> {
   readonly id = 'ship';
   readonly label = 'Ship';
   readonly hint = '↑↓ compartment';
   private readonly detail: HTMLDivElement;
+  private readonly powerStatus = el('div', 'power-status');
+  private readonly automatic = el('button', '', 'Auto · 2 min');
+  private readonly start = el('button', '', 'Cycle now');
+  private readonly voice = el('button', '', 'Voice');
 
   constructor(
     data: DashboardData,
     private readonly onRoomSelected: (roomId: string) => void,
+    onPowerCommand: (command: PowerCommand) => void,
   ) {
     super('ship', 'Compartments');
     this.detail = el('div', 'detail');
     this.element.appendChild(this.detail);
+    const controls = el('div', 'power-controls');
+    for (const [button, command] of [
+      [this.automatic, 'automatic'],
+      [this.start, 'start'],
+      [this.voice, 'voice'],
+    ] as const) {
+      button.type = 'button';
+      button.addEventListener('click', () => onPowerCommand(command));
+      controls.append(button);
+    }
+    this.element.append(heading('Cabin power'), this.powerStatus, controls);
     this.update(data);
   }
 
   update(data: DashboardData): void {
+    this.powerStatus.textContent = data.power.status;
+    this.start.disabled = data.power.busy;
+    this.automatic.setAttribute('aria-pressed', String(data.power.automatic));
+    this.voice.setAttribute('aria-pressed', String(data.power.voice));
+    this.voice.textContent = data.power.voice ? 'Voice on' : 'Voice off';
+    this.automatic.textContent = data.power.automatic ? 'Auto · 2 min' : 'Auto off';
     // Compartments never change during play; only build the list once.
     if (this.items.length === data.rooms.length) return;
     this.items = data.rooms;

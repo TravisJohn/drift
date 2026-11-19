@@ -8,6 +8,7 @@ import { type DashboardInput, buildDashboardData, cssColor } from '../../src/ui/
 import { type DashboardCallbacks, DashboardOverlay } from '../../src/ui/dashboardOverlay';
 
 const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
+  power: { automatic: true, voice: true, busy: false, status: 'Cooldown in 120s' },
   rooms: shipLayout.rooms,
   podCount: 4,
   phase: 'docked',
@@ -150,6 +151,7 @@ describe('drawStarChart', () => {
 describe('DashboardOverlay', () => {
   let overlay: DashboardOverlay;
   let callbacks: {
+    onPowerCommand: Mock<DashboardCallbacks['onPowerCommand']>;
     onRoomSelected: Mock<DashboardCallbacks['onRoomSelected']>;
     onSetCourse: Mock<DashboardCallbacks['onSetCourse']>;
     onExteriorView: Mock<DashboardCallbacks['onExteriorView']>;
@@ -168,6 +170,7 @@ describe('DashboardOverlay', () => {
   beforeEach(() => {
     overlay = new DashboardOverlay();
     callbacks = {
+      onPowerCommand: vi.fn<DashboardCallbacks['onPowerCommand']>(),
       onRoomSelected: vi.fn<DashboardCallbacks['onRoomSelected']>(),
       onSetCourse: vi.fn<DashboardCallbacks['onSetCourse']>(),
       onExteriorView: vi.fn<DashboardCallbacks['onExteriorView']>(),
@@ -188,6 +191,27 @@ describe('DashboardOverlay', () => {
     expect(text).toContain('Anchorage Point');
     const tabs = [...document.querySelectorAll('#dashboard .tab')].map((t) => t.textContent);
     expect(tabs).toEqual(['1Navigation', '2Cameras', '3Ship', '4Tactical', '5Training']);
+  });
+
+  it('runs a cabin cycle from Ship and reflects live control state', () => {
+    press('Digit3');
+    const buttons = visible().querySelectorAll<HTMLButtonElement>('.power-controls button');
+    const [automatic, start, voice] = [...buttons];
+    automatic!.click();
+    start!.click();
+    voice!.click();
+    expect(callbacks.onPowerCommand.mock.calls).toEqual([['automatic'], ['start'], ['voice']]);
+    overlay.update(
+      buildDashboardData(
+        input({
+          power: { automatic: false, voice: false, busy: true, status: 'Conserving power' },
+        }),
+      ),
+    );
+    expect(start!.disabled).toBe(true);
+    expect(automatic!.getAttribute('aria-pressed')).toBe('false');
+    expect(voice!.textContent).toBe('Voice off');
+    expect(visible().textContent).toContain('Conserving power');
   });
 
   it('opens on navigation, with no compartment lit on the hologram', () => {

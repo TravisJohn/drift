@@ -19,7 +19,8 @@ import { DroneVisual } from './player/droneVisual';
 import { FollowCamera } from './player/followCamera';
 import { shipLayout } from './content/shipLayout';
 import { buildShip, type ShipWorld } from './world/ship/shipBuilder';
-import { cabinLightLevel } from './world/ship/cabinLighting';
+import { CabinPowerCycle } from './world/ship/cabinLighting';
+import { PowerCountdown } from './audio/powerCountdown';
 import { START_LOCATION_ID, getLocation, locations } from './content/destinations';
 import { ShipState } from './state/shipState';
 import { PlayerMode } from './state/playerMode';
@@ -129,7 +130,8 @@ export class Game {
   private readonly shipBowZ = Math.min(...shipLayout.rooms.map((r) => r.minZ));
   private readonly shipSternZ = Math.max(...shipLayout.rooms.map((r) => r.maxZ));
   private elapsed = 0;
-  private playingSeconds = 0;
+  private readonly cabinPower = new CabinPowerCycle();
+  private readonly powerCountdown = new PowerCountdown();
   private cryoGain = 0;
 
   // --- M7: app flow and the fps probe ---
@@ -404,6 +406,7 @@ export class Game {
     this.combat.close();
     this.hologram.dispose();
     this.audio.dispose();
+    this.powerCountdown.update(null);
     this.intercom.dispose();
     this.hum.dispose();
     this.warningBeep.dispose();
@@ -491,7 +494,7 @@ export class Game {
     this.hud.setSubtitle(this.narrative.update(dt));
 
     // M6: breathing glows, light waver, and the soundscape.
-    this.playingSeconds += dt;
+    this.cabinPower.advance(dt);
     this.animateCabin(dt);
     this.hologram.setMarker(this.drone.snapshot.position);
     this.updateAudio(dt);
@@ -557,7 +560,8 @@ export class Game {
 
   private animateCabin(dt: number): void {
     this.elapsed += dt;
-    const level = cabinLightLevel(this.playingSeconds);
+    const level = this.cabinPower.level;
+    this.powerCountdown.update(this.appState.isPlaying ? this.cabinPower.voiceOffset : null);
     this.scene.environmentIntensity = gameConfig.rendering.environmentIntensity * level;
     this.ship.update(this.elapsed, level);
     this.hologram.update(this.elapsed);
@@ -679,6 +683,7 @@ export class Game {
   private dashboardData(): DashboardData {
     const destinationId = this.shipState.destinationId;
     return buildDashboardData({
+      power: this.cabinPower.snapshot,
       rooms: shipLayout.rooms,
       podCount: shipLayout.props.filter((p) => p.kind === 'pod').length,
       phase: this.shipState.phase,
@@ -706,6 +711,13 @@ export class Game {
       this.dashboardData(),
       {
         onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
+        onPowerCommand: (command) => {
+          if (command === 'start') this.cabinPower.startNow();
+          if (command === 'automatic')
+            this.cabinPower.setAutomatic(!this.cabinPower.snapshot.automatic);
+          if (command === 'voice') this.cabinPower.voice = !this.cabinPower.voice;
+          this.dashboard.update(this.dashboardData());
+        },
         onSetCourse: (destinationId) => this.setCourseFromDashboard(destinationId),
         onExteriorView: () => {
           this.closeDashboard();

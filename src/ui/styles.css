@@ -534,6 +534,38 @@
   animation: holo-in 0.28s ease-out both;
 }
 
+#dashboard .power-status {
+  font: 12px var(--mono);
+  color: var(--holo-dim);
+}
+
+#dashboard .power-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+#dashboard .power-controls button {
+  padding: 5px 9px;
+  border: 1px solid rgba(var(--holo), 0.45);
+  background: #0b202c;
+  color: #b2d9e8;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#dashboard .power-controls button[aria-pressed='true'] {
+  background: #163c4c;
+  color: #c7f4ff;
+}
+
+#dashboard .power-controls button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* --- Status rows --- */
 #dashboard .row {
   display: flex;
