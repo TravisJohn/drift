@@ -1336,5 +1336,19 @@ during boost. The centre of the sky stays dark for tracking incoming ships.
 The cockpit loads two local WebP textures (195 kB total). The clouds and
 planet are pre-rendered, including the ring shadows. The planet keeps its
 aspect ratio as the viewport changes. Checked the sky composition at
-1280 × 720 and 400 × 900. The scenery awaits the author's cockpit playtest.
+1280 × 720 and 400 × 900. The author playtested and approved the space scenery.
+All 707 tests passed, along with lint, TypeScript and the production build.
+
+## 2026-11-19 - Cockpit asteroids (branch `experiment/graphics`)
+
+The cockpit rocks now show impact bowls, chipped edges and fractured strata.
+Each rock keeps its simulation outline corners and spin. Small cuts between
+those corners give the close-up silhouette more detail. A local WebP atlas
+supplies three rock surfaces lit from eight directions. The renderer blends
+adjacent directions as the rock turns, keeping the sun on the port side.
+Decorative debris uses the same surfaces at its existing lower opacity.
+
+Reviewed the materials at close and distant sizes and checked the cockpit
+draw calls through the rotation wrap in both directions. The author's
+in-game review of the asteroid pass is pending.
 All 707 tests passed, along with lint, TypeScript and the production build.

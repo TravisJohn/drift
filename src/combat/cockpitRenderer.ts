@@ -46,6 +46,7 @@ import {
 } from './combatTypes';
 import type { CombatView } from './combatView';
 import { drawHoloMap } from './holoMap';
+import asteroidUrl from './scenery/asteroid-relief.webp';
 import nebulaUrl from './scenery/dust-nebula.webp';
 import planetUrl from './scenery/ringed-giant.webp';
 import { type Vec2, add, fromAngle, length, normalize, scale, sub, vec2 } from './vec2';
@@ -132,7 +133,11 @@ export function incomingLabel(raider: Readonly<Raider>, shipPos: Vec2): string |
   if (raider.dead || raider.attacking <= 0) return null;
   return `INCOMING · ${Math.round(length(sub(raider.pos, shipPos)))} M`;
 }
-const ROCK_SHADES = ['#30343d', '#1a222d', '#242c36', '#3a3b42', '#222a33'];
+// Atlas columns sweep the sun around each surface. Rows are distinct rock materials.
+const ROCK_LIGHT_ANGLES = 8;
+const ROCK_MATERIALS = 3;
+// The tile covers all outline radii, including the larger corners on decorative debris.
+const ROCK_TILE_RADIUS = 1.16;
 
 interface Star {
   readonly azimuth: number;
@@ -181,6 +186,8 @@ export class CockpitRenderer implements CombatView {
   private pixelRatio = 1;
   private readonly nebula = new Image();
   private readonly planet = new Image();
+  private readonly asteroid = new Image();
+  private readonly rockContours = new WeakMap<readonly number[], (readonly [number, number])[]>();
 
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
@@ -203,6 +210,7 @@ export class CockpitRenderer implements CombatView {
     }));
     this.nebula.src = nebulaUrl;
     this.planet.src = planetUrl;
+    this.asteroid.src = asteroidUrl;
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
@@ -428,7 +436,7 @@ export class CockpitRenderer implements CombatView {
     }
   }
 
-  /** A rock as STARFALL drew them: a faceted, shaded outline facing the pilot. */
+  /** Rotate the original outline and its surface together, with sunlight fixed to port. */
   private drawRock(
     pos: Vec2,
     height: number,
@@ -440,30 +448,80 @@ export class CockpitRenderer implements CombatView {
     const at = project(toCamera(this.cam, pos, height), this.frame);
     if (!at) return;
     const size = radius * at.scale;
-    if (size < 1 || !this.onScreen(at, size)) return;
+    if (size < 1 || !this.onScreen(at, size * ROCK_TILE_RADIUS)) return;
     const c = this.ctx;
     c.save();
     c.globalAlpha = alpha;
     c.translate(at.x, at.y);
     c.rotate(angle);
-    const pts = outline.map((k, i) => {
-      const a = (i / outline.length) * Math.PI * 2;
-      return [Math.cos(a) * size * k, Math.sin(a) * size * k] as const;
-    });
-    this.path(pts, '#212832', '#77818a30');
-    const centre = [-size * 0.15, -size * 0.05] as const;
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      if (a && b)
-        this.path(
-          [centre, a, b],
-          ROCK_SHADES[i % ROCK_SHADES.length] ?? '#222a33',
-          '#555f6810',
-          0.5,
-        );
+    c.scale(size, size);
+    const pts = this.rockContour(outline);
+    if (this.asteroid.complete && this.asteroid.naturalWidth > 0) {
+      this.path(pts, null);
+      c.clip();
+      const material = Math.floor((outline[0] ?? 1) * 1000) % ROCK_MATERIALS;
+      this.drawRockSurface(material, angle, alpha);
+    } else {
+      // The silhouette is visible immediately, including while the texture is loading.
+      this.path(pts, '#3c4149');
     }
     c.restore();
+  }
+
+  /** Keep the sim's corners and cut small chips into the straight edges between them. */
+  private rockContour(outline: readonly number[]): (readonly [number, number])[] {
+    const cached = this.rockContours.get(outline);
+    if (cached) return cached;
+    const corners = outline.map((radius, i) => {
+      const angle = (i * Math.PI * 2) / outline.length;
+      return [Math.cos(angle) * radius, Math.sin(angle) * radius] as const;
+    });
+    const random = mulberry32(Math.floor((outline[0] ?? 1) * 1e8));
+    const contour: (readonly [number, number])[] = [];
+    corners.forEach(([x, y], i) => {
+      const next = corners[(i + 1) % corners.length];
+      if (!next) return;
+      contour.push([x, y]);
+      for (let j = 0; j < 4; j++) {
+        const t = (j + 0.3 + random() * 0.4) / 4;
+        const chip = 1 - random() * 0.037;
+        contour.push([(x + (next[0] - x) * t) * chip, (y + (next[1] - y) * t) * chip]);
+      }
+    });
+    this.rockContours.set(outline, contour);
+    return contour;
+  }
+
+  private drawRockSurface(material: number, angle: number, opacity: number): void {
+    const c = this.ctx;
+    const turns = angle / (Math.PI * 2);
+    const phase = (turns - Math.floor(turns)) * ROCK_LIGHT_ANGLES;
+    const first = Math.floor(phase) % ROCK_LIGHT_ANGLES;
+    const blend = phase - Math.floor(phase);
+    const tile = this.asteroid.naturalWidth / ROCK_LIGHT_ANGLES;
+    const radius = ROCK_TILE_RADIUS;
+    const drawFrame = (column: number) =>
+      c.drawImage(
+        this.asteroid,
+        column * tile,
+        material * tile,
+        tile,
+        tile,
+        -radius,
+        -radius,
+        radius * 2,
+        radius * 2,
+      );
+
+    // Crossfade neighbouring sun angles. Compensate for source-over blending so
+    // decorative debris stays at its requested opacity throughout the rotation.
+    const topAlpha = opacity * blend;
+    c.globalAlpha = (opacity - topAlpha) / (1 - topAlpha);
+    drawFrame(first);
+    if (topAlpha > 0) {
+      c.globalAlpha = topAlpha;
+      drawFrame((first + 1) % ROCK_LIGHT_ANGLES);
+    }
   }
 
   /** A raider as a small 3D fighter, its faces sorted far to near. */
