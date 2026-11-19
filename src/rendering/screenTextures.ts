@@ -2,12 +2,28 @@
  * screenTextures - what is on the ship's displays, so a console reads as a
  * working screen instead of a glowing slab.
  *
- * Generated from pure pixel functions (seeded, no canvas, no image files):
- * a "readout" of header bar, rows of text-like blocks, a bar chart and a
- * trace; and a "grid" for the holo-table's projector pad. Used as emissive
- * maps, so only the drawn elements glow.
+ * The bridge uses wide instrument artwork. Other consoles and the holo-table
+ * use seeded pixel readouts and a projector grid. All are emissive maps.
  */
 import * as THREE from 'three';
+import type { BridgeInstrument } from '../content/shipLayout';
+import helm from './instruments/helm.png';
+import power from './instruments/power.png';
+import comms from './instruments/comms.png';
+
+const instrumentArt = { helm, power, comms };
+const instrumentTextures = new Map<BridgeInstrument, THREE.Texture>();
+
+export function bridgeScreenTexture(instrument: BridgeInstrument): THREE.Texture {
+  let texture = instrumentTextures.get(instrument);
+  if (!texture) {
+    texture = new THREE.TextureLoader().load(instrumentArt[instrument]);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    instrumentTextures.set(instrument, texture);
+  }
+  return texture;
+}
 
 export type ScreenKind = 'readout' | 'grid';
 

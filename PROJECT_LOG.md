@@ -1363,6 +1363,20 @@ carry oxide-red markings. Commanders have taller, gold-tipped fins.
 The mesh banks into turns using the difference between heading and
 velocity. It uses the existing visual span and listens to the same 2D
 flight state. Reviewed front, banking and rear projections at three
-distances. The author's in-game fighter playtest is pending.
+distances. The author playtested and approved the fighter graphics.
 All 709 tests passed, including the two new exhaust visibility and
 near-plane tests. Lint, TypeScript and the production build passed.
+
+## 2026-11-19 - Bridge instrument displays (branch `experiment/graphics`)
+
+The three consoles under the bridge window now have dedicated 768 × 192
+readouts. Port shows power bars, the helm shows a course diagram and
+starboard shows a signal waveform. These are static instrument illustrations.
+The screens tilt toward the approaching drone, with a dark casing and a
+gentler glow so the lettering stays distinct.
+
+Checked the original and updated displays in the running game from near the
+helm. The preview HUD showed 60 fps in both samples, at 0.70× render scale
+before and 0.55× after. All three labels were legible on the approach at
+0.61×. All 709 tests, lint, TypeScript and the production build passed.
+The author's bridge playtest is pending.

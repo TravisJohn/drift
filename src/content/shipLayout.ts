@@ -47,12 +47,14 @@ export interface WindowSpec {
 }
 
 export type PropKind = 'crate' | 'console' | 'pod' | 'machine' | 'seat' | 'holotable';
+export type BridgeInstrument = 'power' | 'helm' | 'comms';
 
 export interface PropSpec {
   /** Optional stable id for props that become interactable later (M3+). */
   readonly id?: string;
   readonly roomId: RoomId;
   readonly kind: PropKind;
+  readonly instrument?: BridgeInstrument;
   /** World-space center of the box. */
   readonly center: Vec3;
   readonly size: Vec3;
@@ -112,14 +114,27 @@ export const shipLayout: ShipLayout = {
     // Bridge: helm console + seat facing the viewport.
     {
       id: 'helm',
+      instrument: 'helm',
       roomId: 'bridge',
       kind: 'console',
       center: vec3(0, 0.55, -14.6),
       size: vec3(2.2, 1.1, 0.7),
     },
     { roomId: 'bridge', kind: 'seat', center: vec3(0, 0.35, -13.4), size: vec3(0.7, 0.7, 0.7) },
-    { roomId: 'bridge', kind: 'console', center: vec3(-3.4, 0.5, -14.8), size: vec3(1.6, 1, 0.6) },
-    { roomId: 'bridge', kind: 'console', center: vec3(3.4, 0.5, -14.8), size: vec3(1.6, 1, 0.6) },
+    {
+      roomId: 'bridge',
+      kind: 'console',
+      instrument: 'power',
+      center: vec3(-3.4, 0.5, -14.8),
+      size: vec3(1.6, 1, 0.6),
+    },
+    {
+      roomId: 'bridge',
+      kind: 'console',
+      instrument: 'comms',
+      center: vec3(3.4, 0.5, -14.8),
+      size: vec3(1.6, 1, 0.6),
+    },
     // The ship dashboard: a holo-table behind the helm seat.
     {
       id: 'dashboard',

@@ -430,7 +430,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   for (const mesh of lit) bake(mesh);
 
   layout.props.forEach((prop, index) => {
-    const visual = buildPropVisual(prop.kind, prop.size, index * 1.7);
+    const visual = buildPropVisual(prop.kind, prop.size, index * 1.7, prop.instrument);
     visual.group.position.set(prop.center.x, prop.center.y, prop.center.z);
     group.add(visual.group);
     visual.group.traverse((obj) => {

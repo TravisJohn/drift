@@ -8,8 +8,8 @@
  * world animates them each frame.
  */
 import * as THREE from 'three';
-import { screenTexture } from '../../rendering/screenTextures';
-import type { PropKind } from '../../content/shipLayout';
+import { bridgeScreenTexture, screenTexture } from '../../rendering/screenTextures';
+import type { BridgeInstrument, PropKind } from '../../content/shipLayout';
 import type { Vec3 } from '../../physics/vec3';
 
 /** A material whose emissive intensity breathes over time. */
@@ -94,30 +94,41 @@ function buildPod(size: Vec3, phase: number): PropVisual {
   };
 }
 
-function buildConsole(size: Vec3, phase: number): PropVisual {
+function buildConsole(size: Vec3, phase: number, instrument?: BridgeInstrument): PropVisual {
   const group = new THREE.Group();
   const { x: sx, y: sy, z: sz } = size;
 
   addBox(group, metal(0x3b4652, 0.7, 0.4), sx, sy * 0.55, sz, 0, -sy * 0.225, 0);
 
-  // Angled screen showing a readout; only the drawn elements glow. Each
-  // console gets one of a few different readouts (phase steps by 1.7).
+  const level = instrument ? 1.1 : SCREEN_LEVEL;
   const screen = new THREE.MeshStandardMaterial({
     color: 0x0a1218,
-    emissive: SCREEN_GLOW,
-    emissiveMap: screenTexture('readout', Math.round(phase / 1.7)),
-    emissiveIntensity: SCREEN_LEVEL,
+    emissive: instrument ? 0xffffff : SCREEN_GLOW,
+    emissiveMap: instrument
+      ? bridgeScreenTexture(instrument)
+      : screenTexture('readout', Math.round(phase / 1.7)),
+    emissiveIntensity: level,
     roughness: 0.3,
   });
   const face = addBox(group, screen, sx * 0.88, sy * 0.42, sz * 0.14, 0, sy * 0.22, sz * 0.12);
-  face.rotation.x = 0.35;
+  face.rotation.x = instrument ? -0.22 : 0.35;
+  if (instrument) {
+    // Only the glass faces the operator. Sample the dark margin for the case.
+    const normals = face.geometry.getAttribute('normal');
+    const uv = face.geometry.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) {
+      if (normals.getZ(i) < 0.99) uv.setXY(i, 0, 0);
+    }
+  }
 
   // Thin keyboard shelf.
   addBox(group, metal(0x2e3741, 0.6, 0.45), sx * 0.8, sy * 0.06, sz * 0.4, 0, sy * 0.06, -sz * 0.2);
 
   return {
     group,
-    pulses: [{ material: screen, base: SCREEN_LEVEL, amplitude: 0.25, frequency: 1.1, phase }],
+    pulses: [
+      { material: screen, base: level, amplitude: instrument ? 0.05 : 0.25, frequency: 1.1, phase },
+    ],
   };
 }
 
@@ -230,12 +241,17 @@ function buildHolotable(size: Vec3, phase: number): PropVisual {
 }
 
 /** Build the visual assembly for one prop. `phase` de-syncs pulse timing. */
-export function buildPropVisual(kind: PropKind, size: Vec3, phase: number): PropVisual {
+export function buildPropVisual(
+  kind: PropKind,
+  size: Vec3,
+  phase: number,
+  instrument?: BridgeInstrument,
+): PropVisual {
   switch (kind) {
     case 'pod':
       return buildPod(size, phase);
     case 'console':
-      return buildConsole(size, phase);
+      return buildConsole(size, phase, instrument);
     case 'machine':
       return buildMachine(size, phase);
     case 'crate':
