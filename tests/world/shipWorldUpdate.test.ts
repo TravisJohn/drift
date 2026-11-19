@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildShip } from '../../src/world/ship/shipBuilder';
 import { shipLayout } from '../../src/content/shipLayout';
+import { cabinLightLevel } from '../../src/world/ship/cabinLighting';
 
 /** Collect every emissive mesh material under the ship group. */
 function emissiveIntensities(group: THREE.Group): number[] {
@@ -18,6 +19,44 @@ function emissiveIntensities(group: THREE.Group): number[] {
 }
 
 describe('ShipWorld animation (M6)', () => {
+  it('waits two minutes, fades down, holds, fades up and repeats', () => {
+    expect(cabinLightLevel(0)).toBe(1);
+    expect(cabinLightLevel(10)).toBe(1);
+    for (const start of [120, 240]) {
+      const level = (offset: number) => cabinLightLevel(start + offset);
+      expect(level(-1)).toBe(1);
+      expect(level(0)).toBe(1);
+      expect(level(2)).toBeLessThan(1);
+      expect(level(2)).toBeGreaterThan(level(4));
+      expect(level(4)).toBeCloseTo(0.045);
+      expect(level(18)).toBe(level(4));
+      expect(level(21)).toBeGreaterThan(level(18));
+      expect(level(21)).toBeLessThan(1);
+      expect(level(24)).toBe(1);
+    }
+  });
+
+  it('dims the fixtures while preserving the floor guides and restores their original glow', () => {
+    const ship = buildShip(shipLayout);
+    const lamp = (name: string) =>
+      (
+        ship.group.getObjectByName(name) as THREE.Mesh<
+          THREE.BufferGeometry,
+          THREE.MeshStandardMaterial
+        >
+      ).material;
+    const accent = lamp('trim:accent:bridge');
+    const guide = lamp('trim:guideLight:bridge');
+    const accentBase = accent.emissiveIntensity;
+    const guideBase = guide.emissiveIntensity;
+    ship.update(130, cabinLightLevel(130));
+    expect(accent.emissiveIntensity).toBeCloseTo(accentBase * 0.045);
+    expect(guide.emissiveIntensity).toBe(guideBase);
+    ship.update(144, cabinLightLevel(144));
+    expect(accent.emissiveIntensity).toBe(accentBase);
+    ship.dispose();
+  });
+
   it('update(t) breathes the glow materials over time', () => {
     const ship = buildShip(shipLayout);
     ship.update(0);

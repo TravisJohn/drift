@@ -1379,4 +1379,20 @@ Checked the original and updated displays in the running game from near the
 helm. The preview HUD showed 60 fps in both samples, at 0.70× render scale
 before and 0.55× after. All three labels were legible on the approach at
 0.61×. All 709 tests, lint, TypeScript and the production build passed.
-The author's bridge playtest is pending.
+The author playtested and approved the bridge displays.
+
+## 2026-11-19 - Cabin power conservation (branch `experiment/graphics`)
+
+Every two minutes of active play the ceiling strips and wall ribs ease down
+over four seconds. Baked room light and reflections fall with the fixtures.
+Low light lasts fourteen seconds, then normal lighting returns over six.
+Floor guides and doorway lights stay on. Screens and cryo pods keep a muted
+glow, and the drone can still light its path. Pausing holds the cycle.
+
+This is a visual experiment. The timing and minimum brightness are grouped
+in `gameConfig.interior.powerSave` for playtest tuning.
+
+Observed the first scheduled dip and recovery from the bridge. The helm
+readout, hologram and floor guides were visible at the darkest point.
+All 711 tests passed, along with lint, TypeScript and the production build.
+The author's power-cycle playtest is pending.

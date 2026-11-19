@@ -251,7 +251,7 @@ export interface ShipWorld {
    */
   applySurfaceArt(surface: ArtSurface, art: SurfaceArt): void;
   /** Animate breathing glows and light flicker. `elapsed` is seconds. */
-  update(elapsed: number): void;
+  update(elapsed: number, roomLevel?: number): void;
   dispose(): void;
 }
 
@@ -319,6 +319,8 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   const colliders: BoxCollider[] = [];
   const textures: PanelTextures[] = [];
   const pulses: GlowPulse[] = [];
+  const cabinFixtures = new Map<THREE.MeshStandardMaterial, number>();
+  const cabinLevel = { value: 1 };
   const lightWaver = { value: 1 };
   const frames = buildFrames(layout, gameConfig.interior.frameSpacing);
   const roomLights = [...buildRoomLights(layout), ...buildAccentLights(frames.glows)];
@@ -338,7 +340,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       bakeVertexLight(positions, normals, roomLights, colliders, ownCollider),
     );
     if (!patched.has(material)) {
-      useBakedLight(material, lightWaver);
+      useBakedLight(material, lightWaver, cabinLevel);
       patched.add(material);
     }
   };
@@ -416,6 +418,9 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     mesh.name = roomId ? `trim:${role}:${roomId}` : `trim:${role}`;
     group.add(mesh);
     if (BAKED_TRIM.includes(role)) lit.push(mesh);
+    if (role === 'accent' && material instanceof THREE.MeshStandardMaterial) {
+      cabinFixtures.set(material, material.emissiveIntensity);
+    }
     if (role === 'accent' && roomId === 'cryo') {
       // The cryo bay's rib lights breathe with the pods.
       pulses.push({
@@ -465,6 +470,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       stripMaterial,
     );
     strip.position.set(cx, layout.ceilingHeight - 0.03, cz);
+    cabinFixtures.set(stripMaterial, STRIP_GLOW);
     group.add(strip);
     if (room.id === 'cryo') {
       // The cryo bay's strip breathes with the pods.
@@ -503,10 +509,14 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       }
       material.needsUpdate = true;
     },
-    update(elapsed: number) {
+    update(elapsed: number, roomLevel = 1) {
+      cabinLevel.value = roomLevel;
+      for (const [material, base] of cabinFixtures) material.emissiveIntensity = base * roomLevel;
       for (const p of pulses) {
+        const glow = p.base + p.amplitude * Math.sin(2 * Math.PI * p.frequency * elapsed + p.phase);
+        // Cryo fixtures breathe with the room. Equipment retains its standby glow.
         p.material.emissiveIntensity =
-          p.base + p.amplitude * Math.sin(2 * Math.PI * p.frequency * elapsed + p.phase);
+          glow * (cabinFixtures.has(p.material) ? roomLevel : 0.55 + 0.45 * roomLevel);
       }
       // Two incommensurate sines read as organic waver, stay deterministic.
       lightWaver.value = 1 + 0.05 * Math.sin(elapsed * 9.7) + 0.04 * Math.sin(elapsed * 23.3 + 1.3);

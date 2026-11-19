@@ -275,6 +275,13 @@ export const gameConfig = {
 
   /** The built look of the ship's interior: frames and coloured light. */
   interior: {
+    powerSave: {
+      intervalSeconds: 120,
+      fadeDownSeconds: 4,
+      dimSeconds: 14,
+      fadeUpSeconds: 6,
+      minimumLight: 0.045,
+    },
     /**
      * Metres between structural frames (a rib up each wall and a beam
      * across the ceiling). The nearest spacing that divides a room evenly
