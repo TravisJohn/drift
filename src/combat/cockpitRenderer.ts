@@ -46,6 +46,7 @@ import {
 } from './combatTypes';
 import type { CombatView } from './combatView';
 import { drawHoloMap } from './holoMap';
+import { drawRaiderModel, RAIDER_HALF_SPAN } from './raiderModel';
 import asteroidUrl from './scenery/asteroid-relief.webp';
 import nebulaUrl from './scenery/dust-nebula.webp';
 import planetUrl from './scenery/ringed-giant.webp';
@@ -66,48 +67,6 @@ const DEBRIS_TILE = 2600;
 const MAX_PARTICLES = 500;
 const HIT_FLASH = 0.28;
 
-/** The raider fighter from STARFALL: vertices (x right, y up, −z forward). */
-const RAIDER_VERTS: readonly (readonly [number, number, number])[] = [
-  [-24, -1, 7],
-  [-8, 1, -4],
-  [-4, 3, 5],
-  [-3, 3, -14],
-  [0, 1, -22],
-  [3, 3, -14],
-  [4, 3, 5],
-  [8, 1, -4],
-  [24, -1, 7],
-  [12, -2, 12],
-  [4, -2, 11],
-  [0, -3, -13],
-  [-4, -2, 11],
-  [-12, -2, 12],
-  [-6, 6, 10],
-  [6, 6, 10],
-  [0, 6, -7],
-];
-const RAIDER_FACES: readonly { ids: readonly number[]; fill: string; stroke?: string }[] = [
-  { ids: [0, 1, 2, 12, 13], fill: '#44505b' },
-  { ids: [7, 8, 9, 10, 6], fill: '#394754' },
-  { ids: [0, 1, 12, 13], fill: '#1e2c3a' },
-  { ids: [7, 8, 9, 10], fill: '#293642' },
-  { ids: [2, 3, 4, 5, 6, 10, 11, 12], fill: '#66717a' },
-  { ids: [3, 4, 5, 16], fill: '#506574' },
-  { ids: [2, 14, 16, 3], fill: '#859099' },
-  { ids: [6, 15, 16, 5], fill: '#3a4d5d' },
-  { ids: [14, 15, 16], fill: '#a6afb1' },
-  { ids: [3, 16, 5, 4], fill: '#142b3b', stroke: '#97ccdc77' },
-];
-const RAIDER_EDGES: readonly (readonly [number, number, string, number])[] = [
-  [0, 1, '#c67f57', 1.7],
-  [7, 8, '#dd8a5d', 1.7],
-  [14, 16, '#c3d3d988', 1],
-  [3, 5, '#8ad9e7', 1],
-  [0, 13, '#b2bec555', 1],
-  [8, 9, '#b2bec555', 1],
-];
-/** The model's half-span, to scale it to a raider's radius. */
-const RAIDER_SPAN = 24;
 /**
  * Raiders are drawn this much larger than their real size: at 120 degrees
  * a raider at fighting range is otherwise only a few pixels. (Hits use the
@@ -526,48 +485,23 @@ export class CockpitRenderer implements CombatView {
 
   /** A raider as a small 3D fighter, its faces sorted far to near. */
   private drawRaider(r: Readonly<Raider>, time: number): void {
-    const forward = fromAngle(r.heading);
-    const right = vec2(-Math.sin(r.heading), Math.cos(r.heading));
-    const size = (r.radius * RAIDER_LOOK) / RAIDER_SPAN;
-    const bank = Math.sin(time + r.phase) * 0.22;
     const lift = Math.sin(time * 0.7 + r.phase * 2.3) * RAIDER_BOB;
-    const cs = Math.cos(bank);
-    const sn = Math.sin(bank);
-    const cam = RAIDER_VERTS.map(([x, y, z]) => {
-      const bx = x * cs - y * sn;
-      const by = x * sn + y * cs;
-      const world = add(r.pos, add(scale(forward, -z * size), scale(right, bx * size)));
-      return toCamera(this.cam, world, by * size + lift);
-    });
-    const points = cam.map((q) => project(q, this.frame));
-    const centre = project(toCamera(this.cam, r.pos, lift), this.frame);
+    const position = toCamera(this.cam, r.pos, lift);
+    const centre = project(position, this.frame);
     if (!centre || !this.onScreen(centre, r.radius * RAIDER_LOOK * centre.scale * 2)) return;
 
-    const faces = RAIDER_FACES.map((face) => ({
-      face,
-      depth: face.ids.reduce((sum, i) => sum + (cam[i]?.z ?? 0), 0) / face.ids.length,
-    })).sort((a, b) => b.depth - a.depth);
-    for (const { face } of faces) {
-      const pts = face.ids.map((i) => points[i]);
-      if (pts.some((pt) => !pt)) continue;
-      this.path(
-        pts.map((pt) => [pt?.x ?? 0, pt?.y ?? 0] as const),
-        face.fill,
-        face.stroke ?? '#a8b7bb25',
-        0.8,
-      );
-    }
-    for (const [a, b, color, width] of RAIDER_EDGES) {
-      const pa = points[a];
-      const pb = points[b];
-      if (pa && pb) this.line(pa.x, pa.y, pb.x, pb.y, color, width);
-    }
-    // Engine glow at the tail.
-    const tail = project(
-      toCamera(this.cam, sub(r.pos, scale(forward, 12 * size)), lift),
+    // The nose leads the velocity through a turn. Lower the inside wing as it breaks away.
+    const slip = length(r.vel) > 1 ? angleBetween(Math.atan2(r.vel.y, r.vel.x), r.heading) : 0;
+    const bank = Math.sin(time + r.phase) * 0.12 - Math.sin(slip) * 0.62;
+    drawRaiderModel(
+      this.ctx,
+      position,
       this.frame,
+      (r.radius * RAIDER_LOOK) / RAIDER_HALF_SPAN,
+      r.heading - this.cam.heading,
+      bank,
+      r.commander,
     );
-    if (tail) this.glow(tail.x, tail.y, Math.max(3, 9 * tail.scale * size), 'rgba(255,150,90,.55)');
 
     const span = r.radius * centre.scale;
     if (r.commander) {

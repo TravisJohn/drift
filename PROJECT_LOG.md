@@ -1349,6 +1349,20 @@ adjacent directions as the rock turns, keeping the sun on the port side.
 Decorative debris uses the same surfaces at its existing lower opacity.
 
 Reviewed the materials at close and distant sizes and checked the cockpit
-draw calls through the rotation wrap in both directions. The author's
-in-game review of the asteroid pass is pending.
+draw calls through the rotation wrap in both directions. The author
+playtested and approved the asteroid pass before moving on to the raiders.
 All 707 tests passed, along with lint, TypeScript and the production build.
+
+## 2026-11-19 - Raider fighter silhouette (branch `experiment/graphics`)
+
+The cockpit raider has swept wings, a glazed canopy, paired intakes and
+canted tail fins. Orange intake lights face an approaching pilot. The
+engine cores and their glow are visible from the rear. Regular raiders
+carry oxide-red markings. Commanders have taller, gold-tipped fins.
+
+The mesh banks into turns using the difference between heading and
+velocity. It uses the existing visual span and listens to the same 2D
+flight state. Reviewed front, banking and rear projections at three
+distances. The author's in-game fighter playtest is pending.
+All 709 tests passed, including the two new exhaust visibility and
+near-plane tests. Lint, TypeScript and the production build passed.
