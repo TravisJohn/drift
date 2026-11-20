@@ -66,8 +66,8 @@ export function humMix(state: HumState, s: ShipHumSettings = gameConfig.audio.sh
   const room = 1 + s.engineRoomBoost * clamp01(state.nearEngine);
   const level = (s.enabled ? s.level : 0) * (state.outside ? s.outsideLevel : 1);
   return {
-    electrical: level * s.electricalLevel * room,
-    air: level * s.airLevel,
+    electrical: level * s.electricalLevel * room * (1 + 0.55 * engine),
+    air: level * s.airLevel * (1 + 0.18 * engine),
     rumble: level * (s.rumbleIdle + (s.rumbleCruise - s.rumbleIdle) * engine) * room,
     airCutoffHz: 320 + 260 * engine,
   };

@@ -1,6 +1,9 @@
+import { gameConfig } from '../../src/config/gameConfig';
+import { ShipState } from '../../src/state/shipState';
 import { describe, expect, it } from 'vitest';
 import {
   START_LOCATION_ID,
+  journeySeconds,
   getLocation,
   locations,
   validateLocations,
@@ -17,11 +20,30 @@ describe('destinations content', () => {
     expect(selectable.length).toBeLessThanOrEqual(3);
   });
 
-  it('every cruise fits the PRD 60-120s window', () => {
+  it('every journey fits the 60-120s window', () => {
     for (const loc of locations) {
-      expect(loc.travelTime).toBeGreaterThanOrEqual(60);
-      expect(loc.travelTime).toBeLessThanOrEqual(120);
+      expect(journeySeconds(loc.travelTime)).toBeGreaterThanOrEqual(60);
+      expect(journeySeconds(loc.travelTime)).toBeLessThanOrEqual(120);
     }
+  });
+
+  it('reaches the abandoned station exactly sixty seconds after engaging', () => {
+    const target = getLocation('vesper');
+    const ship = new ShipState(START_LOCATION_ID, gameConfig.travel);
+    ship.beginTravel(target.id, target.travelTime * gameConfig.travel.cruiseScale);
+    expect(ship.secondsToArrival).toBe(60);
+    ship.update(5);
+    expect(ship.secondsToArrival).toBe(55);
+    ship.update(54.875);
+    expect(ship.secondsToArrival).toBe(0.125);
+    expect(ship.phase).toBe('arriving');
+    expect(ship.locationId).toBe(START_LOCATION_ID);
+    expect(ship.update(0.125)).toEqual([
+      { from: 'arriving', to: 'docked', destinationId: target.id },
+    ]);
+    expect(ship.locationId).toBe(target.id);
+    expect(ship.secondsToArrival).toBe(0);
+    expect(ship.update(60)).toEqual([]);
   });
 
   it('getLocation returns the location or fails loud', () => {

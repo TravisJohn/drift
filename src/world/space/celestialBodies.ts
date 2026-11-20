@@ -38,6 +38,7 @@ const MIN_SCALE = 0.001;
 interface Body {
   readonly group: THREE.Group;
   readonly radius: number;
+  readonly berth?: THREE.Vector3;
   /** Set when the body has rings (their shadow follows the planet). */
   readonly ring: RingMaterial | null;
   /** Per-frame motion that is not a shader's job (spin, blinking). */
@@ -107,16 +108,21 @@ function buildRinged(spec: LocationSpec, uniforms: SpaceUniforms): Body {
 
 /** A mooring station: hub, slowly turning habitat ring, solar wings. */
 function buildStation(spec: LocationSpec): Body {
+  const derelict = spec.body.kind === 'derelict';
   const group = new THREE.Group();
   const { radius } = spec.body;
-  const hull = new THREE.MeshStandardMaterial({ color: 0x8a94a3, roughness: 0.55, metalness: 0.6 });
+  const hull = new THREE.MeshStandardMaterial({
+    color: derelict ? 0x936d5d : 0x8a94a3,
+    roughness: 0.55,
+    metalness: 0.6,
+  });
   const dark = new THREE.MeshStandardMaterial({ color: 0x3a4150, roughness: 0.7, metalness: 0.5 });
   const panel = new THREE.MeshStandardMaterial({
     color: 0x16264a,
     roughness: 0.3,
     metalness: 0.8,
     emissive: 0x0a1a3a,
-    emissiveIntensity: 0.6,
+    emissiveIntensity: derelict ? 0.08 : 0.6,
   });
   // Brighter than white on purpose: lit windows and beacons should bloom.
   const windowGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.7, 1.0) });
@@ -135,7 +141,16 @@ function buildStation(spec: LocationSpec): Body {
   // Habitat ring with spokes and a run of lit windows; this part turns.
   const wheel = new THREE.Group();
   const ringRadius = radius * 1.5;
-  const torus = new THREE.Mesh(new THREE.TorusGeometry(ringRadius, radius * 0.14, 12, 64), hull);
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(
+      ringRadius,
+      radius * 0.14,
+      12,
+      64,
+      derelict ? Math.PI * 1.52 : Math.PI * 2,
+    ),
+    hull,
+  );
   torus.rotation.x = Math.PI / 2;
   wheel.add(torus);
   const spokeGeometry = new THREE.BoxGeometry(ringRadius * 2, radius * 0.07, radius * 0.07);
@@ -145,7 +160,7 @@ function buildStation(spec: LocationSpec): Body {
     wheel.add(spoke);
   }
   const windowGeometry = new THREE.BoxGeometry(radius * 0.07, radius * 0.035, radius * 0.02);
-  const WINDOW_COUNT = 36;
+  const WINDOW_COUNT = derelict ? 0 : 36;
   for (let i = 0; i < WINDOW_COUNT; i++) {
     if (i % 6 === 5) continue; // gaps make it read as rooms, not a stripe
     const angle = (i / WINDOW_COUNT) * Math.PI * 2;
@@ -171,6 +186,11 @@ function buildStation(spec: LocationSpec): Body {
     );
     wing.position.set(side * radius * 1.95, radius * 0.95, 0);
     wing.rotation.x = 0.5;
+    if (derelict && side === 1) {
+      wing.scale.x = 0.48;
+      wing.rotation.z = -0.72;
+      wing.position.set(radius * 1.4, radius * 0.69, 0);
+    }
     group.add(wing);
   }
 
@@ -184,9 +204,11 @@ function buildStation(spec: LocationSpec): Body {
   return {
     group,
     radius,
+    // The abandoned relay is directly visible through the bridge viewport.
+    berth: derelict ? new THREE.Vector3(-0.12, 0.035, -1).normalize() : DOCKED_DIR,
     ring: null,
     animate(elapsed) {
-      wheel.rotation.y = elapsed * 0.05;
+      wheel.rotation.y = derelict ? 0.42 : elapsed * 0.05;
       // A slow service blink: mostly dark, a short pulse every few seconds.
       beacon.visible = elapsed % 3.2 < 0.35;
     },
@@ -199,6 +221,7 @@ function buildBody(spec: LocationSpec, uniforms: SpaceUniforms): Body {
       return buildSun(spec, uniforms);
     case 'ringed':
       return buildRinged(spec, uniforms);
+    case 'derelict':
     case 'station':
       return buildStation(spec);
   }
@@ -229,9 +252,10 @@ export class CelestialBodies {
 
   /** Place/scale bodies from the TravelDirector's view of the journey. */
   apply(view: TravelView): void {
-    const docked = DOCKED_DIR.clone().multiplyScalar(gameConfig.space.bodyDistance);
-
     for (const [id, body] of this.byId) {
+      const docked = (body.berth ?? DOCKED_DIR)
+        .clone()
+        .multiplyScalar(gameConfig.space.bodyDistance);
       let presence = 0;
       let from: THREE.Vector3 | null = null;
 

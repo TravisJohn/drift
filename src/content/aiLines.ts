@@ -31,18 +31,12 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
       delay: 2,
     },
   ],
-  departed: [
-    { text: 'Autopilot engaged. Making way for {destination}.' },
-    { text: 'Course laid in for {destination}. You can wander — I have the helm.' },
-  ],
+  departed: [{ text: 'Preparing for warp drive.' }],
   cruising: [
     { text: 'Course steady. Nothing out here but dust and the long dark.', delay: 7 },
     { text: 'All quiet. The pods are warm and the reactor hums along.', delay: 7 },
   ],
-  arrived: [
-    { text: 'We have arrived. {destination}, right where we left it.' },
-    { text: 'Engines down. Hello again, {destination}.' },
-  ],
+  arrived: [{ text: 'We have arrived.' }],
   helmLocked: [
     { text: 'The course is already set. Enjoy the view — we will be there soon.' },
     { text: 'I have the helm, little one. Go look out a window.' },

@@ -90,14 +90,14 @@ describe('buildDashboardData: navigation (set course from the dashboard)', () =>
     const nav = buildDashboardData(input()).navigation;
     expect(nav.canSetCourse).toBe(true);
     expect(nav.here.id).toBe('anchorage');
-    expect(nav.destinations.map((d) => d.id)).toEqual(['aurelia', 'cinder']);
+    expect(nav.destinations.map((d) => d.id)).toEqual(['aurelia', 'cinder', 'vesper']);
     expect(nav.courseId).toBeNull();
     expect(nav.shipAt).toEqual(nav.here.chart);
   });
 
   it('shows travel times as this run will take them (cruise scale applied)', () => {
     const nav = buildDashboardData(input({ cruiseScale: 0.5 })).navigation;
-    expect(nav.destinations.find((d) => d.id === 'aurelia')?.etaSeconds).toBe(45);
+    expect(nav.destinations.find((d) => d.id === 'aurelia')?.etaSeconds).toBe(55);
   });
 
   it('underway: the course is locked and the ship moves along the route', () => {
@@ -130,7 +130,7 @@ describe('drawStarChart', () => {
 
   it('marks every known place, with the ship on the chart', () => {
     const svg = drawStarChart(nav, null);
-    expect(marks(svg).sort()).toEqual(['anchorage', 'aurelia', 'cinder']);
+    expect(marks(svg).sort()).toEqual(['anchorage', 'aurelia', 'cinder', 'vesper']);
     expect(svg.querySelector('.ship-marker')).not.toBeNull();
   });
 
@@ -220,11 +220,11 @@ describe('DashboardOverlay', () => {
     expect(callbacks.onRoomSelected).toHaveBeenLastCalledWith(null);
   });
 
-  it('Enter engages the chosen destination and keeps the dashboard open', () => {
+  it('Enter engages the chosen destination and dismisses the dashboard', () => {
     press('ArrowDown');
     press('Enter');
     expect(callbacks.onSetCourse).toHaveBeenCalledWith('cinder');
-    expect(overlay.isOpen).toBe(true);
+    expect(overlay.isOpen).toBe(false);
   });
 
   it('the Engage button names the destination and sets the course', () => {

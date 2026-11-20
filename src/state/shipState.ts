@@ -52,6 +52,21 @@ export class ShipState {
     return this._destinationId;
   }
 
+  /** Time to docking, including the final approach. */
+  get secondsToArrival(): number {
+    const { departDuration, arriveDuration } = this.timings;
+    switch (this._phase) {
+      case 'departing':
+        return departDuration + this.cruiseDuration + arriveDuration - this.phaseElapsed;
+      case 'cruising':
+        return this.cruiseDuration + arriveDuration - this.phaseElapsed;
+      case 'arriving':
+        return arriveDuration - this.phaseElapsed;
+      case 'docked':
+        return 0;
+    }
+  }
+
   /** Cruise progress in [0, 1]; 0 outside the cruising phase. */
   get progress(): number {
     if (this._phase !== 'cruising' || this.cruiseDuration <= 0) return 0;

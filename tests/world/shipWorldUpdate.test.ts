@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildShip } from '../../src/world/ship/shipBuilder';
 import { shipLayout } from '../../src/content/shipLayout';
+import { DroneController } from '../../src/player/droneController';
+import { sideGeometry } from '../../src/world/ship/layoutGeometry';
 import { cabinLightLevel, CabinPowerCycle } from '../../src/world/ship/cabinLighting';
 
 /** Collect every emissive mesh material under the ship group. */
@@ -19,6 +21,33 @@ function emissiveIntensities(group: THREE.Group): number[] {
 }
 
 describe('ShipWorld animation (M6)', () => {
+  it('holds the drone inside every viewport under thrust and lets it leave once docked', () => {
+    const ship = buildShip(shipLayout);
+    try {
+      for (const window of shipLayout.windows) {
+        const room = shipLayout.rooms.find((room) => room.id === window.roomId)!;
+        const side = window.side;
+        const sideways = side === 'west' || side === 'east';
+        const axis = sideways ? 'x' : 'z';
+        const sign = side === 'west' || side === 'north' ? -1 : 1;
+        const { at: wall } = sideGeometry(room, side);
+        const inside = wall - sign * 0.5;
+        const drone = new DroneController({
+          x: sideways ? inside : window.center,
+          y: (shipLayout.windowBottom + shipLayout.windowTop) / 2,
+          z: sideways ? window.center : inside,
+        });
+        const thrust = { moveX: sideways ? sign : 0, moveY: 0, moveZ: sideways ? 0 : -sign };
+        for (let step = 0; step < 90; step++) drone.update(1 / 60, thrust, 0, ship.sealedColliders);
+        expect(sign * (drone.snapshot.position[axis] - wall), room.name).toBeLessThan(0);
+        for (let step = 0; step < 90; step++) drone.update(1 / 60, thrust, 0, ship.colliders);
+        expect(sign * (drone.snapshot.position[axis] - wall), room.name).toBeGreaterThan(0);
+      }
+    } finally {
+      ship.dispose();
+    }
+  });
+
   it('aligns the automatic voice countdown with the original two-minute pattern', () => {
     const power = new CabinPowerCycle();
     for (const time of [0, 112, 113, 115, 119, 120, 124, 144, 233, 240, 250, 264]) {

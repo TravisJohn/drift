@@ -38,7 +38,7 @@ export interface DashboardCallbacks {
   onPowerCommand(command: PowerCommand): void;
   /** A compartment was picked (lit on the hologram); null when none is. */
   onRoomSelected(roomId: string | null): void;
-  /** Engage a course (only offered while docked). The dashboard stays open. */
+  /** Engage a course (only offered while docked). The dashboard has closed. */
   onSetCourse(destinationId: string): void;
   /** Go outside: the exterior camera. The dashboard has closed. */
   onExteriorView(): void;
@@ -92,7 +92,7 @@ export class DashboardOverlay {
     this.callbacks = callbacks;
 
     this.panels = [
-      new NavigationPanel(data, (id) => this.callbacks?.onSetCourse(id)),
+      new NavigationPanel(data, (id) => this.leave((c) => c.onSetCourse(id))),
       new CamerasPanel(data, () => this.leave((c) => c.onExteriorView())),
       new ShipPanel(
         data,

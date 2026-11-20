@@ -1414,3 +1414,42 @@ Tested a manual cycle through countdown, conservation and full lighting
 with auto off on the command deck. Verified the timing of the five recorded
 beats. All 714 tests, lint, TypeScript and the production build passed.
 The author's listening and dashboard playtest is pending.
+
+## 2026-11-20 - Vesper Station blackout prototype filed for integration (standalone, not wired in)
+
+A standalone 2D side quest for the Vesper Station destination is kept as a
+reference build for later integration into the 3D game. Nothing in `src/`
+uses it yet.
+
+- `prototypes/Vesper-Blackout.html` - the whole prototype in one file, with
+  four scripts: `simulation` (deck layout, patrols, detection, timers,
+  reset), `renderer` (2D canvas lamp, light seeds, guard sight), `audio`
+  (synth score and effects) and `controls` (input, HUD, pause).
+- `prototypes/vesper-blackout.test.mjs` - 9 Node tests, run with
+  `node --test prototypes/vesper-blackout.test.mjs`. All 9 passed today.
+- `docs/maps/Vesper-Station.png` - approved deck plan: 16 rooms,
+  26 corridors, six patrol circuits.
+- `docs/Vesper-Handoff.md` - how to play it and what to check in the
+  next playtest.
+
+Gameplay: fly the drone from the western airlock and pull two of three
+energy cells. Each cell needs ten uninterrupted seconds at its socket.
+Then unload both cells at the airlock. If a guard's sight cone touches
+the drone, the run resets. Light seeds (up to five at once, 15 seconds
+each) light the deck and the seed map.
+
+Status: the author has approved the deck plan. The revised movement,
+alert speed and light seeds are waiting on another playtest.
+
+Integration notes, to settle before any porting:
+- Vesper Station already exists as a `derelict` destination in
+  `src/content/destinations.ts`. Arriving there is the natural entry point.
+- The `simulation` script has no DOM dependencies, so it can become a
+  typed module with its tests moved to vitest. The renderer is the real
+  decision. One option keeps it as a 2D "drone camera" feed inside the
+  existing UI. The other rebuilds it in three.js. This choice drives most
+  of the work.
+- The prototype creates its own AudioContext. It should route through
+  the game's audio modules rather than run a second context.
+- All four files are untracked. A fresh clone of HEAD will not include
+  them until they are committed.

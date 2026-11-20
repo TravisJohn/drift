@@ -20,6 +20,7 @@ import {
   type WallOpening,
   exteriorSpans,
   segmentWall,
+  sideGeometry,
   sharedEdge,
 } from './layoutGeometry';
 import { validateLayout } from './validateLayout';
@@ -238,6 +239,7 @@ export function buildShipBoxes(layout: ShipLayout): ShipBox[] {
 export interface ShipWorld {
   readonly group: THREE.Group;
   readonly colliders: readonly BoxCollider[];
+  readonly sealedColliders: readonly BoxCollider[];
   readonly spawn: Vec3;
   /**
    * Brightness multiplier of the wavering lights (engineering's tired
@@ -392,6 +394,24 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     surfaceMaterials.set(kind, mesh.material);
   });
 
+  // Extend each seal outward so a collision with nearby equipment cannot
+  // push the sphere through thin glass and out of the cabin in one step.
+  const sealedColliders = [...colliders];
+  for (const window of layout.windows) {
+    const room = layout.rooms.find((room) => room.id === window.roomId)!;
+    const { axis, at } = sideGeometry(room, window.side);
+    const sign = window.side === 'west' || window.side === 'north' ? -1 : 1;
+    const depth = layout.wallThickness + 2 * gameConfig.drone.radius;
+    const middle = at + sign * gameConfig.drone.radius;
+    const y = (layout.windowBottom + layout.windowTop) / 2;
+    const height = layout.windowTop - layout.windowBottom;
+    sealedColliders.push(
+      axis === 'x'
+        ? boxFromCenterSize(vec3(window.center, y, middle), vec3(window.width, height, depth))
+        : boxFromCenterSize(vec3(middle, y, window.center), vec3(depth, height, window.width)),
+    );
+  }
+
   // --- Trim and frames: baseboards, coves, door and window frames, ribs,
   // beams, lights, glass. One mesh per look; coloured lights are per room.
   const BAKED_TRIM: readonly TrimRole[] = ['baseboard', 'cove', 'frame', 'rib'];
@@ -487,6 +507,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   return {
     group,
     colliders,
+    sealedColliders,
     spawn: layout.spawn,
     lightWaver,
     applySurfaceArt(surface, art) {

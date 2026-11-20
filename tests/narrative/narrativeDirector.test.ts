@@ -63,10 +63,24 @@ describe('NarrativeDirector', () => {
   });
 
   it('fills {destination} from context and throws without it', () => {
-    const director = new NarrativeDirector();
+    const templates = lines({ departed: [{ text: 'Bound for {destination}.' }] });
+    const director = new NarrativeDirector(templates);
     director.trigger('departed', { destination: 'Aurelia' });
     expect(runUntilText(director, 2)).toContain('Aurelia');
-    expect(() => new NarrativeDirector().trigger('departed')).toThrow(/needs a destination/);
+    expect(() => new NarrativeDirector(templates).trigger('departed')).toThrow(
+      /needs a destination/,
+    );
+  });
+
+  it('shows flight announcements as soon as the intercom plays them', () => {
+    const director = new NarrativeDirector();
+    director.trigger('dashboardOpened');
+    director.update(DT);
+    director.trigger('departed');
+    expect(director.update(DT)).toBe('Preparing for warp drive.');
+    director.trigger('cruising');
+    director.trigger('arrived');
+    expect(director.update(DT)).toBe('We have arrived.');
   });
 
   it('a delayed line waits its delay before speaking', () => {

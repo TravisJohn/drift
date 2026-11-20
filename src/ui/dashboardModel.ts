@@ -7,6 +7,7 @@
  * star chart), cameras (the view from outside), the ship's compartments,
  * tactical (combat drills on the hologram) and training. Live journey and systems readouts sit beside all of them.
  */
+import { journeySeconds } from '../content/destinations';
 import type { DifficultyId } from '../combat/combatTypes';
 import type { CabinPowerStatus } from '../world/ship/cabinLighting';
 import type { RoomSpec } from '../content/shipLayout';
@@ -44,7 +45,7 @@ export interface DashboardPlace {
   readonly id: string;
   readonly name: string;
   readonly blurb: string;
-  /** Cruise time from here, seconds (already scaled for this run). */
+  /** Journey time from here, seconds (already scaled for this run). */
   readonly etaSeconds: number;
   /** CSS colour, e.g. "#7fd4e8". */
   readonly accent: string;
@@ -176,7 +177,7 @@ function toPlace(place: PlaceInput, cruiseScale: number): DashboardPlace {
     id: place.id,
     name: place.name,
     blurb: place.blurb,
-    etaSeconds: Math.round(place.travelTime * cruiseScale),
+    etaSeconds: Math.round(journeySeconds(place.travelTime, cruiseScale)),
     accent: cssColor(place.accentColor),
     chart: place.chart,
   };

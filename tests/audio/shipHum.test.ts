@@ -9,6 +9,7 @@ describe('humMix (how the ship sounds at a given moment)', () => {
   it('rumbles harder as the engines work up to cruise', () => {
     const docked = humMix({ engine: 0, nearEngine: 0.5 }, settings);
     const cruising = humMix({ engine: 1, nearEngine: 0.5 }, settings);
+    expect(cruising.electrical).toBeGreaterThan(docked.electrical);
     expect(cruising.rumble).toBeGreaterThan(docked.rumble * 2);
     expect(cruising.airCutoffHz).toBeGreaterThan(docked.airCutoffHz);
   });

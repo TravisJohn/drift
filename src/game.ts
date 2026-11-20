@@ -20,6 +20,7 @@ import { FollowCamera } from './player/followCamera';
 import { shipLayout } from './content/shipLayout';
 import { buildShip, type ShipWorld } from './world/ship/shipBuilder';
 import { CabinPowerCycle } from './world/ship/cabinLighting';
+import { WarpIntercom } from './audio/warpIntercom';
 import { PowerCountdown } from './audio/powerCountdown';
 import { START_LOCATION_ID, getLocation, locations } from './content/destinations';
 import { ShipState } from './state/shipState';
@@ -101,6 +102,9 @@ export class Game {
   /** True once the tether warning has been spoken for this excursion. */
   private tetherWarned = false;
   private travelView: TravelView;
+  private travelTickMs = 0;
+  private readonly warpIntercom = new WarpIntercom();
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly playerMode = new PlayerMode();
   private readonly interaction = new InteractionSystem();
   private readonly interactables: Interactable[] = [];
@@ -258,8 +262,23 @@ export class Game {
     });
 
     this.events.on('travel:requested', ({ destinationId }) => {
+      // The helm is within reach through the forward glass while docked.
+      // Require the drone to be on the cabin side before sealing that opening.
+      const { x, y, z } = this.drone.snapshot.position;
+      if (
+        z < this.bridgeRoom.minZ + gameConfig.drone.radius ||
+        x < this.bridgeRoom.minX ||
+        x > this.bridgeRoom.maxX ||
+        y < 0 ||
+        y > shipLayout.ceilingHeight
+      ) {
+        this.hud.setPrompt('Return to the bridge to engage warp');
+        return;
+      }
+      this.travelTickMs = performance.now();
       const cruise = getLocation(destinationId).travelTime * gameConfig.travel.cruiseScale;
       const change = this.shipState.beginTravel(destinationId, cruise);
+      this.followCamera.faceBow();
       this.events.emit('ship:phaseChanged', change);
       this.events.emit('travel:departed', { destinationId });
       this.refreshStatus();
@@ -320,15 +339,17 @@ export class Game {
 
     // The ship AI reacts to the journey; the director decides what it says.
     this.events.on('app:started', () => this.narrative.trigger('started'));
-    this.events.on('travel:departed', ({ destinationId }) =>
-      this.narrative.trigger('departed', { destination: getLocation(destinationId).name }),
-    );
+    this.events.on('travel:departed', () => {
+      this.narrative.trigger('departed');
+      this.warpIntercom.play('departed');
+    });
     this.events.on('ship:phaseChanged', ({ to }) => {
       if (to === 'cruising') this.narrative.trigger('cruising');
     });
-    this.events.on('travel:arrived', ({ destinationId }) =>
-      this.narrative.trigger('arrived', { destination: getLocation(destinationId).name }),
-    );
+    this.events.on('travel:arrived', () => {
+      this.narrative.trigger('arrived');
+      this.warpIntercom.play('arrived');
+    });
     this.events.on('terminal:opened', () => this.narrative.trigger('terminalOpened'));
 
     // --- M6: the soundscape follows the journey (author-supplied files) ---
@@ -407,6 +428,7 @@ export class Game {
     this.hologram.dispose();
     this.audio.dispose();
     this.powerCountdown.update(null);
+    this.warpIntercom.pause();
     this.intercom.dispose();
     this.hum.dispose();
     this.warningBeep.dispose();
@@ -479,7 +501,11 @@ export class Game {
     }
 
     // The journey continues regardless of what the player is doing (D3).
-    for (const change of this.shipState.update(dt)) {
+    // Flight uses elapsed play time even when the physics loop drops catch-up steps.
+    const now = performance.now();
+    const travelDt = this.shipState.phase === 'docked' ? 0 : (now - this.travelTickMs) / 1000;
+    this.travelTickMs = now;
+    for (const change of this.shipState.update(travelDt)) {
       this.events.emit('ship:phaseChanged', change);
       if (change.to === 'docked' && change.destinationId) {
         this.events.emit('travel:arrived', { destinationId: change.destinationId });
@@ -497,11 +523,11 @@ export class Game {
     this.cabinPower.advance(dt);
     this.animateCabin(dt);
     this.hologram.setMarker(this.drone.snapshot.position);
-    this.updateAudio(dt);
 
     // M4: space keeps drifting whatever the player is doing.
     this.travelView = computeTravelView(this.shipSnapshot());
     this.spaceScene.update(dt, this.travelView);
+    this.updateAudio(dt);
 
     if (this.playerMode.mode === 'inCombat') {
       // The fight runs on the hologram; the bridge view waits behind it.
@@ -536,7 +562,7 @@ export class Game {
         this.updateHint();
       }
       const actions = this.input.sample();
-      this.drone.update(dt, actions, this.followCamera.yaw, this.ship.colliders);
+      this.drone.update(dt, actions, this.followCamera.yaw, this.flightColliders);
 
       const focusChange = this.interaction.update(this.drone.snapshot.position, this.interactables);
       if (focusChange) {
@@ -548,14 +574,18 @@ export class Game {
           this.events.emit('interact:focused', { interactableId: focusChange.focused.id });
         }
       }
-      if (interactPressed) {
+      if (interactPressed && !overlayWasOpen) {
         this.interaction.focused?.onInteract();
       }
     } else {
       // Menus/overlays own the keys; the drone settles where it is.
       this.input.consumeLookDelta();
-      this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.ship.colliders);
+      this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.flightColliders);
     }
+  }
+
+  private get flightColliders() {
+    return this.shipState.phase === 'docked' ? this.ship.colliders : this.ship.sealedColliders;
   }
 
   private animateCabin(dt: number): void {
@@ -569,10 +599,13 @@ export class Game {
 
   /** Freeze the simulation and show the pause menu (Esc, M7). */
   private openPause(): void {
+    this.warpIntercom.pause();
     this.appState.pause();
     this.events.emit('app:paused');
     this.pauseMenu.open({
       onResume: () => {
+        this.travelTickMs = performance.now();
+        this.warpIntercom.resume();
         this.appState.resume();
         this.events.emit('app:resumed');
       },
@@ -758,16 +791,12 @@ export class Game {
     this.openDashboard('tactical');
   }
 
-  /** Return from the dashboard view to the drone. */
-  /**
-   * Engage a course from the dashboard's navigation tab: the same request
-   * the helm makes. The dashboard stays open and shows the departure.
-   */
+  /** Navigation has dismissed its overlay. Hand control back to the drone. */
   private setCourseFromDashboard(destinationId: string): void {
-    if (this.shipState.phase !== 'docked') return; // course locked underway
+    this.closeDashboard();
+    if (this.shipState.phase !== 'docked') return;
     this.audio.playOnce('sfx_ui_blip');
     this.events.emit('travel:requested', { destinationId });
-    this.dashboard.update(this.dashboardData());
   }
 
   private closeDashboard(): void {
@@ -802,10 +831,11 @@ export class Game {
       const dest = this.shipState.destinationId
         ? getLocation(this.shipState.destinationId).name
         : '';
-      const pct = phase === 'cruising' ? ` ${Math.round(this.shipState.progress * 100)}%` : '';
+      const remaining = Math.ceil(this.shipState.secondsToArrival);
+      const eta = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
       const label =
         phase === 'departing' ? 'Departing' : phase === 'arriving' ? 'Arriving' : 'Cruising';
-      this.hud.setStatus(`${label} — ${dest}${pct}`);
+      this.hud.setStatus(`${label} - ${dest} · ETA ${eta} · Hull sealed`);
     }
   }
 
@@ -861,12 +891,19 @@ export class Game {
           y: this.droneVisual.group.position.y,
           z: this.droneVisual.group.position.z,
         },
-        this.ship.colliders,
+        this.flightColliders,
       );
       this.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
       this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
     }
 
+    // Tiny camera rotations transmit drive vibration without moving collision geometry.
+    if (this.travelView.driftSpeed > 0 && !this.reducedMotion.matches) {
+      const t = this.travelTickMs / 1000;
+      const strength = this.travelView.driftSpeed;
+      this.camera.rotateZ(strength * 0.0028 * Math.sin(t * 18));
+      this.camera.rotateX(strength * 0.0017 * Math.sin(t * 29 + 0.4));
+    }
     const view = chooseView({
       cinematic: false,
       dashboard: this.dashboardView !== null,
