@@ -1,0 +1,1817 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>DRIFT · Vesper Station</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        color-scheme: dark;
+        --bg: #090d10;
+        --panel: #11181b;
+        --edge: #2b3639;
+        --paper: #e9ece3;
+        --quiet: #9baba9;
+        --mint: #93e1c9;
+        --gold: #f4cc7c;
+        --red: #ff826c;
+        --mono: Consolas, 'Courier New', monospace;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--paper);
+        font:
+          16px 'Segoe UI',
+          Arial,
+          sans-serif;
+      }
+      body {
+        background: radial-gradient(ellipse at 22% 0, #182321 0, transparent 56%), var(--bg);
+      }
+      main {
+        max-width: 1600px;
+        margin: auto;
+        padding: clamp(15px, 3vw, 49px);
+      }
+      header,
+      .head,
+      .line,
+      .items li,
+      .controls,
+      .hud,
+      .railfoot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        font: 700 24px var(--mono);
+        letter-spacing: 0.13em;
+      }
+      .mark {
+        display: inline-flex;
+        gap: 3px;
+        transform: skew(-22deg);
+      }
+      .mark i {
+        height: 17px;
+        width: 5px;
+        background: var(--mint);
+      }
+      .mark i:last-child {
+        opacity: 0.45;
+      }
+      .tag,
+      .label,
+      .status,
+      .coord,
+      .keys,
+      .head,
+      .counter,
+      button,
+      .railfoot,
+      .hud {
+        font-family: var(--mono);
+      }
+      .tag,
+      .label,
+      .head,
+      .railfoot,
+      .hud {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .tag {
+        color: var(--quiet);
+        letter-spacing: 0.15em;
+      }
+      .name {
+        display: flex;
+        gap: 15px;
+        align-items: baseline;
+        margin: 32px 0 20px;
+        flex-wrap: wrap;
+      }
+      .name h1 {
+        font-size: clamp(35px, 4vw, 65px);
+        line-height: 1;
+        margin: 0;
+        letter-spacing: -0.055em;
+        font-weight: 640;
+      }
+      .name span {
+        color: var(--quiet);
+        font-size: 16px;
+      }
+      .console {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 292px;
+        border: 1px solid var(--edge);
+        box-shadow: 0 14px 65px #0008;
+      }
+      .feed {
+        position: relative;
+        background: #030808;
+        min-width: 0;
+        height: clamp(440px, 64vh, 800px);
+        overflow: hidden;
+      }
+      #view {
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+      .minimap {
+        position: absolute;
+        top: 40px;
+        right: 19px;
+        width: clamp(125px, 22%, 230px);
+        margin: 0;
+        border: 1px solid #45615a;
+        background: #0a1213;
+        pointer-events: none;
+      }
+      .minimap figcaption {
+        display: flex;
+        justify-content: space-between;
+        gap: 4px;
+        padding: 6px 7px;
+        border-bottom: 1px solid #2b403a;
+        color: #b0c6be;
+        font: 11px var(--mono);
+      }
+      #seedCount {
+        color: var(--mint);
+        white-space: nowrap;
+      }
+      #deckMap {
+        display: block;
+        width: 100%;
+        height: auto;
+        background-image:
+          linear-gradient(#54847317 1px, transparent 1px),
+          linear-gradient(90deg, #54847317 1px, transparent 1px);
+        background-size: 12px 12px;
+      }
+      .hud {
+        position: absolute;
+        inset: 17px 19px auto;
+        color: #b2c3bd;
+        pointer-events: none;
+      }
+      .hud .live {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .lampdot {
+        width: 7px;
+        height: 7px;
+        background: var(--mint);
+        box-shadow: 0 0 8px #72e3bc80;
+        border-radius: 50%;
+      }
+      .location {
+        position: absolute;
+        bottom: 18px;
+        left: 19px;
+        pointer-events: none;
+        text-shadow: 0 2px 5px #000;
+      }
+      .location .label {
+        color: #8aa29b;
+        font-size: 10px;
+      }
+      .location strong {
+        display: block;
+        font-weight: 530;
+        font-size: 23px;
+        letter-spacing: -0.025em;
+        margin-top: 3px;
+      }
+      .sight {
+        position: absolute;
+        pointer-events: none;
+        inset: 7px;
+        border: 1px solid #88b29d15;
+      }
+      .notice {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: #050b0dcc;
+        text-align: center;
+        padding: 15px;
+      }
+      .notice[hidden],
+      .action[hidden],
+      .touch [hidden],
+      .track[hidden] {
+        display: none;
+      }
+      .notice strong {
+        font: bold clamp(22px, 3.2vw, 54px) var(--mono);
+        letter-spacing: 0.03em;
+      }
+      .notice span {
+        color: #ced8d1;
+      }
+      .notice.alarm {
+        background: linear-gradient(#3d0a08a6, #28070561);
+        box-shadow: inset 0 0 0 4px var(--red);
+        color: #ffb09d;
+      }
+      .rail {
+        border-left: 1px solid var(--edge);
+        background: linear-gradient(125deg, #182021, #101619);
+        display: flex;
+        flex-direction: column;
+        padding: 23px 22px 16px;
+        gap: 18px;
+      }
+      .rail p {
+        color: #bdc9c6;
+        line-height: 1.45;
+        font-size: 14px;
+        margin: 9px 0 0;
+      }
+      .rail h2 {
+        font-size: 26px;
+        line-height: 1.12;
+        letter-spacing: -0.045em;
+        font-weight: 600;
+        margin: 8px 0 0;
+      }
+      .label {
+        color: var(--quiet);
+      }
+      .mission {
+        color: var(--gold);
+      }
+      .items {
+        padding: 0;
+        margin: 11px 0 0;
+        list-style: none;
+      }
+      .items li {
+        justify-content: flex-start;
+        border-top: 1px solid #2b3939;
+        padding: 9px 0;
+        font-size: 14px;
+      }
+      .items li::before {
+        content: '◇';
+        color: var(--gold);
+        font: 22px/14px var(--mono);
+      }
+      .items li.taken {
+        color: var(--mint);
+      }
+      .items li.taken::before {
+        content: '◆';
+        color: var(--mint);
+      }
+      .counter {
+        color: var(--gold);
+        font-size: 18px;
+      }
+      .guardkey {
+        padding-top: 12px;
+        border-top: 1px solid var(--edge);
+      }
+      .guardkey canvas {
+        vertical-align: middle;
+        width: 44px;
+        height: 20px;
+        margin-right: 6px;
+      }
+      .guardkey p {
+        font-size: 13px;
+      }
+      .controls {
+        border: 1px solid var(--edge);
+        border-top: 0;
+        padding: 13px 16px;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        background: #101619;
+        gap: 18px;
+      }
+      .controls span {
+        color: #9cb0aa;
+        font-size: 12px;
+      }
+      .controls b {
+        color: #dde7df;
+        font: 12px var(--mono);
+        margin-right: 5px;
+      }
+      .controls #soundToggle {
+        margin-left: auto;
+        padding: 5px 8px;
+      }
+      #soundToggle[aria-pressed='true'] {
+        color: var(--mint);
+      }
+      button {
+        border: 1px solid #40524d;
+        background: #1c2b27;
+        color: var(--paper);
+        font-size: 13px;
+        cursor: pointer;
+        border-radius: 3px;
+        padding: 10px 13px;
+      }
+      button:hover,
+      button:focus-visible {
+        outline: 1px solid var(--mint);
+      }
+      .primary {
+        background: var(--mint);
+        border-color: var(--mint);
+        color: #10261d;
+        font-weight: bold;
+        width: 100%;
+        padding: 13px;
+      }
+      .railfoot {
+        color: #91a49b;
+        margin-top: auto;
+        letter-spacing: 0.04em;
+      }
+      .railfoot button {
+        padding: 5px 8px;
+        font-size: 11px;
+      }
+      .status {
+        font-size: 12px;
+        color: #cad6cf;
+        min-height: 32px;
+        line-height: 1.45;
+      }
+      .track {
+        margin-top: 8px;
+        height: 5px;
+        background: #33413c;
+      }
+      .track i {
+        height: 100%;
+        display: block;
+        background: var(--gold);
+        width: 0;
+      }
+      .touch {
+        display: none;
+      }
+      .action {
+        margin: 4px 0 0;
+      }
+      .feed:focus {
+        outline: none;
+      }
+      @media (max-height: 760px) and (min-width: 761px) {
+        main {
+          padding: 14px 24px;
+        }
+        .name {
+          margin: 15px 0;
+        }
+        .rail {
+          gap: 12px;
+          padding: 15px 18px;
+        }
+        .controls {
+          padding: 8px 14px;
+        }
+        .feed {
+          height: clamp(430px, 68vh, 560px);
+        }
+      }
+      @media (max-width: 760px) {
+        main {
+          padding: 12px;
+        }
+        .console {
+          grid-template-columns: 1fr;
+        }
+        .feed {
+          height: 52vh;
+          min-height: 270px;
+        }
+        .rail {
+          border-left: 0;
+          border-top: 1px solid var(--edge);
+          padding: 14px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .rail h2 {
+          font-size: 20px;
+        }
+        .railfoot {
+          grid-column: 1/-1;
+        }
+        .guardkey {
+          display: none;
+        }
+        .name {
+          margin: 18px 0 14px;
+        }
+        .items li {
+          padding: 5px 0;
+        }
+        .controls {
+          gap: 8px;
+        }
+        .tag {
+          font-size: 9px;
+        }
+      }
+      @media (pointer: coarse) {
+        .touch {
+          display: flex;
+          gap: 5px;
+          justify-content: center;
+          padding: 9px;
+          touch-action: none;
+        }
+        .touch button {
+          min-width: 45px;
+          touch-action: none;
+          user-select: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand">
+          <span aria-hidden="true" class="mark"><i></i><i></i><i></i></span>DRIFT
+        </div>
+        <div class="tag">Drone operations / Service deck</div>
+      </header>
+      <div class="name">
+        <h1>Vesper Station</h1>
+        <span>Energy recovery</span>
+      </div>
+      <div class="console">
+        <section class="feed" tabindex="0" aria-label="Drone camera and movement controls">
+          <canvas id="view" aria-label="Dark service deck seen by drone light"></canvas>
+          <div class="sight"></div>
+          <div class="hud">
+            <span class="live"><i class="lampdot"></i>Drone camera</span
+            ><span id="feedState">Standby</span>
+          </div>
+          <figure class="minimap" aria-label="Seed map">
+            <figcaption><span>Seed map</span><span id="seedCount">0 / 5</span></figcaption>
+            <canvas id="deckMap" aria-label="Only active seeds reveal the deck"></canvas>
+          </figure>
+          <div class="location">
+            <div class="label">Local signal</div>
+            <strong id="room">Docking airlock</strong>
+          </div>
+          <div class="notice" id="notice" hidden><strong></strong><span></span></div>
+        </section>
+        <aside class="rail">
+          <section>
+            <div class="label mission">Salvage order</div>
+            <h2>Bring two cells home.</h2>
+            <p>
+              Search the service deck and return to the western airlock. Each tap needs ten
+              uninterrupted seconds.
+            </p>
+          </section>
+          <section>
+            <div class="line">
+              <span class="label">Energy cells</span><span class="counter" id="count">0 / 2</span>
+            </div>
+            <ul class="items" id="items"></ul>
+          </section>
+          <section class="guardkey">
+            <div class="label">
+              <canvas id="keyIcon" width="88" height="40"></canvas>Guard sight
+            </div>
+            <p>
+              Touch a guard's sight cone and your run resets. Guards extinguish seeds they touch.
+            </p>
+          </section>
+          <section>
+            <div class="status" id="msg" role="status"></div>
+            <div class="track" hidden><i></i></div>
+            <button class="primary" id="start">Deploy drone →</button
+            ><button class="action" id="action" hidden>Extract cell [E]</button>
+          </section>
+          <div class="railfoot">
+            <span id="attempt">Run 01</span><button id="pause" hidden>Pause [Esc]</button>
+          </div>
+        </aside>
+      </div>
+      <div class="touch" aria-label="Touch controls">
+        <button data-key="ArrowLeft">←</button><button data-key="ArrowUp">↑</button
+        ><button data-key="ArrowDown">↓</button><button data-key="ArrowRight">→</button>
+        <button id="touchSeed" hidden>Seed</button>
+      </div>
+      <div class="controls">
+        <span><b>W A S D / ↑ ↓ ← →</b> Move</span><span><b>Mouse</b> Aim lamp</span
+        ><span><b>E</b> Extract / unload</span><span><b>Q</b> Plant light seed · 15 s</span
+        ><span><b>Esc</b> Pause</span>
+        <button id="soundToggle" type="button" aria-pressed="true">Sound</button>
+      </div>
+    </main>
+    <script id="simulation">
+      'use strict';
+      const Deck = (() => {
+        // Survey coordinates match the approved 16-room service deck.
+        const rooms = {
+          air: [100, 548, 124, 83, 'Docking airlock'],
+          receiving: [263, 548, 137, 86, 'Receiving'],
+          crew: [337, 326, 153, 99, 'Crew quarters'],
+          hydro: [600, 231, 170, 102, 'Hydroponics'],
+          filter: [491, 356, 115, 78, 'Filtration'],
+          hub: [626, 453, 152, 105, 'Relay hub'],
+          med: [881, 315, 146, 96, 'Med bay'],
+          cargo: [1050, 471, 153, 98, 'Cargo hold'],
+          switchyard: [844, 510, 151, 94, 'Switchyard'],
+          bank: [1048, 675, 176, 104, 'Capacitor bank'],
+          converter: [824, 684, 152, 87, 'Converter'],
+          pump: [838, 832, 150, 82, 'Pump house'],
+          stores: [570, 823, 180, 105, 'Reserve stores'],
+          shop: [344, 740, 152, 94, 'Machine shop'],
+          coolant: [610, 639, 155, 104, 'Coolant plant'],
+          sorting: [419, 517, 145, 94, 'Sorting hall'],
+        };
+        const hallData = [
+          ['air', 'receiving'],
+          ['receiving', 'crew', [263, 400]],
+          ['crew', 'sorting', [337, 416], [419, 471]],
+          ['sorting', 'receiving', [344, 517], [313, 548]],
+          ['crew', 'hydro', [415, 248], [498, 248]],
+          ['hydro', 'filter', [555, 305]],
+          ['filter', 'hub', [474, 389], [529, 453]],
+          ['hub', 'hydro', [626, 325], [600, 299]],
+          ['hub', 'med', [713, 417], [789, 339]],
+          ['med', 'cargo', [964, 315], [1050, 402]],
+          ['cargo', 'switchyard', [962, 471], [907, 510]],
+          ['switchyard', 'med', [844, 399], [881, 363]],
+          ['cargo', 'bank', [1133, 529], [1133, 611]],
+          ['bank', 'converter'],
+          ['converter', 'pump', [824, 756]],
+          ['pump', 'bank', [937, 832], [1048, 733]],
+          ['stores', 'pump', [680, 858], [776, 858]],
+          ['shop', 'stores', [426, 823]],
+          ['stores', 'coolant', [570, 747], [610, 705]],
+          ['coolant', 'shop', [481, 639], [384, 740]],
+          ['receiving', 'shop', [263, 660]],
+          ['sorting', 'hub', [501, 517], [555, 472]],
+          ['hub', 'switchyard', [722, 453], [781, 510]],
+          ['switchyard', 'converter', [844, 596], [824, 625]],
+          ['converter', 'coolant', [739, 684], [685, 639]],
+          ['coolant', 'sorting', [557, 639], [473, 556]],
+        ];
+        const pos = (id) => rooms[id].slice(0, 2);
+        const halls = hallData.map(([a, b, ...mid]) => ({
+          a,
+          b,
+          points: [pos(a), ...mid, pos(b)],
+        }));
+        const hallRadius = 12;
+        const passages = halls.flatMap(({ points }) =>
+          points.slice(1).map(([endX, endY], i) => {
+            const [x, y] = points[i],
+              dx = endX - x,
+              dy = endY - y,
+              length = Math.hypot(dx, dy);
+            return { x, y, endX, endY, ux: dx / length, uy: dy / length, length };
+          }),
+        );
+        function projectOnPassage(x, y, passage) {
+          const { x: startX, y: startY, ux, uy, length } = passage;
+          const along = Math.max(0, Math.min(length, (x - startX) * ux + (y - startY) * uy));
+          return [startX + along * ux, startY + along * uy];
+        }
+        function route(a, b) {
+          const h = halls.find((h) => (h.a === a && h.b === b) || (h.a === b && h.b === a));
+          return h.a === a ? h.points : [...h.points].reverse();
+        }
+        const cells = ['hydro', 'bank', 'stores'].map((id) => ({
+          id,
+          name: rooms[id][4],
+          x: rooms[id][0] + 28,
+          y: rooms[id][1] - 23,
+        }));
+        const specs = [
+          [['receiving', 'crew', 'sorting'], 20, 0.24],
+          [['hydro', 'filter', 'hub'], 19, 0.49],
+          [['med', 'cargo', 'switchyard'], 24, 0.19],
+          [['bank', 'converter', 'pump'], 21, 0.53],
+          [['shop', 'stores', 'coolant'], 20, 0.76],
+          [['sorting', 'hub', 'switchyard', 'converter', 'coolant'], 26, 0.67],
+        ];
+        const paths = specs.map(([nodes, speed, offset]) => {
+          const points = [pos(nodes[0])];
+          nodes.forEach((id, i) => {
+            const cell = cells.find((c) => c.id === id);
+            // Inspect the actual socket, then curl back onto the circuit.
+            if (cell)
+              points.push(
+                [cell.x - 26, cell.y],
+                [cell.x, cell.y],
+                [cell.x + 14, cell.y + 9],
+                pos(id),
+              );
+            points.push(...route(id, nodes[(i + 1) % nodes.length]).slice(1));
+          });
+          let length = 0;
+          const segments = points.slice(1).map(([x, y], i) => {
+            const [sx, sy] = points[i],
+              dx = x - sx,
+              dy = y - sy,
+              dist = Math.hypot(dx, dy);
+            const start = length;
+            length += dist;
+            return { x: sx, y: sy, dx, dy, dist, start, angle: Math.atan2(dy, dx) };
+          });
+          return { segments, length, speed, offset };
+        });
+        const W = 1184,
+          H = 908,
+          map = new Uint8Array(W * H);
+        function stamp(x0, y0, x1, y1, test) {
+          for (let y = Math.floor(y0); y <= Math.ceil(y1); y++)
+            for (let x = Math.floor(x0); x <= Math.ceil(x1); x++)
+              if (test(x + 0.5, y + 0.5)) map[y * W + x] = 1;
+        }
+        for (const [x, y, w, h] of Object.values(rooms)) {
+          stamp(
+            x - w / 2,
+            y - h / 2,
+            x + w / 2,
+            y + h / 2,
+            (px, py) =>
+              Math.abs(px - x) + Math.abs(py - y) <= w / 2 + h / 2 - 12 &&
+              Math.abs(px - x) <= w / 2 &&
+              Math.abs(py - y) <= h / 2,
+          );
+        }
+        for (const passage of passages) {
+          const { x, y, endX, endY } = passage;
+          stamp(
+            Math.min(x, endX) - hallRadius,
+            Math.min(y, endY) - hallRadius,
+            Math.max(x, endX) + hallRadius,
+            Math.max(y, endY) + hallRadius,
+            (px, py) => {
+              const [cx, cy] = projectOnPassage(px, py, passage);
+              return (px - cx) ** 2 + (py - cy) ** 2 <= hallRadius ** 2;
+            },
+          );
+        }
+        function floor(x, y) {
+          return x >= 0 && y >= 0 && x < W && y < H && map[Math.floor(y) * W + Math.floor(x)] === 1;
+        }
+        const radius = 3.5,
+          hull = Array.from({ length: 16 }, (_, i) => [
+            radius * Math.cos((i * Math.PI) / 8),
+            radius * Math.sin((i * Math.PI) / 8),
+          ]);
+        function fits(x, y) {
+          return floor(x, y) && hull.every(([dx, dy]) => floor(x + dx, y + dy));
+        }
+        function roomAt(x, y) {
+          return Object.entries(rooms).find(
+            ([, r]) => Math.abs(x - r[0]) < r[2] / 2 && Math.abs(y - r[1]) < r[3] / 2,
+          )?.[0];
+        }
+        function steerThroughPassage(x, y, dx, dy) {
+          if (roomAt(x, y)) return [dx, dy];
+          let best = null;
+          let nearest = hallRadius ** 2;
+          for (const passage of passages) {
+            const [cx, cy] = projectOnPassage(x, y, passage);
+            const distance = (cx - x) ** 2 + (cy - y) ** 2;
+            const alignment = dx * passage.ux + dy * passage.uy;
+            if (Math.abs(alignment) < 0.4 || distance >= nearest) continue;
+            nearest = distance;
+            best = { passage, cx, cy, sign: Math.sign(alignment) };
+          }
+          if (!best || !best.passage.ux || !best.passage.uy) return [dx, dy];
+          // Follow the slant while pulling gently away from the bulkheads.
+          const vx = best.passage.ux * best.sign + (best.cx - x) / 32;
+          const vy = best.passage.uy * best.sign + (best.cy - y) / 32;
+          const speed = Math.hypot(vx, vy);
+          return [vx / speed, vy / speed];
+        }
+        function ray(x, y, a, range) {
+          const dx = Math.cos(a),
+            dy = Math.sin(a);
+          for (let d = 1; d < range; d += 1.4)
+            if (!floor(x + dx * d, y + dy * d))
+              return [x + dx * Math.max(0, d - 1), y + dy * Math.max(0, d - 1)];
+          return [x + dx * range, y + dy * range];
+        }
+        const sightHalfAngle = 0.47;
+        const sightDepth = 56;
+        const sightReach = Math.ceil(sightDepth / Math.cos(sightHalfAngle));
+        function sight(x, y, angle) {
+          const points = [[x, y]];
+          for (let i = 0; i <= 36; i++) {
+            const a = -sightHalfAngle + (2 * sightHalfAngle * i) / 36;
+            points.push(ray(x, y, angle + a, sightDepth / Math.cos(a)));
+          }
+          return points;
+        }
+        // Test the drone's hull against the very same clipped polygon drawn in the camera.
+        function touches(poly, x, y, r = radius) {
+          let inside = false;
+          for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const [ax, ay] = poly[j],
+              [bx, by] = poly[i],
+              dx = bx - ax,
+              dy = by - ay;
+            if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
+            const t = Math.max(
+              0,
+              Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)),
+            );
+            if ((x - ax - t * dx) ** 2 + (y - ay - t * dy) ** 2 <= r * r) return true;
+          }
+          return inside;
+        }
+        function guardAt(path, distance) {
+          const d = distance % path.length,
+            seg = path.segments.find((s) => d < s.start + s.dist) || path.segments.at(-1);
+          const t = (d - seg.start) / seg.dist,
+            x = seg.x + seg.dx * t,
+            y = seg.y + seg.dy * t;
+          return { x, y, angle: seg.angle, cone: sight(x, y, seg.angle) };
+        }
+        function guardsAt(clock) {
+          return paths.map((p) => guardAt(p, p.offset * p.length + clock * p.speed));
+        }
+        const alarmSpeed = 1.2;
+        const flightSpeed = 35;
+        const extractionDuration = 10;
+        const seedLimit = 5;
+        const seedDuration = 15;
+        const seedRange = 140;
+        const seedRadius = 2;
+        class Run {
+          constructor() {
+            this.attempt = 0;
+            this.reset('ready');
+          }
+          reset(mode = 'play') {
+            this.mode = mode;
+            if (mode === 'play') this.attempt++;
+            this.player = { x: 90, y: 548, angle: 0 };
+            this.taken = new Set();
+            this.tap = null;
+            this.progress = 0;
+            this.clock = 0;
+            this.guards = guardsAt(0);
+            this.alertLeft = 0;
+            this.lastCell = '';
+            this.time = 0;
+            this.seeds = [];
+          }
+          get nearby() {
+            return cells.find(
+              (c) =>
+                Math.hypot(this.player.x - c.x, this.player.y - c.y) <= 11 && !this.taken.has(c.id),
+            );
+          }
+          get atDock() {
+            return roomAt(this.player.x, this.player.y) === 'air';
+          }
+          interact() {
+            if (this.mode !== 'play') return;
+            if (this.taken.size >= 2 && this.atDock) {
+              this.mode = 'won';
+              this.seeds = [];
+              return;
+            }
+            if (this.taken.size >= 2 || this.tap) return;
+            if (this.nearby) {
+              this.tap = this.nearby;
+              this.progress = 0;
+            }
+          }
+          plantSeed() {
+            if (this.mode !== 'play' || this.seeds.length >= seedLimit) return false;
+            const { x, y } = this.player;
+            this.seeds.push({ x, y, expires: this.time + seedDuration });
+            return true;
+          }
+          detect() {
+            const { x, y } = this.player;
+            return this.guards.findIndex(
+              (g) => Math.hypot(x - g.x, y - g.y) < 70 && touches(g.cone, x, y),
+            );
+          }
+          step(dt, dx = 0, dy = 0) {
+            if (this.mode !== 'play' && this.mode !== 'alarm') return;
+            this.time += dt;
+            this.clock += dt * (this.mode === 'alarm' ? alarmSpeed : 1);
+            this.guards = guardsAt(this.clock);
+            if (this.seeds.length)
+              this.seeds = this.seeds.filter(
+                (seed) =>
+                  this.time + 1e-8 < seed.expires &&
+                  !this.guards.some(
+                    (g) => Math.hypot(g.x - seed.x, g.y - seed.y) <= radius + seedRadius,
+                  ),
+              );
+            if (this.mode === 'alarm') {
+              this.alertLeft -= dt;
+              if (this.alertLeft <= 0) this.reset();
+              return;
+            }
+            const mag = Math.hypot(dx, dy),
+              p = this.player;
+            if (mag) {
+              const [ux, uy] = steerThroughPassage(p.x, p.y, dx / mag, dy / mag);
+              const sx = flightSpeed * dt * ux,
+                sy = flightSpeed * dt * uy;
+              if (fits(p.x + sx, p.y + sy)) {
+                p.x += sx;
+                p.y += sy;
+              } else {
+                if (fits(p.x + sx, p.y)) p.x += sx;
+                if (fits(p.x, p.y + sy)) p.y += sy;
+              }
+            }
+            const guard = this.detect();
+            if (guard >= 0) {
+              this.mode = 'alarm';
+              this.spottedBy = guard + 1;
+              this.alertLeft = 2.2;
+              this.tap = null;
+              this.progress = 0;
+              return;
+            }
+            if (this.tap) {
+              if (this.nearby !== this.tap) {
+                this.tap = null;
+                this.progress = 0;
+                return;
+              }
+              this.progress += dt;
+              if (this.progress + 1e-8 >= extractionDuration) {
+                this.taken.add(this.tap.id);
+                this.lastCell = this.tap.name;
+                this.tap = null;
+                this.progress = 0;
+              }
+            }
+          }
+        }
+        return {
+          rooms,
+          halls,
+          cells,
+          paths,
+          W,
+          H,
+          map,
+          floor,
+          fits,
+          roomAt,
+          ray,
+          sight,
+          sightDepth,
+          sightReach,
+          touches,
+          guardAt,
+          guardsAt,
+          radius,
+          flightSpeed,
+          extractionDuration,
+          seedLimit,
+          seedRange,
+          seedRadius,
+          Run,
+        };
+      })();
+    </script>
+    <script id="renderer">
+      'use strict';
+      function polygon(c, points) {
+        c.beginPath();
+        c.moveTo(...points[0]);
+        for (const p of points.slice(1)) c.lineTo(...p);
+        c.closePath();
+      }
+      // Soften the inside edge on a transparent layer without adding light outside the polygon.
+      function fillWithSoftEdge(c, points, fill, width) {
+        c.save();
+        polygon(c, points);
+        c.fillStyle = fill;
+        c.fill();
+        c.globalCompositeOperation = 'destination-out';
+        c.globalAlpha = 0.78;
+        c.strokeStyle = '#000';
+        c.lineWidth = width;
+        c.lineJoin = 'round';
+        c.filter = 'blur(2px)';
+        c.stroke();
+        c.restore();
+      }
+      function cameraView(canvas, mapCanvas, game) {
+        const ctx = canvas.getContext('2d');
+        const lightMask = document.createElement('canvas'),
+          mask = lightMask.getContext('2d'),
+          mapCtx = mapCanvas.getContext('2d');
+        const atlas = document.createElement('canvas'),
+          tile = 2;
+        atlas.width = Deck.W * tile;
+        atlas.height = Deck.H * tile;
+        const art = atlas.getContext('2d');
+        art.scale(tile, tile);
+        function circle(c, x, y, r, fill) {
+          c.beginPath();
+          c.arc(x, y, r, 0, 2 * Math.PI);
+          c.fillStyle = fill;
+          c.fill();
+        }
+        function line(c, pts, col, w = 1) {
+          c.beginPath();
+          c.moveTo(...pts[0]);
+          for (const p of pts.slice(1)) c.lineTo(...p);
+          c.strokeStyle = col;
+          c.lineWidth = w;
+          c.stroke();
+        }
+        function stencil(c, s, x, y, size, col) {
+          c.font = 'bold ' + size + 'px Consolas,monospace';
+          c.fillStyle = col;
+          c.fillText(s, x, y);
+        }
+        const roomShape = ([x, y, w, h]) => {
+          const l = x - w / 2,
+            t = y - h / 2,
+            r = x + w / 2,
+            b = y + h / 2,
+            k = 12;
+          return [
+            [l + k, t],
+            [r - k, t],
+            [r, t + k],
+            [r, b - k],
+            [r - k, b],
+            [l + k, b],
+            [l, b - k],
+            [l, t + k],
+          ];
+        };
+        let seed = 2231;
+        function rand() {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return seed / 4294967296;
+        }
+        // Bake deck machining, conduits, room fittings and local wayfinding once.
+        art.lineJoin = 'round';
+        art.lineCap = 'round';
+        for (const h of Deck.halls) {
+          line(art, h.points, '#677e7d', 25);
+          line(art, h.points, '#243336', 22);
+          line(art, h.points, '#41524e', 0.7);
+        }
+        for (const [id, r] of Object.entries(Deck.rooms)) {
+          const [x, y, w, h, name] = r,
+            l = x - w / 2,
+            t = y - h / 2;
+          art.save();
+          polygon(art, roomShape(r));
+          art.clip();
+          const g = art.createLinearGradient(l, t, l + w, t + h);
+          g.addColorStop(0, '#334649');
+          g.addColorStop(0.6, '#26383a');
+          g.addColorStop(1, '#354342');
+          art.fillStyle = g;
+          art.fillRect(l, t, w, h);
+          for (let yy = t + 3; yy < t + h; yy += 14) {
+            for (let xx = l - 11; xx < l + w; xx += 23) {
+              const off = (Math.round((yy - t - 3) / 14) % 2) * 11;
+              art.fillStyle = rand() > 0.47 ? 'rgba(130,156,149,.055)' : 'rgba(0,0,0,.08)';
+              art.fillRect(xx + off, yy, 22, 13);
+              art.strokeStyle = '#152829';
+              art.lineWidth = 0.5;
+              art.strokeRect(xx + off, yy, 22, 13);
+              art.fillStyle = '#667570';
+              art.fillRect(xx + off + 1.4, yy + 1.3, 0.55, 0.55);
+            }
+          }
+          for (let j = 0; j < 95; j++) {
+            const xx = l + rand() * w,
+              yy = t + rand() * h;
+            line(
+              art,
+              [
+                [xx, yy],
+                [xx + rand() * 4, yy - rand() * 1.8],
+              ],
+              '#536361',
+              0.24,
+            );
+          }
+          // Flush equipment plates keep the traversable silhouette legible.
+          for (let j = 0; j < 3; j++) {
+            const xx = l + 17 + 9 * j,
+              yy = t + 8;
+            art.fillStyle = '#192b2d';
+            art.fillRect(xx, yy, 8, 11);
+            art.strokeStyle = '#74857f';
+            art.lineWidth = 0.5;
+            art.strokeRect(xx, yy, 8, 11);
+            if (id === 'hydro') {
+              for (let k = 0; k < 3; k++) circle(art, xx + 3 + k, yy + 4 + k, 1.6, '#618c63');
+            } else if (['converter', 'pump', 'coolant'].includes(id)) {
+              circle(art, xx + 4, yy + 5, 3.2, '#74817c');
+              circle(art, xx + 4, yy + 5, 2.3, '#263a38');
+            } else
+              for (let k = 0; k < 4; k++)
+                line(
+                  art,
+                  [
+                    [xx + 2, yy + 2 + k * 2],
+                    [xx + 6, yy + 2 + k * 2],
+                  ],
+                  '#5c726f',
+                  0.5,
+                );
+          }
+          stencil(art, name.toUpperCase(), l + 15, t + h - 12, 5, '#82938a');
+          for (let k = 0; k < 5; k++) {
+            line(
+              art,
+              [
+                [l + 14 + k * 2, t + h - 9],
+                [l + 15 + k * 2, t + h - 11],
+              ],
+              '#ab9e70',
+              0.8,
+            );
+          }
+          art.restore();
+        }
+        // Wall outlines come from the same occupancy grid used by movement and sensors.
+        const wall = (x, y) => Deck.map[y * Deck.W + x];
+        art.fillStyle = '#9cae9d';
+        for (let y = 1; y < Deck.H - 1; y++)
+          for (let x = 1; x < Deck.W - 1; x++)
+            if (
+              wall(x, y) &&
+              (!wall(x - 1, y) || !wall(x + 1, y) || !wall(x, y - 1) || !wall(x, y + 1))
+            )
+              art.fillRect(x, y, 1, 1);
+        // Exit stencils are local directions, visible only when illuminated.
+        for (const h of Deck.halls) {
+          for (const reverse of [false, true]) {
+            const id = reverse ? h.b : h.a,
+              dest = reverse ? h.a : h.b,
+              p = reverse ? [...h.points].reverse() : h.points;
+            const [x, y, w, ht] = Deck.rooms[id],
+              [nx, ny] = p[1],
+              a = Math.atan2(ny - y, nx - x);
+            const ca = Math.cos(a),
+              sa = Math.sin(a),
+              dist = Math.min(
+                (w / 2 - 8) / Math.max(0.001, Math.abs(ca)),
+                (ht / 2 - 8) / Math.max(0.001, Math.abs(sa)),
+              );
+            art.save();
+            art.translate(x + ca * dist, y + sa * dist);
+            art.rotate(a);
+            line(
+              art,
+              [
+                [-2, -2],
+                [1, 0],
+                [-2, 2],
+              ],
+              '#b5c0aa',
+              0.7,
+            );
+            art.restore();
+          }
+        }
+        const lampRange = 111,
+          lampDiameter = 2 * lampRange;
+        const beam = document.createElement('canvas');
+        beam.width = beam.height = 448;
+        const bc = beam.getContext('2d');
+        const lamp = bc.createImageData(beam.width, beam.height);
+        function smoothstep(low, high, value) {
+          const t = Math.min(1, Math.max(0, (value - low) / (high - low)));
+          return t * t * (3 - 2 * t);
+        }
+        for (let y = 0; y < beam.height; y++)
+          for (let x = 0; x < beam.width; x++) {
+            const dx = (x + 0.5 - beam.width / 2) / (beam.width / 2),
+              dy = (y + 0.5 - beam.height / 2) / (beam.height / 2),
+              distance = Math.hypot(dx, dy);
+            const forward = smoothstep(0.28, 0.98, dx / distance);
+            const spot = forward * (1 - smoothstep(0.22, 1, distance));
+            const spill = 0.56 * (1 - smoothstep(0.13, 0.78, distance));
+            const closeGlow = 0.58 * (1 - smoothstep(0.04, 0.29, distance));
+            const opacity = 1 - (1 - spot) * (1 - spill) * (1 - closeGlow);
+            lamp.data[(y * beam.width + x) * 4 + 3] = Math.round(255 * opacity);
+          }
+        bc.putImageData(lamp, 0, 0);
+        const lampOcclusion = document.createElement('canvas');
+        lampOcclusion.width = lampOcclusion.height = lampDiameter;
+        const occlusion = lampOcclusion.getContext('2d');
+        let lampPosition;
+        const seedVisibility = new WeakMap();
+        function lightBoundary(x, y, range, samples) {
+          return Array.from({ length: samples }, (_, i) =>
+            Deck.ray(x, y, (2 * Math.PI * i) / samples, range),
+          );
+        }
+        function updateLampOcclusion({ x, y }) {
+          if (lampPosition?.x === x && lampPosition.y === y) return;
+          lampPosition = { x, y };
+          occlusion.clearRect(0, 0, lampDiameter, lampDiameter);
+          occlusion.save();
+          occlusion.translate(lampRange - x, lampRange - y);
+          fillWithSoftEdge(occlusion, lightBoundary(x, y, lampRange, 256), '#fff', 7);
+          occlusion.restore();
+        }
+        function seedBrightness(seed) {
+          return Math.min(1, (seed.expires - game.time) / 3);
+        }
+        function seedLight(c, seed) {
+          const { x, y } = seed,
+            range = Deck.seedRange;
+          if (!seedVisibility.has(seed)) seedVisibility.set(seed, lightBoundary(x, y, range, 192));
+          c.save();
+          polygon(c, seedVisibility.get(seed));
+          c.clip();
+          const glow = c.createRadialGradient(x, y, 0, x, y, range);
+          glow.addColorStop(0, '#fff');
+          glow.addColorStop(0.6, '#ffffffe0');
+          glow.addColorStop(1, '#fff0');
+          c.globalAlpha = seedBrightness(seed);
+          c.fillStyle = glow;
+          c.fillRect(x - range, y - range, range * 2, range * 2);
+          c.restore();
+        }
+        function seedMarker(c, seed, r) {
+          c.save();
+          c.globalAlpha = seedBrightness(seed);
+          circle(c, seed.x, seed.y, r * 1.8, '#70f5ba40');
+          circle(c, seed.x, seed.y, r, '#a7ffe0');
+          c.restore();
+        }
+        // Crop only the empty exterior above the deck so its full layout fits the display.
+        const mapTop = 152,
+          mapHeight = Deck.H - mapTop;
+        mapCanvas.width = 440;
+        const mapScale = mapCanvas.width / Deck.W;
+        mapCanvas.height = Math.ceil(mapHeight * mapScale);
+        let hadMapLight = false;
+        function drawMap() {
+          const seeds = game.seeds;
+          if (!seeds.length && !hadMapLight) return;
+          mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+          hadMapLight = Boolean(seeds.length);
+          if (!hadMapLight) return;
+          mapCtx.save();
+          mapCtx.scale(mapScale, mapScale);
+          mapCtx.translate(0, -mapTop);
+          for (const seed of seeds) seedLight(mapCtx, seed);
+          mapCtx.globalCompositeOperation = 'source-in';
+          mapCtx.drawImage(
+            atlas,
+            0,
+            mapTop * tile,
+            Deck.W * tile,
+            mapHeight * tile,
+            0,
+            mapTop,
+            Deck.W,
+            mapHeight,
+          );
+          mapCtx.globalCompositeOperation = 'source-over';
+          for (const seed of seeds) seedMarker(mapCtx, seed, 6);
+          mapCtx.restore();
+        }
+        const guardLight = document.createElement('canvas');
+        const guardRadius = Deck.sightReach + 1;
+        guardLight.width = guardLight.height = 2 * guardRadius;
+        const guardCtx = guardLight.getContext('2d');
+        function drawGuardSight({ x, y, angle, cone }, alarm) {
+          guardCtx.clearRect(0, 0, guardLight.width, guardLight.height);
+          guardCtx.save();
+          guardCtx.translate(guardRadius - x, guardRadius - y);
+          const glow = guardCtx.createLinearGradient(
+            x,
+            y,
+            x + Deck.sightDepth * Math.cos(angle),
+            y + Deck.sightDepth * Math.sin(angle),
+          );
+          glow.addColorStop(0, alarm ? 'rgba(255,85,63,.72)' : 'rgba(250,158,111,.52)');
+          glow.addColorStop(1, alarm ? 'rgba(255,73,49,.38)' : 'rgba(245,143,99,.28)');
+          fillWithSoftEdge(guardCtx, cone, glow, 6);
+          guardCtx.restore();
+          ctx.drawImage(guardLight, x - guardRadius, y - guardRadius);
+        }
+        function drone(c, x, y, a, guard = false, alarm = false) {
+          c.save();
+          c.translate(x, y);
+          c.rotate(a);
+          const accent = guard ? (alarm ? '#ff553d' : '#ffc19c') : '#a7ffe0';
+          circle(c, 0, 1.2, 4.8, '#071113');
+          for (const side of [-1, 1]) {
+            c.fillStyle = '#17282b';
+            c.fillRect(-2.7, side * 2.55 - 1, 4.8, 1.9);
+            c.fillStyle = guard ? '#ad8b74' : '#697e77';
+            c.fillRect(-2.2, side * 2.55 - 0.55, 3.8, 0.9);
+            c.fillStyle = accent;
+            c.fillRect(-3.4, side * 2.5 - 0.45, 1.1, 1);
+          }
+          polygon(c, [
+            [4.4, 0],
+            [1, -2.4],
+            [-2.8, -1.9],
+            [-3.4, 0],
+            [-2.8, 1.9],
+            [1, 2.4],
+          ]);
+          c.fillStyle = guard ? '#bd9d88' : '#c4d4c5';
+          c.fill();
+          c.strokeStyle = '#283935';
+          c.lineWidth = 0.45;
+          c.stroke();
+          circle(c, 0.5, 0, 1.65, '#24302f');
+          circle(c, 1.1, 0, 0.75, accent);
+          c.fillStyle = accent;
+          c.fillRect(3.2, -0.8, 0.9, 1.6);
+          c.restore();
+        }
+        let w = 0,
+          h = 0,
+          dpr = 1,
+          scale = 1;
+        function resize() {
+          const b = canvas.getBoundingClientRect();
+          w = Math.max(1, b.width);
+          h = Math.max(1, b.height);
+          dpr = Math.min(devicePixelRatio || 1, 2);
+          lightMask.width = canvas.width = Math.round(w * dpr);
+          lightMask.height = canvas.height = Math.round(h * dpr);
+          scale = Math.max(2.2, Math.min(5, w / 234, h / 140));
+        }
+        resize();
+        new ResizeObserver(resize).observe(canvas);
+        function setCamera(c, p) {
+          c.translate(w / 2, h / 2);
+          c.scale(scale, scale);
+          c.translate(-p.x, -p.y);
+        }
+        function draw() {
+          const p = game.player,
+            left = Math.max(0, p.x - w / (2 * scale)),
+            top = Math.max(0, p.y - h / (2 * scale)),
+            width = Math.min(Deck.W, p.x + w / (2 * scale)) - left,
+            height = Math.min(Deck.H, p.y + h / (2 * scale)) - top;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, w, h);
+          ctx.save();
+          setCamera(ctx, p);
+          ctx.drawImage(
+            atlas,
+            left * tile,
+            top * tile,
+            width * tile,
+            height * tile,
+            left,
+            top,
+            width,
+            height,
+          );
+          for (const c of Deck.cells) {
+            const taken = game.taken.has(c.id);
+            ctx.save();
+            ctx.translate(c.x, c.y);
+            ctx.fillStyle = '#161e20';
+            ctx.strokeStyle = taken ? '#526258' : '#c0a675';
+            ctx.lineWidth = 0.8;
+            ctx.fillRect(-4, -5, 8, 10);
+            ctx.strokeRect(-4, -5, 8, 10);
+            if (!taken) {
+              polygon(ctx, [
+                [1, -3.8],
+                [-2.2, 0.6],
+                [-0.5, 0.6],
+                [-1.2, 3.8],
+                [2.4, -0.6],
+                [0.7, -0.6],
+              ]);
+              ctx.fillStyle = '#f2d58a';
+              ctx.fill();
+            }
+            if (game.tap === c) {
+              ctx.beginPath();
+              ctx.arc(0, 0, 7.8, -Math.PI / 2, -Math.PI / 2 + (2 * Math.PI * game.progress) / 10);
+              ctx.strokeStyle = '#ffe39d';
+              ctx.lineWidth = 1.1;
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+          const alarm = game.mode === 'alarm';
+          for (const g of game.guards) {
+            if (
+              g.x + guardRadius < left ||
+              g.x - guardRadius > left + width ||
+              g.y + guardRadius < top ||
+              g.y - guardRadius > top + height
+            )
+              continue;
+            drawGuardSight(g, alarm);
+            drone(ctx, g.x, g.y, g.angle, true, alarm);
+          }
+          ctx.restore();
+          // Combine the drone lamp and seeds before masking the scene. Each light stops at walls.
+          updateLampOcclusion(p);
+          mask.setTransform(dpr, 0, 0, dpr, 0, 0);
+          mask.clearRect(0, 0, w, h);
+          mask.save();
+          setCamera(mask, p);
+          mask.save();
+          mask.translate(p.x, p.y);
+          mask.rotate(p.angle);
+          mask.drawImage(beam, -lampRange, -lampRange, lampDiameter, lampDiameter);
+          mask.restore();
+          mask.globalCompositeOperation = 'destination-in';
+          mask.drawImage(lampOcclusion, p.x - lampRange, p.y - lampRange);
+          mask.globalCompositeOperation = 'source-over';
+          for (const seed of game.seeds) seedLight(mask, seed);
+          mask.restore();
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.drawImage(lightMask, 0, 0, w, h);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.save();
+          setCamera(ctx, p);
+          for (const seed of game.seeds) seedMarker(ctx, seed, Deck.seedRadius);
+          // The camera sees its own drone even at a wall.
+          drone(ctx, p.x, p.y, p.angle);
+          ctx.restore();
+          ctx.globalCompositeOperation = 'destination-over';
+          ctx.fillStyle = '#030708';
+          ctx.fillRect(0, 0, w, h);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        return { draw, drawMap };
+      }
+    </script>
+    <script id="audio">
+      'use strict';
+      function stationAudio(context) {
+        const mix = context.createGain();
+        mix.gain.value = 0;
+        mix.connect(context.destination);
+        const targets = new WeakMap();
+        function ease(param, value, time, smoothing = 0.07) {
+          if (targets.get(param) === value) return;
+          targets.set(param, value);
+          param.cancelScheduledValues(time);
+          param.setTargetAtTime(value, time, smoothing);
+        }
+        function voice(type, frequency, output = mix) {
+          const oscillator = context.createOscillator();
+          const volume = context.createGain();
+          oscillator.type = type;
+          oscillator.frequency.value = frequency;
+          volume.gain.value = 0;
+          oscillator.connect(volume).connect(output);
+          return { oscillator, volume };
+        }
+        function note(type, frequency, level, start, duration, attack, release) {
+          const { oscillator, volume } = voice(type, frequency);
+          const end = start + duration;
+          volume.gain.setValueAtTime(0, start);
+          volume.gain.linearRampToValueAtTime(level, start + attack);
+          volume.gain.setValueAtTime(level, end - release);
+          volume.gain.linearRampToValueAtTime(0, end);
+          oscillator.onended = () => {
+            oscillator.disconnect();
+            volume.disconnect();
+          };
+          oscillator.start(start);
+          oscillator.stop(end);
+        }
+        const thrusterFilter = context.createBiquadFilter();
+        thrusterFilter.frequency.value = 340;
+        thrusterFilter.Q.value = 0.6;
+        thrusterFilter.connect(mix);
+        const thruster = voice('sawtooth', 80, thrusterFilter);
+        const collector = voice('sine', 150);
+        const collectorOvertone = voice('triangle', 300);
+        for (const { oscillator } of [thruster, collector, collectorOvertone]) oscillator.start();
+
+        const score = [
+          [
+            [38, 53, 57, 64],
+            [69, 76],
+          ],
+          [
+            [34, 53, 57, 62],
+            [65, 74],
+          ],
+          [
+            [43, 53, 58, 69],
+            [67, 74],
+          ],
+          [
+            [45, 52, 55, 62],
+            [64, 72],
+          ],
+        ];
+        const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
+        let chord = 0,
+          nextChord = 0,
+          lastPulse = -Infinity;
+        function update(active, speed = 0, extraction = null, proximity = 0) {
+          const now = context.currentTime;
+          ease(mix.gain, active ? 0.7 : 0, now, 0.035);
+          ease(thruster.volume.gain, 0.09 * speed, now);
+          ease(thruster.oscillator.frequency, 75 + 30 * speed, now);
+          const charging = extraction !== null;
+          const pitch = 150 + 180 * (extraction ?? 0);
+          ease(collector.volume.gain, charging ? 0.09 : 0, now);
+          ease(collectorOvertone.volume.gain, charging ? 0.026 : 0, now);
+          ease(collector.oscillator.frequency, pitch, now);
+          ease(collectorOvertone.oscillator.frequency, pitch * 2.01, now);
+          if (!active || context.state !== 'running') return;
+
+          if (now >= nextChord) {
+            const [pad, accents] = score[chord];
+            pad.forEach((midi, i) =>
+              note(i === 1 ? 'triangle' : 'sine', hz(midi), 0.038, now, 7.4, 1.6, 2.4),
+            );
+            accents.forEach((midi, i) =>
+              note('sine', hz(midi), 0.025, now + 1.8 + i * 1.8, 1.6, 0.07, 1.45),
+            );
+            chord = (chord + 1) % score.length;
+            nextChord = now + 6;
+          }
+          if (proximity <= 0) lastPulse = -Infinity;
+          else if (now - lastPulse >= 1.12 - 0.74 * proximity) {
+            note(
+              'triangle',
+              440 + 120 * proximity,
+              0.025 + 0.11 * proximity,
+              now,
+              0.18,
+              0.016,
+              0.14,
+            );
+            lastPulse = now;
+          }
+        }
+        function cellSecured() {
+          const now = context.currentTime;
+          note('sine', 660, 0.09, now, 0.26, 0.018, 0.21);
+          note('sine', 880, 0.08, now + 0.11, 0.42, 0.018, 0.37);
+        }
+        return { update, cellSecured };
+      }
+    </script>
+    <script id="controls">
+      'use strict';
+      const game = new Deck.Run();
+      const el = (id) => document.getElementById(id);
+      const view = el('view'),
+        camera = cameraView(view, el('deckMap'), game),
+        keys = new Set();
+      const start = el('start'),
+        pause = el('pause'),
+        action = el('action'),
+        touchSeed = el('touchSeed'),
+        soundToggle = el('soundToggle'),
+        notice = el('notice'),
+        track = document.querySelector('.track');
+      const rows = Deck.cells.map((c) => {
+        const li = document.createElement('li');
+        li.textContent = c.name;
+        el('items').append(li);
+        return li;
+      });
+      const legend = el('keyIcon').getContext('2d');
+      const legendGlow = legend.createLinearGradient(28, 20, 74, 20);
+      legendGlow.addColorStop(0, '#c79171');
+      legendGlow.addColorStop(1, '#875144');
+      fillWithSoftEdge(
+        legend,
+        [
+          [28, 20],
+          [74, 6],
+          [74, 34],
+        ],
+        legendGlow,
+        5,
+      );
+      legend.fillStyle = '#ffd1ad';
+      legend.beginPath();
+      legend.moveTo(31, 20);
+      legend.lineTo(12, 12);
+      legend.lineTo(16, 20);
+      legend.lineTo(12, 28);
+      legend.fill();
+      let paused = false,
+        accumulator = 0,
+        previous = 0,
+        refresh = 0,
+        mouseAiming = false,
+        throttle = 0;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      let audioContext,
+        audio,
+        soundEnabled = Boolean(AudioContextClass);
+      function syncSoundButton() {
+        soundToggle.setAttribute('aria-pressed', String(soundEnabled));
+        soundToggle.title = soundEnabled ? 'Mute music and effects' : 'Enable music and effects';
+      }
+      soundToggle.disabled = !AudioContextClass;
+      syncSoundButton();
+      function unlockSound() {
+        if (!soundEnabled) return;
+        try {
+          audioContext ??= new AudioContextClass();
+          audio ??= stationAudio(audioContext);
+          if (audioContext.state !== 'running') audioContext.resume().catch(() => {});
+        } catch {
+          soundEnabled = false;
+          soundToggle.disabled = true;
+          syncSoundButton();
+        }
+      }
+      function updateSound() {
+        if (!audio) return;
+        const active = soundEnabled && !paused && ['play', 'alarm'].includes(game.mode);
+        if (!active || game.mode === 'alarm') {
+          audio.update(active);
+          return;
+        }
+        const { x, y } = game.player;
+        const warningRange = 110;
+        const distance = Math.min(
+          warningRange,
+          ...game.guards.map((g) => Math.hypot(x - g.x, y - g.y)),
+        );
+        const charge = game.tap ? game.progress / Deck.extractionDuration : null;
+        audio.update(true, throttle, charge, 1 - distance / warningRange);
+      }
+      soundToggle.addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        syncSoundButton();
+        if (game.mode !== 'ready') unlockSound();
+        updateSound();
+      });
+      function setText(node, s) {
+        if (node.textContent !== s) node.textContent = s;
+      }
+      function hud() {
+        const mode = game.mode,
+          room = Deck.roomAt(game.player.x, game.player.y),
+          playing = mode === 'play';
+        setText(el('room'), Deck.rooms[room]?.[4] || 'Service passage');
+        setText(
+          el('feedState'),
+          paused
+            ? 'Paused'
+            : { ready: 'Standby', play: 'Live', alarm: 'Intrusion detected', won: 'Docked' }[mode],
+        );
+        setText(el('count'), game.taken.size + ' / 2');
+        setText(el('seedCount'), game.seeds.length + ' / ' + Deck.seedLimit);
+        touchSeed.hidden = !playing || paused;
+        touchSeed.disabled = game.seeds.length >= Deck.seedLimit;
+        setText(el('attempt'), 'Run ' + String(Math.max(1, game.attempt)).padStart(2, '0'));
+        Deck.cells.forEach((c, i) => rows[i].classList.toggle('taken', game.taken.has(c.id)));
+        start.hidden = !(mode === 'ready' || mode === 'won');
+        setText(start, mode === 'won' ? 'Deploy again →' : 'Deploy drone →');
+        pause.hidden = !(playing || mode === 'alarm');
+        setText(pause, paused ? 'Resume [Esc]' : 'Pause [Esc]');
+        const unload = game.taken.size >= 2 && game.atDock,
+          nearby = game.nearby;
+        action.hidden = !(
+          playing &&
+          !paused &&
+          !game.tap &&
+          (unload || (nearby && game.taken.size < 2))
+        );
+        setText(action, unload ? 'Unload cells [E]' : 'Extract cell [E]');
+        track.hidden = !game.tap;
+        if (game.tap) track.firstElementChild.style.width = game.progress * 10 + '%';
+        let message = 'Docked. Deploy when ready.';
+        if (playing) {
+          if (game.tap)
+            message = 'Extracting · ' + Math.min(10, game.progress).toFixed(1) + ' / 10.0 s';
+          else if (unload) message = 'Airlock secured. Unload both cells.';
+          else if (game.taken.size === 2) message = 'Cargo full. Return to the western airlock.';
+          else if (nearby) message = 'Socket in range. Stay beside it during extraction.';
+          else if (game.lastCell) message = game.lastCell + ' cell secured. Find one more.';
+          else
+            message = game.atDock
+              ? 'Move east into Receiving.'
+              : 'Look for a gold socket. Keep clear of guard sight.';
+        } else if (mode === 'alarm') message = 'Security active. Returning to the airlock.';
+        else if (mode === 'won') message = 'Cargo transferred to DRIFT.';
+        setText(el('msg'), message);
+        notice.hidden = !paused && mode !== 'alarm' && mode !== 'won';
+        notice.classList.toggle('alarm', !paused && mode === 'alarm');
+        if (!notice.hidden) {
+          setText(
+            notice.firstElementChild,
+            paused ? 'Feed paused' : mode === 'alarm' ? 'RED ALERT' : 'Cells recovered',
+          );
+          setText(
+            notice.lastElementChild,
+            paused
+              ? 'Resume to continue your run.'
+              : mode === 'alarm'
+                ? 'Guard ' +
+                  String(game.spottedBy).padStart(2, '0') +
+                  ' spotted you. Resetting to the airlock…'
+                : 'Both energy cells are aboard DRIFT.',
+          );
+        }
+      }
+      function deploy() {
+        paused = false;
+        keys.clear();
+        game.reset();
+        throttle = 0;
+        accumulator = 0;
+        previous = 0;
+        mouseAiming = false;
+        view.parentElement.focus();
+        unlockSound();
+        updateSound();
+        hud();
+      }
+      function togglePause() {
+        if (!['play', 'alarm'].includes(game.mode)) return;
+        paused = !paused;
+        keys.clear();
+        throttle = 0;
+        previous = 0;
+        accumulator = 0;
+        if (!paused) {
+          view.parentElement.focus();
+          unlockSound();
+        }
+        updateSound();
+        hud();
+      }
+      start.addEventListener('click', deploy);
+      pause.addEventListener('click', togglePause);
+      function interact() {
+        if (!paused) {
+          game.interact();
+          updateSound();
+          hud();
+        }
+      }
+      action.addEventListener('click', () => {
+        interact();
+        view.parentElement.focus();
+      });
+      function plantSeed() {
+        if (!paused && game.plantSeed()) {
+          hud();
+          camera.drawMap();
+        }
+      }
+      touchSeed.addEventListener('click', plantSeed);
+      const moveKeys = [
+        'KeyW',
+        'KeyA',
+        'KeyS',
+        'KeyD',
+        'ArrowUp',
+        'ArrowDown',
+        'ArrowLeft',
+        'ArrowRight',
+      ];
+      window.addEventListener('keydown', (e) => {
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        if (moveKeys.includes(e.code) && game.mode === 'play' && !paused) {
+          e.preventDefault();
+          keys.add(e.code);
+        }
+        if (e.repeat) return;
+        if (e.code === 'Escape') {
+          togglePause();
+          e.preventDefault();
+        }
+        if (e.code === 'KeyE') {
+          interact();
+          e.preventDefault();
+        }
+        if (e.code === 'KeyQ' && game.mode === 'play' && !paused) {
+          plantSeed();
+          e.preventDefault();
+        }
+      });
+      window.addEventListener('keyup', (e) => keys.delete(e.code));
+      function autoPause() {
+        keys.clear();
+        if (!paused && ['play', 'alarm'].includes(game.mode)) togglePause();
+      }
+      window.addEventListener('blur', autoPause);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) autoPause();
+      });
+      view.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'touch' || game.mode !== 'play' || paused) return;
+        const b = view.getBoundingClientRect(),
+          dx = e.clientX - b.left - b.width / 2,
+          dy = e.clientY - b.top - b.height / 2;
+        if (Math.hypot(dx, dy) > 5) {
+          game.player.angle = Math.atan2(dy, dx);
+          mouseAiming = true;
+        }
+      });
+      view.addEventListener('pointerleave', () => {
+        mouseAiming = false;
+      });
+      document.querySelectorAll('[data-key]').forEach((b) => {
+        b.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          b.setPointerCapture(e.pointerId);
+          keys.add(b.dataset.key);
+          mouseAiming = false;
+        });
+        const up = () => keys.delete(b.dataset.key);
+        b.addEventListener('pointerup', up);
+        b.addEventListener('lostpointercapture', up);
+      });
+      const stepTime = 1 / 60;
+      function loop(now) {
+        const elapsed = previous ? Math.min(0.25, (now - previous) / 1000) : 0;
+        previous = now;
+        if (!paused && ['play', 'alarm'].includes(game.mode)) {
+          const held = (a, b) => Number(keys.has(a) || keys.has(b));
+          const dx = held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft'),
+            dy = held('KeyS', 'ArrowDown') - held('KeyW', 'ArrowUp');
+          if (!mouseAiming && (dx || dy) && game.mode === 'play')
+            game.player.angle = Math.atan2(dy, dx);
+          accumulator += elapsed;
+          while (accumulator >= stepTime) {
+            const attempt = game.attempt,
+              cells = game.taken.size;
+            const { x, y } = game.player;
+            game.step(stepTime, dx, dy);
+            accumulator -= stepTime;
+            if (game.attempt !== attempt) {
+              throttle = 0;
+              keys.clear();
+              mouseAiming = false;
+              accumulator = 0;
+              break;
+            }
+            throttle = Math.min(
+              1,
+              Math.hypot(game.player.x - x, game.player.y - y) / (Deck.flightSpeed * stepTime),
+            );
+            if (game.taken.size > cells && soundEnabled && audioContext?.state === 'running')
+              audio.cellSecured();
+          }
+        }
+        camera.draw();
+        refresh += elapsed;
+        if (refresh >= 0.05) {
+          hud();
+          camera.drawMap();
+          updateSound();
+          refresh = 0;
+        }
+        requestAnimationFrame(loop);
+      }
+      hud();
+      camera.draw();
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
