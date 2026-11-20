@@ -5,13 +5,16 @@
  *
  * The dashboard is the ship's command hub: navigation (set a course on the
  * star chart), cameras (the view from outside), the ship's compartments,
- * tactical (combat drills on the hologram) and training. Live journey and systems readouts sit beside all of them.
+ * tactical (combat drills on the hologram, and the Vesper Station away
+ * mission while docked there) and training. Live journey and systems
+ * readouts sit beside all of them.
  */
 import { journeySeconds } from '../content/destinations';
 import type { DifficultyId } from '../combat/combatTypes';
 import type { CabinPowerStatus } from '../world/ship/cabinLighting';
 import type { RoomSpec } from '../content/shipLayout';
 import { VESSEL_NAME, roomReadouts } from '../content/shipSystems';
+import { VESPER_LOCATION_ID } from '../content/vesperDeckPlan';
 
 /** How a readout should be coloured: steady, doing something, or resting. */
 export type DashboardTone = 'ok' | 'active' | 'idle';
@@ -73,12 +76,15 @@ export interface DashboardCamera {
   readonly detail: string;
 }
 
-/** A fight the tactical tab offers. */
-export interface DashboardEngagement {
-  readonly difficulty: DifficultyId;
-  readonly title: string;
-  readonly detail: string;
-}
+/** What the tactical tab offers: a combat drill, or the drone's away mission. */
+export type DashboardEngagement =
+  | {
+      readonly kind: 'drill';
+      readonly difficulty: DifficultyId;
+      readonly title: string;
+      readonly detail: string;
+    }
+  | { readonly kind: 'salvage'; readonly title: string; readonly detail: string };
 
 export interface DashboardData {
   readonly power: CabinPowerStatus;
@@ -122,6 +128,8 @@ export interface DashboardInput {
   /** Travel-time scale for this run (gameConfig.travel.cruiseScale). */
   readonly cruiseScale: number;
   readonly training: readonly DashboardTraining[];
+  /** Have the Vesper cells been brought home this session? */
+  readonly salvageRecovered: boolean;
 }
 
 const PHASE_LABEL: Record<DashboardPhase, string> = {
@@ -148,16 +156,35 @@ const CAMERAS: readonly DashboardCamera[] = [
 
 const ENGAGEMENTS: readonly DashboardEngagement[] = [
   {
+    kind: 'drill',
     difficulty: 'rookie',
     title: 'Raider patrol · Rookie',
     detail: 'Three waves of light raiders. They shoot slowly and miss often.',
   },
   {
+    kind: 'drill',
     difficulty: 'ace',
     title: 'Raider patrol · Ace',
     detail: 'The same patrol, tougher and sharper. Shields will not save you for long.',
   },
 ];
+
+/**
+ * The tactical list: the Vesper away mission comes first while docked at
+ * Vesper Station (it only exists there), then the drills.
+ */
+export function engagements(input: DashboardInput): readonly DashboardEngagement[] {
+  const atVesper = input.phase === 'docked' && input.locationId === VESPER_LOCATION_ID;
+  if (!atVesper) return ENGAGEMENTS;
+  const salvage: DashboardEngagement = {
+    kind: 'salvage',
+    title: 'Away mission · Vesper Station blackout',
+    detail: input.salvageRecovered
+      ? 'Cells recovered. The service deck is still dark if you want another run.'
+      : 'Send the drone onto the dark service deck. Bring two energy cells home unseen.',
+  };
+  return [salvage, ...ENGAGEMENTS];
+}
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -271,7 +298,7 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
     systems: systemRows(input),
     navigation: navigation(input),
     cameras: CAMERAS,
-    tactical: ENGAGEMENTS,
+    tactical: engagements(input),
     rooms: input.rooms.map((room) => ({
       id: room.id,
       name: room.name,

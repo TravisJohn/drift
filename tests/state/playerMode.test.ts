@@ -28,6 +28,13 @@ describe('PlayerMode', () => {
     expect(() => mode.enterHelm()).toThrow(/cannot enter/);
   });
 
+  it('enters the Vesper away mission only from roaming, and returns to roaming after', () => {
+    const mode = new PlayerMode();
+    expect(mode.enterSalvage()).toEqual({ from: 'roaming', to: 'onSalvage' });
+    expect(() => mode.enterCombat()).toThrow(/cannot enter inCombat from onSalvage/);
+    expect(mode.exitToRoaming()).toEqual({ from: 'onSalvage', to: 'roaming' });
+  });
+
   it('exitToRoaming while already roaming is a programming error', () => {
     expect(() => new PlayerMode().exitToRoaming()).toThrow(/already roaming/);
   });

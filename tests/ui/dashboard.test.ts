@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { locations } from '../../src/content/destinations';
 import { shipLayout } from '../../src/content/shipLayout';
 import { VESSEL_NAME, roomReadouts } from '../../src/content/shipSystems';
+import { VESPER_LOCATION_ID } from '../../src/content/vesperDeckPlan';
 import { PlayerMode } from '../../src/state/playerMode';
 import { drawStarChart } from '../../src/ui/dashboard/starChart';
 import { type DashboardInput, buildDashboardData, cssColor } from '../../src/ui/dashboardModel';
@@ -18,6 +19,7 @@ const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
   destinationId: null,
   cruiseScale: 1,
   training: [{ id: 'placeholder', title: 'Training console' }],
+  salvageRecovered: false,
   ...over,
 });
 const value = (
@@ -148,6 +150,33 @@ describe('drawStarChart', () => {
   });
 });
 
+describe('buildDashboardData: tactical operations', () => {
+  it('offers only the combat drills away from Vesper Station', () => {
+    const kinds = buildDashboardData(input()).tactical.map((e) => e.kind);
+    expect(kinds).toEqual(['drill', 'drill']);
+  });
+
+  it('offers the Vesper away mission first, only while docked there', () => {
+    const docked = buildDashboardData(input({ locationId: 'vesper' })).tactical;
+    expect(docked.map((e) => e.kind)).toEqual(['salvage', 'drill', 'drill']);
+    const leaving = buildDashboardData(
+      input({ locationId: 'vesper', phase: 'departing', destinationId: 'aurelia' }),
+    ).tactical;
+    expect(leaving.map((e) => e.kind)).toEqual(['drill', 'drill']);
+  });
+
+  it('says when the Vesper cells are already home', () => {
+    const [mission] = buildDashboardData(
+      input({ locationId: 'vesper', salvageRecovered: true }),
+    ).tactical;
+    expect(mission?.detail).toContain('Cells recovered');
+  });
+
+  it('the away mission location is a real destination', () => {
+    expect(locations.some((l) => l.id === VESPER_LOCATION_ID)).toBe(true);
+  });
+});
+
 describe('DashboardOverlay', () => {
   let overlay: DashboardOverlay;
   let callbacks: {
@@ -156,6 +185,7 @@ describe('DashboardOverlay', () => {
     onSetCourse: Mock<DashboardCallbacks['onSetCourse']>;
     onExteriorView: Mock<DashboardCallbacks['onExteriorView']>;
     onCombat: Mock<DashboardCallbacks['onCombat']>;
+    onSalvage: Mock<DashboardCallbacks['onSalvage']>;
     onTraining: Mock<DashboardCallbacks['onTraining']>;
     onClose: Mock<DashboardCallbacks['onClose']>;
   };
@@ -175,6 +205,7 @@ describe('DashboardOverlay', () => {
       onSetCourse: vi.fn<DashboardCallbacks['onSetCourse']>(),
       onExteriorView: vi.fn<DashboardCallbacks['onExteriorView']>(),
       onCombat: vi.fn<DashboardCallbacks['onCombat']>(),
+      onSalvage: vi.fn<DashboardCallbacks['onSalvage']>(),
       onTraining: vi.fn<DashboardCallbacks['onTraining']>(),
       onClose: vi.fn<DashboardCallbacks['onClose']>(),
     };
@@ -311,6 +342,24 @@ describe('DashboardOverlay', () => {
     expect(callbacks.onCombat).toHaveBeenCalledWith('ace');
     expect(callbacks.onClose).not.toHaveBeenCalled();
     expect(overlay.isOpen).toBe(false);
+  });
+
+  it('docked at Vesper, the tactical tab leads with the away mission; Enter deploys the drone', () => {
+    overlay.close();
+    overlay.open(buildDashboardData(input({ locationId: 'vesper' })), callbacks);
+    press('Digit4');
+    expect(selected()).toContain('Vesper Station blackout');
+    press('Enter');
+    expect(callbacks.onSalvage).toHaveBeenCalledTimes(1);
+    expect(callbacks.onCombat).not.toHaveBeenCalled();
+    expect(overlay.isOpen).toBe(false);
+  });
+
+  it('adds the away mission to an open tactical tab when the ship docks at Vesper', () => {
+    press('Digit4');
+    expect(visible().textContent).not.toContain('Vesper');
+    overlay.update(buildDashboardData(input({ locationId: 'vesper' })));
+    expect(visible().textContent).toContain('Vesper Station blackout');
   });
 
   it('the dashboard can open straight onto the tactical tab (returning from a fight)', () => {

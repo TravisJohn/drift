@@ -1161,3 +1161,465 @@
     bottom: auto;
   }
 }
+
+/* ===== Vesper Station blackout: the drone camera feed (ui/vesperOverlay.ts) ===== */
+#vesper {
+  --bg: #090d10;
+  --edge: #2b3639;
+  --paper: #e9ece3;
+  --quiet: #9baba9;
+  --mint: #93e1c9;
+  --gold: #f4cc7c;
+  --red: #ff826c;
+  --mono: Consolas, 'Courier New', monospace;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'header header' 'feed rail' 'controls controls';
+  padding: clamp(10px, 2vw, 28px);
+  background: radial-gradient(ellipse at 22% 0, #182321 0, transparent 56%), var(--bg);
+  color: var(--paper);
+  font:
+    16px 'Segoe UI',
+    Arial,
+    sans-serif;
+  user-select: none;
+}
+
+#vesper *,
+#vesper *::before,
+#vesper *::after {
+  box-sizing: border-box;
+}
+
+#vesper [hidden] {
+  display: none !important;
+}
+
+#vesper .header {
+  grid-area: header;
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  padding-bottom: 14px;
+}
+
+#vesper .brand {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 12px;
+  font: 700 20px var(--mono);
+  letter-spacing: 0.13em;
+}
+
+#vesper .mark {
+  display: inline-flex;
+  gap: 3px;
+  transform: skew(-22deg);
+}
+
+#vesper .mark i {
+  height: 15px;
+  width: 5px;
+  background: var(--mint);
+}
+
+#vesper .mark i:last-child {
+  opacity: 0.45;
+}
+
+#vesper .title {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+
+#vesper .title h1 {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 44px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-weight: 640;
+}
+
+#vesper .title span,
+#vesper .tag {
+  color: var(--quiet);
+}
+
+#vesper .tag {
+  margin-left: auto;
+  font: 11px var(--mono);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+#vesper .feed {
+  grid-area: feed;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #030808;
+  border: 1px solid var(--edge);
+  box-shadow: 0 14px 65px #0008;
+}
+
+#vesper .feed:focus {
+  outline: none;
+}
+
+#vesper .view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+#vesper .sight {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid #88b29d15;
+  pointer-events: none;
+}
+
+#vesper .hud,
+#vesper .line,
+#vesper .railfoot,
+#vesper .controls,
+#vesper .items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#vesper .hud,
+#vesper .label,
+#vesper .railfoot {
+  font: 11px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#vesper .hud {
+  position: absolute;
+  inset: 17px 19px auto;
+  color: #b2c3bd;
+  pointer-events: none;
+}
+
+#vesper .live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#vesper .lampdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 8px #72e3bc80;
+}
+
+#vesper .minimap {
+  position: absolute;
+  top: 40px;
+  right: 19px;
+  width: clamp(125px, 22%, 230px);
+  margin: 0;
+  border: 1px solid #45615a;
+  background: #0a1213;
+  pointer-events: none;
+}
+
+#vesper .minimap figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 6px 7px;
+  border-bottom: 1px solid #2b403a;
+  color: #b0c6be;
+  font: 11px var(--mono);
+}
+
+#vesper .seeds {
+  color: var(--mint);
+  white-space: nowrap;
+}
+
+#vesper .deckmap {
+  display: block;
+  width: 100%;
+  height: auto;
+  background-image:
+    linear-gradient(#54847317 1px, transparent 1px),
+    linear-gradient(90deg, #54847317 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+#vesper .location {
+  position: absolute;
+  left: 19px;
+  bottom: 18px;
+  pointer-events: none;
+  text-shadow: 0 2px 5px #000;
+}
+
+#vesper .location .label {
+  color: #8aa29b;
+  font-size: 10px;
+}
+
+#vesper .location strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 23px;
+  font-weight: 530;
+  letter-spacing: -0.025em;
+}
+
+#vesper .notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 15px;
+  text-align: center;
+  background: #050b0dcc;
+}
+
+#vesper .notice strong {
+  font: bold clamp(22px, 3.2vw, 54px) var(--mono);
+  letter-spacing: 0.03em;
+}
+
+#vesper .notice span {
+  color: #ced8d1;
+}
+
+#vesper .notice.alarm {
+  background: linear-gradient(#3d0a08a6, #28070561);
+  box-shadow: inset 0 0 0 4px var(--red);
+  color: #ffb09d;
+}
+
+#vesper .notice .actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+#vesper .notice .actions .key {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-right: 8px;
+  padding: 1px 5px;
+  border: 1px solid #5b6f69;
+  border-radius: 3px;
+  color: var(--mint);
+  font: 11px var(--mono);
+}
+
+#vesper .rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 23px 22px 16px;
+  border: 1px solid var(--edge);
+  border-left: 0;
+  background: linear-gradient(125deg, #182021, #101619);
+}
+
+#vesper .rail h2 {
+  margin: 8px 0 0;
+  font-size: 26px;
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  font-weight: 600;
+}
+
+#vesper .rail p {
+  margin: 9px 0 0;
+  color: #bdc9c6;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+#vesper .label {
+  color: var(--quiet);
+}
+
+#vesper .mission {
+  color: var(--gold);
+}
+
+#vesper .counter {
+  color: var(--gold);
+  font: 18px var(--mono);
+}
+
+#vesper .items {
+  margin: 11px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+#vesper .items li {
+  justify-content: flex-start;
+  padding: 9px 0;
+  border-top: 1px solid #2b3939;
+  font-size: 14px;
+}
+
+#vesper .items li::before {
+  content: '◇';
+  color: var(--gold);
+  font: 22px/14px var(--mono);
+}
+
+#vesper .items li.taken,
+#vesper .items li.taken::before {
+  color: var(--mint);
+}
+
+#vesper .items li.taken::before {
+  content: '◆';
+}
+
+#vesper .guardkey {
+  padding-top: 12px;
+  border-top: 1px solid var(--edge);
+}
+
+#vesper .guardkey canvas {
+  width: 44px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+#vesper .guardkey p {
+  font-size: 13px;
+}
+
+#vesper .status {
+  min-height: 32px;
+  color: #cad6cf;
+  font: 12px var(--mono);
+  line-height: 1.45;
+}
+
+#vesper .track {
+  height: 5px;
+  margin: 8px 0;
+  background: #33413c;
+}
+
+#vesper .track i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--gold);
+}
+
+#vesper button {
+  padding: 10px 13px;
+  border: 1px solid #40524d;
+  border-radius: 3px;
+  background: #1c2b27;
+  color: var(--paper);
+  font: 13px var(--mono);
+  cursor: pointer;
+}
+
+#vesper button:hover,
+#vesper button:focus-visible {
+  outline: 1px solid var(--mint);
+}
+
+#vesper .primary {
+  width: 100%;
+  margin-top: 6px;
+  padding: 13px;
+  border-color: var(--mint);
+  background: var(--mint);
+  color: #10261d;
+  font-weight: bold;
+}
+
+#vesper .action {
+  margin-top: 6px;
+}
+
+#vesper .railfoot {
+  margin-top: auto;
+  color: #91a49b;
+  letter-spacing: 0.04em;
+}
+
+#vesper .railfoot button,
+#vesper .controls .sound {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+#vesper .controls {
+  grid-area: controls;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 11px 16px;
+  border: 1px solid var(--edge);
+  border-top: 0;
+  background: #101619;
+}
+
+#vesper .controls span {
+  color: #9cb0aa;
+  font-size: 12px;
+}
+
+#vesper .controls b {
+  margin-right: 5px;
+  color: #dde7df;
+  font: 12px var(--mono);
+}
+
+#vesper .controls .sound {
+  margin-left: auto;
+}
+
+#vesper .controls .sound[aria-pressed='true'] {
+  color: var(--mint);
+}
+
+@media (max-width: 860px) {
+  #vesper {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(260px, 1fr) auto auto;
+    grid-template-areas: 'header' 'feed' 'rail' 'controls';
+    overflow-y: auto;
+  }
+
+  #vesper .rail {
+    border-left: 1px solid var(--edge);
+    border-top: 0;
+  }
+
+  #vesper .guardkey,
+  #vesper .tag {
+    display: none;
+  }
+}

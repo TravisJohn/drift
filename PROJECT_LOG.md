@@ -1453,3 +1453,53 @@ Integration notes, to settle before any porting:
   the game's audio modules rather than run a second context.
 - All four files are untracked. A fresh clone of HEAD will not include
   them until they are committed.
+
+## 2026-11-21 - Vesper Station blackout playable in the game (branch `experiment/vesper`)
+
+The standalone Vesper prototype now runs inside DRIFT. Warp to Vesper
+Station, and once docked the ship AI points at the distress beacon. The
+command deck's Tactical tab (renamed "Operations" inside) then leads with
+"Away mission - Vesper Station blackout". Deploying opens the drone camera
+feed full-screen, the same pattern as combat. Unloading both cells or
+leaving from the pause menu returns to the bridge on the Tactical tab with
+an AI line. The mission stays on offer, marked recovered, after a win.
+
+Decisions:
+- Renderer: kept as a 2D drone-camera overlay rather than rebuilt in
+  three.js (author's choice: playable now). The 3D view is not drawn
+  while the feed is open.
+- Entry: an airlock-style action on the command deck, available only while
+  docked at Vesper. No automatic drop-in on arrival.
+- Git: the earlier warp work was committed on `experiment/graphics`; this
+  work is on `experiment/vesper`, cut from that commit.
+- Audio: the blackout synth keeps its own AudioContext, like the combat
+  sounds, warning beep and ship hum. This differs from the earlier
+  integration note, which suggested routing through the game's audio
+  modules. The game has no shared context to route into yet. The ship's
+  music and ambience keep playing under the score, as they do in combat.
+
+Modules:
+- `src/content/vesperDeckPlan.ts` - rooms, corridors, sockets, patrols as data.
+- `src/salvage/vesperDeck.ts` - occupancy grid, steering, sight, patrols
+  (pure; built lazily on first use).
+- `src/salvage/vesperRun.ts` - the rules; `step(dt, input)` returns events.
+- `src/salvage/vesperRenderer.ts` - 2D lamp, seeds, guard cones, seed map.
+- `src/salvage/vesperSounds.ts` - score and effects.
+- `src/ui/vesperOverlay.ts` - feed, rail, keys, pause, results.
+- Tuning lives in `gameConfig.salvage` and `gameConfig.audio.salvageSounds`.
+
+Controls are unchanged from the prototype, plus M to mute. From the pause, Q
+returns to DRIFT. Before deploying and after a win, Enter/Esc work as in
+the dialogs. Touch controls were not carried over.
+
+Verified: all 9 prototype tests were ported to vitest alongside new deck,
+run, overlay, dashboard and player-mode tests. 752 tests, lint, TypeScript
+and the production build passed. In the running game, warped to Vesper,
+heard the beacon line, deployed from the Tactical tab, flew, planted a
+seed, got caught (RED ALERT, reset to run 02), unloaded two cells and
+returned to the bridge with the recovery line. No console errors. Moving
+the drone into position for the capture and adding the two cells were set
+up by script in that check, not flown by hand.
+
+Pending: the author's hands-on playtest of the integrated mission. The
+standalone mechanics playtest from the handoff is still open as well.

@@ -16,7 +16,10 @@ export type NarrativeTrigger =
   | 'terminalOpened'
   | 'dashboardOpened'
   | 'terminalComplete'
-  | 'tetherWarning';
+  | 'tetherWarning'
+  | 'vesperBeacon'
+  | 'salvageRecovered'
+  | 'salvageAbandoned';
 
 export interface AiLine {
   readonly text: string;
@@ -58,6 +61,25 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
     { text: 'That is far enough, little one. Come back toward the hull.' },
     { text: 'Your signal is thinning. I would rather you stayed close.' },
     { text: 'Tether limit. The dark goes on forever; we do not.' },
+  ],
+  // Docked at Vesper Station: the away mission is offered.
+  vesperBeacon: [
+    {
+      text: 'The beacon is automated. Their service deck is dark, but two energy cells still read live. Send me in from the command deck, Tactical tab.',
+      delay: 3,
+    },
+    {
+      text: 'Vesper again. Their patrol drones never sleep. The deck is yours from the Tactical tab.',
+      delay: 3,
+    },
+  ],
+  salvageRecovered: [
+    { text: 'Both cells are aboard. The reserves will thank you, little one.' },
+    { text: 'Cargo logged. You were very quiet out there.' },
+  ],
+  salvageAbandoned: [
+    { text: 'Back aboard. The cells will keep; nothing on Vesper is going anywhere.' },
+    { text: 'Welcome home. We can try their deck again whenever you like.' },
   ],
 };
 

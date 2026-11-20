@@ -171,6 +171,11 @@ export const gameConfig = {
       enabled: true,
       level: 0.32,
     },
+    /** Vesper Station blackout score and effects, synthesized live (salvage/vesperSounds.ts). */
+    salvageSounds: {
+      enabled: true,
+      level: 0.7,
+    },
     /** The drone's tether alarm, synthesized live (audio/warningBeep.ts). */
     warningBeep: {
       enabled: true,
@@ -627,6 +632,45 @@ export const gameConfig = {
     },
     score: { hit: 10, raider: 150, commander: 500, hullBonus: 10, shieldBonus: 5 },
     rocks: { count: 9, minRadius: 34, maxRadius: 90, drift: 14 },
+  },
+
+  /**
+   * Vesper Station blackout (src/salvage): the drone's away mission on a
+   * dark service deck. Distances are deck survey units (the deck is
+   * 1184 x 908); times are seconds. Values come from the approved 2D
+   * prototype (prototypes/Vesper-Blackout.html) and stay tunable here.
+   */
+  salvage: {
+    /** Drone flight speed, units per second. */
+    flightSpeed: 35,
+    /** Drone hull radius for walls, sockets and guard sight. */
+    droneRadius: 3.5,
+    /** Where each run starts: inside the western airlock. */
+    start: { x: 90, y: 548 },
+    /** Cells to bring home, and how close a socket must be to tap it. */
+    cellsNeeded: 2,
+    socketReach: 11,
+    /** Uninterrupted seconds beside a socket to pull its cell. */
+    extractionSeconds: 10,
+    /** Guards: sight cone half-angle (radians) and forward depth. */
+    sightHalfAngle: 0.47,
+    sightDepth: 56,
+    /** Guards beyond this distance are not tested for sight (a fast reject). */
+    sightCheckRange: 70,
+    /** Patrol speed multiplier and seconds of RED ALERT before the reset. */
+    alarmSpeed: 1.2,
+    alarmSeconds: 2.2,
+    /** Light seeds: active at once, lifetime, light radius, contact radius. */
+    seedLimit: 5,
+    seedSeconds: 15,
+    seedRange: 140,
+    seedRadius: 2,
+    /** Drone lamp radius in deck units. */
+    lampRange: 111,
+    /** Patrollers closer than this start the proximity pulse. */
+    warningRange: 110,
+    /** Seconds the win banner stays before the results dialog. */
+    resultsDelay: 1.4,
   },
 
   /** Debug flags, toggled via Vite env (`VITE_DEBUG=true npm run dev`). */

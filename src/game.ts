@@ -61,6 +61,9 @@ import { DashboardOverlay, type DashboardTabId } from './ui/dashboardOverlay';
 import { CombatOverlay, type CombatOutcome } from './ui/combatOverlay';
 import { CombatSounds } from './combat/combatSounds';
 import type { DifficultyId } from './combat/combatTypes';
+import { type SalvageOutcome, VesperOverlay } from './ui/vesperOverlay';
+import { VesperSounds } from './salvage/vesperSounds';
+import { VESPER_LOCATION_ID } from './content/vesperDeckPlan';
 import { type DashboardData, buildDashboardData } from './ui/dashboardModel';
 import { type HologramPlacement, ShipHologram } from './world/ship/shipHologram';
 import { dashboardPose } from './travel/dashboardCamera';
@@ -148,6 +151,11 @@ export class Game {
   // --- Tactical combat: a 2D fight on the hologram (src/combat) ---
   private readonly combatSounds = new CombatSounds();
   private readonly combat = new CombatOverlay({ audio: this.combatSounds });
+  // --- Vesper Station blackout: the drone's away mission (src/salvage) ---
+  private readonly salvageSounds = new VesperSounds();
+  private readonly salvage = new VesperOverlay({ audio: this.salvageSounds });
+  /** True once both Vesper cells have been brought home this session. */
+  private salvageRecovered = false;
   private readonly hologram = new ShipHologram(shipLayout);
   private readonly bridgeRoom: RoomSpec;
   private readonly hologramAtTable: HologramPlacement;
@@ -346,9 +354,11 @@ export class Game {
     this.events.on('ship:phaseChanged', ({ to }) => {
       if (to === 'cruising') this.narrative.trigger('cruising');
     });
-    this.events.on('travel:arrived', () => {
+    this.events.on('travel:arrived', ({ destinationId }) => {
       this.narrative.trigger('arrived');
       this.warpIntercom.play('arrived');
+      // Vesper's distress beacon: point the player at the away mission.
+      if (destinationId === VESPER_LOCATION_ID) this.narrative.trigger('vesperBeacon');
     });
     this.events.on('terminal:opened', () => this.narrative.trigger('terminalOpened'));
 
@@ -425,6 +435,7 @@ export class Game {
     this.pauseMenu.close();
     this.dashboard.close();
     this.combat.close();
+    this.salvage.close();
     this.hologram.dispose();
     this.audio.dispose();
     this.powerCountdown.update(null);
@@ -433,6 +444,7 @@ export class Game {
     this.hum.dispose();
     this.warningBeep.dispose();
     this.combatSounds.dispose();
+    this.salvageSounds.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
@@ -482,7 +494,8 @@ export class Game {
       this.puzzleOverlay.isOpen ||
       this.pauseMenu.isOpen ||
       this.dashboard.isOpen ||
-      this.combat.isOpen;
+      this.combat.isOpen ||
+      this.salvage.isOpen;
 
     // Title / pause: time stands still, but the ship keeps breathing and
     // audio fades keep moving so nothing pops when the player returns.
@@ -533,6 +546,11 @@ export class Game {
       // The fight runs on the hologram; the bridge view waits behind it.
       this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
       this.combat.update(dt);
+    }
+
+    if (this.playerMode.mode === 'onSalvage') {
+      // The drone is aboard Vesper; the ship waits, docked, behind the feed.
+      this.salvage.update(dt);
     }
 
     if (this.playerMode.mode === 'atDashboard') {
@@ -727,6 +745,7 @@ export class Game {
       cruiseScale: gameConfig.travel.cruiseScale,
       // Every registered module appears here: the AWS training entry point.
       training: this.puzzles.ids().map((id) => ({ id, title: this.puzzles.get(id).title })),
+      salvageRecovered: this.salvageRecovered,
     });
   }
 
@@ -760,6 +779,10 @@ export class Game {
           this.closeDashboard();
           this.startCombat(difficulty);
         },
+        onSalvage: () => {
+          this.closeDashboard();
+          this.startSalvage();
+        },
         onTraining: (moduleId) => {
           this.closeDashboard();
           this.openTerminal('dashboard', moduleId);
@@ -788,6 +811,30 @@ export class Game {
     this.events.emit('combat:ended', { outcome, score });
     this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
     this.dashboardView = null;
+    this.openDashboard('tactical');
+  }
+
+  /**
+   * Send the drone aboard Vesper Station (the tactical tab offers this only
+   * while docked there). Its camera feed covers the screen until it returns.
+   */
+  private startSalvage(): void {
+    if (this.shipState.phase !== 'docked' || this.shipState.locationId !== VESPER_LOCATION_ID) {
+      return;
+    }
+    this.events.emit('player:modeChanged', this.playerMode.enterSalvage());
+    this.releaseControls();
+    this.salvageSounds.resume();
+    this.salvage.open({ onEnd: (outcome, runs) => this.endSalvage(outcome, runs) });
+    this.events.emit('salvage:started');
+  }
+
+  /** The drone is back aboard: return to the deck, on the tactical tab. */
+  private endSalvage(outcome: SalvageOutcome, runs: number): void {
+    if (outcome === 'recovered') this.salvageRecovered = true;
+    this.events.emit('salvage:ended', { outcome, runs });
+    this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+    this.narrative.trigger(outcome === 'recovered' ? 'salvageRecovered' : 'salvageAbandoned');
     this.openDashboard('tactical');
   }
 
@@ -840,6 +887,12 @@ export class Game {
   }
 
   private render(alpha: number): void {
+    if (this.salvage.isOpen) {
+      // Like a fight, the drone feed covers the screen: skip the 3D view.
+      this.salvage.render();
+      this.lastFrameAt = null;
+      return;
+    }
     if (this.combat.isOpen) {
       // The fight covers the screen: draw only the hologram, and leave the
       // 3D view (and its resolution tuning) alone until it closes.

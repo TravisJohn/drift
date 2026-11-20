@@ -6,7 +6,6 @@
  * leave the dashboard when used (the overlay closes first); the ship tab
  * lights the selected compartment on the hologram.
  */
-import type { DifficultyId } from '../../combat/combatTypes';
 import type {
   DashboardCamera,
   DashboardData,
@@ -182,30 +181,33 @@ export class TacticalPanel extends ListPanel<DashboardEngagement> {
 
   constructor(
     data: DashboardData,
-    private readonly onEngage: (difficulty: DifficultyId) => void,
+    private readonly onEngage: (engagement: DashboardEngagement) => void,
   ) {
-    super('tactical', 'Combat drills');
+    super('tactical', 'Operations');
     this.update(data);
   }
 
   update(data: DashboardData): void {
-    // The drills never change during play; only build the list once.
-    if (this.items.length === data.tactical.length && this.items.length > 0) return;
+    // Rebuild only when the offer changes (docking at Vesper adds the away mission).
+    const same =
+      this.items.length === data.tactical.length &&
+      this.items.every((item, i) => item.detail === data.tactical[i]?.detail);
+    if (same && this.items.length > 0) return;
     this.items = data.tactical;
-    this.renderList('No drills loaded.');
+    this.renderList('No operations available.');
   }
 
   activate(): void {
     const engagement = this.items[this.selected];
-    if (engagement) this.onEngage(engagement.difficulty);
+    if (engagement) this.onEngage(engagement);
   }
 
   protected renderItem(engagement: DashboardEngagement): HTMLElement {
-    const node = el('div', 'engagement');
+    const node = el('div', `engagement ${engagement.kind}`);
     node.append(
       el('div', 'dest-name', engagement.title),
       el('div', 'dest-blurb', engagement.detail),
-      el('div', 'cta', 'Engage ▸'),
+      el('div', 'cta', engagement.kind === 'salvage' ? 'Deploy drone ▸' : 'Engage ▸'),
     );
     return node;
   }

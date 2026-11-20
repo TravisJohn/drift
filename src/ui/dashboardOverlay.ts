@@ -5,7 +5,8 @@
  * Around it: a status column on the left (live journey and systems) and a
  * command panel on the right with five tabs - Navigation (star chart, set
  * course), Cameras (go outside), Ship (compartments, lit on the hologram),
- * Tactical (combat drills) and Training.
+ * Tactical (combat drills, and the Vesper away mission while docked
+ * there) and Training.
  *
  * Keyboard: 1-5 or A/D (←→) switch tabs; W/S (↑↓) move the selection;
  * Enter acts on it; T starts training from any tab; Esc or E closes.
@@ -44,6 +45,8 @@ export interface DashboardCallbacks {
   onExteriorView(): void;
   /** Start a tactical fight. The dashboard has closed. */
   onCombat(difficulty: DifficultyId): void;
+  /** Send the drone aboard Vesper Station. The dashboard has closed. */
+  onSalvage(): void;
   /** Start a training module. The dashboard has closed. */
   onTraining(moduleId: string): void;
   /** The player closed the dashboard. */
@@ -99,7 +102,11 @@ export class DashboardOverlay {
         (id) => this.callbacks?.onRoomSelected(id),
         (command) => this.callbacks?.onPowerCommand(command),
       ),
-      new TacticalPanel(data, (difficulty) => this.leave((c) => c.onCombat(difficulty))),
+      new TacticalPanel(data, (engagement) =>
+        this.leave((c) =>
+          engagement.kind === 'salvage' ? c.onSalvage() : c.onCombat(engagement.difficulty),
+        ),
+      ),
       new TrainingPanel(data, (id) => this.leave((c) => c.onTraining(id))),
     ];
 
