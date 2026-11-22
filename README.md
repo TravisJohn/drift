@@ -2,6 +2,8 @@
 
 DRIFT is a quiet browser space game. You are a maintenance drone aboard a research vessel whose crew is in cryosleep. Explore the ship, fly tactical combat drills, and warp to Vesper Station to recover energy cells from a station under blackout.
 
+**Play now: [drift-psi-swart.vercel.app](https://drift-psi-swart.vercel.app)** (desktop browser with keyboard and mouse)
+
 Built with Three.js, TypeScript and Vite. No backend, no accounts, no environment variables.
 
 ## Project status

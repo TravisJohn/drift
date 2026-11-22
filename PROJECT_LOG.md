@@ -1571,3 +1571,17 @@ Existing Prettier drift in 48 older files was left alone.
   without rewriting history.
 - Pending: the author imports the repo into Vercel (needs their sign-in) and
   smoke-tests the live URL.
+
+### 2026-11-22 - Live on Vercel
+
+- Vercel project `drift` (Travis team) imported from GitHub `main` through
+  the Git integration; Vercel's GitHub app was given access to this repo
+  only. Every push to `main` now redeploys production.
+- Production URL: https://drift-psi-swart.vercel.app (linked from the README
+  and the GitHub repo page).
+- Verified signed out: page and assets load, the bundle matches the clean
+  local build, the private soundtrack paths return 404. In Chrome the title
+  screen, Begin, flight and the AI line worked with no console errors, and
+  Continue appeared after a reload.
+- Not yet checked on the live site by hand: the warp to Vesper and the
+  blackout mission.
