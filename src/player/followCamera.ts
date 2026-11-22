@@ -47,6 +47,13 @@ export class FollowCamera {
     return this._yaw;
   }
 
+  /** Frame the forward viewport as control returns from navigation. */
+  faceBow(): void {
+    this._yaw = 0;
+    this.pitch = 0;
+    this.smoothedPosition = null;
+  }
+
   /** Apply an accumulated look drag (called once per fixed update). */
   applyLook(delta: LookDelta): void {
     // 'turn' swings the view the way the mouse went; 'grab' the other way.

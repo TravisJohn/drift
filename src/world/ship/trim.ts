@@ -4,9 +4,8 @@
  * every window and door, a light bar over each doorway, window glass.
  *
  * Pure: derived from the same layout data and wall boxes as the ship
- * itself, so the details always fit the walls. Trim is visual only - none
- * of it becomes a collider, and all of it stays within a few centimetres
- * of surfaces that already are.
+ * itself, so the details always fit the walls. Only the glass gains
+ * collision when the hull is sealed for travel.
  */
 import type { RoomId, ShipLayout } from '../../content/shipLayout';
 import { type Vec3, vec3 } from '../../physics/vec3';

@@ -5,7 +5,7 @@
  * Mouse: hover highlights, click engages. The menu owns its own key
  * listener while open so menu keys never leak into gameplay.
  */
-import type { LocationSpec } from '../content/destinations';
+import { journeySeconds, type LocationSpec } from '../content/destinations';
 
 export interface DestinationMenuCallbacks {
   onSelect(destinationId: string): void;
@@ -52,7 +52,7 @@ export class DestinationMenu {
 
       const eta = document.createElement('span');
       eta.className = 'eta';
-      eta.textContent = `ETA ${Math.round(loc.travelTime)}s`;
+      eta.textContent = `ETA ${Math.round(journeySeconds(loc.travelTime))}s`;
 
       const name = document.createElement('div');
       name.className = 'name';
@@ -65,7 +65,10 @@ export class DestinationMenu {
 
       item.append(name, blurb);
       item.addEventListener('mouseenter', () => this.select(index));
-      item.addEventListener('click', () => this.engage());
+      item.addEventListener('click', () => {
+        this.select(index);
+        this.engage();
+      });
       panel.appendChild(item);
     });
 

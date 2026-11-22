@@ -217,6 +217,7 @@ export function worldVertices(mesh: THREE.Mesh): {
 export function useBakedLight(
   material: THREE.MeshStandardMaterial,
   waver: { value: number },
+  roomLevel: { value: number } = { value: 1 },
 ): void {
   material.onBeforeCompile = (shader) => {
     const insert = (source: string, anchor: string, addition: string): string => {
@@ -226,14 +227,15 @@ export function useBakedLight(
       return source.replace(anchor, `${anchor}\n${addition}`);
     };
     shader.uniforms.uLightWaver = waver;
+    shader.uniforms.uRoomLevel = roomLevel;
     shader.vertexShader = insert(
       insert(
         shader.vertexShader,
         '#include <common>',
-        'attribute vec3 bakedLight;\nattribute vec3 bakedWaver;\nuniform float uLightWaver;\nvarying vec3 vBakedLight;',
+        'attribute vec3 bakedLight;\nattribute vec3 bakedWaver;\nuniform float uLightWaver;\nuniform float uRoomLevel;\nvarying vec3 vBakedLight;',
       ),
       '#include <begin_vertex>',
-      'vBakedLight = bakedLight + bakedWaver * uLightWaver;',
+      'vBakedLight = (bakedLight + bakedWaver * uLightWaver) * uRoomLevel;',
     );
     shader.fragmentShader = insert(
       insert(shader.fragmentShader, '#include <common>', 'varying vec3 vBakedLight;'),

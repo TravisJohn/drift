@@ -20,6 +20,7 @@ import {
   type WallOpening,
   exteriorSpans,
   segmentWall,
+  sideGeometry,
   sharedEdge,
 } from './layoutGeometry';
 import { validateLayout } from './validateLayout';
@@ -238,6 +239,7 @@ export function buildShipBoxes(layout: ShipLayout): ShipBox[] {
 export interface ShipWorld {
   readonly group: THREE.Group;
   readonly colliders: readonly BoxCollider[];
+  readonly sealedColliders: readonly BoxCollider[];
   readonly spawn: Vec3;
   /**
    * Brightness multiplier of the wavering lights (engineering's tired
@@ -251,7 +253,7 @@ export interface ShipWorld {
    */
   applySurfaceArt(surface: ArtSurface, art: SurfaceArt): void;
   /** Animate breathing glows and light flicker. `elapsed` is seconds. */
-  update(elapsed: number): void;
+  update(elapsed: number, roomLevel?: number): void;
   dispose(): void;
 }
 
@@ -319,6 +321,8 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   const colliders: BoxCollider[] = [];
   const textures: PanelTextures[] = [];
   const pulses: GlowPulse[] = [];
+  const cabinFixtures = new Map<THREE.MeshStandardMaterial, number>();
+  const cabinLevel = { value: 1 };
   const lightWaver = { value: 1 };
   const frames = buildFrames(layout, gameConfig.interior.frameSpacing);
   const roomLights = [...buildRoomLights(layout), ...buildAccentLights(frames.glows)];
@@ -338,7 +342,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       bakeVertexLight(positions, normals, roomLights, colliders, ownCollider),
     );
     if (!patched.has(material)) {
-      useBakedLight(material, lightWaver);
+      useBakedLight(material, lightWaver, cabinLevel);
       patched.add(material);
     }
   };
@@ -390,6 +394,24 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     surfaceMaterials.set(kind, mesh.material);
   });
 
+  // Extend each seal outward so a collision with nearby equipment cannot
+  // push the sphere through thin glass and out of the cabin in one step.
+  const sealedColliders = [...colliders];
+  for (const window of layout.windows) {
+    const room = layout.rooms.find((room) => room.id === window.roomId)!;
+    const { axis, at } = sideGeometry(room, window.side);
+    const sign = window.side === 'west' || window.side === 'north' ? -1 : 1;
+    const depth = layout.wallThickness + 2 * gameConfig.drone.radius;
+    const middle = at + sign * gameConfig.drone.radius;
+    const y = (layout.windowBottom + layout.windowTop) / 2;
+    const height = layout.windowTop - layout.windowBottom;
+    sealedColliders.push(
+      axis === 'x'
+        ? boxFromCenterSize(vec3(window.center, y, middle), vec3(window.width, height, depth))
+        : boxFromCenterSize(vec3(middle, y, window.center), vec3(depth, height, window.width)),
+    );
+  }
+
   // --- Trim and frames: baseboards, coves, door and window frames, ribs,
   // beams, lights, glass. One mesh per look; coloured lights are per room.
   const BAKED_TRIM: readonly TrimRole[] = ['baseboard', 'cove', 'frame', 'rib'];
@@ -416,6 +438,9 @@ export function buildShip(layout: ShipLayout): ShipWorld {
     mesh.name = roomId ? `trim:${role}:${roomId}` : `trim:${role}`;
     group.add(mesh);
     if (BAKED_TRIM.includes(role)) lit.push(mesh);
+    if (role === 'accent' && material instanceof THREE.MeshStandardMaterial) {
+      cabinFixtures.set(material, material.emissiveIntensity);
+    }
     if (role === 'accent' && roomId === 'cryo') {
       // The cryo bay's rib lights breathe with the pods.
       pulses.push({
@@ -430,7 +455,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   for (const mesh of lit) bake(mesh);
 
   layout.props.forEach((prop, index) => {
-    const visual = buildPropVisual(prop.kind, prop.size, index * 1.7);
+    const visual = buildPropVisual(prop.kind, prop.size, index * 1.7, prop.instrument);
     visual.group.position.set(prop.center.x, prop.center.y, prop.center.z);
     group.add(visual.group);
     visual.group.traverse((obj) => {
@@ -465,6 +490,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       stripMaterial,
     );
     strip.position.set(cx, layout.ceilingHeight - 0.03, cz);
+    cabinFixtures.set(stripMaterial, STRIP_GLOW);
     group.add(strip);
     if (room.id === 'cryo') {
       // The cryo bay's strip breathes with the pods.
@@ -481,6 +507,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
   return {
     group,
     colliders,
+    sealedColliders,
     spawn: layout.spawn,
     lightWaver,
     applySurfaceArt(surface, art) {
@@ -503,10 +530,14 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       }
       material.needsUpdate = true;
     },
-    update(elapsed: number) {
+    update(elapsed: number, roomLevel = 1) {
+      cabinLevel.value = roomLevel;
+      for (const [material, base] of cabinFixtures) material.emissiveIntensity = base * roomLevel;
       for (const p of pulses) {
+        const glow = p.base + p.amplitude * Math.sin(2 * Math.PI * p.frequency * elapsed + p.phase);
+        // Cryo fixtures breathe with the room. Equipment retains its standby glow.
         p.material.emissiveIntensity =
-          p.base + p.amplitude * Math.sin(2 * Math.PI * p.frequency * elapsed + p.phase);
+          glow * (cabinFixtures.has(p.material) ? roomLevel : 0.55 + 0.45 * roomLevel);
       }
       // Two incommensurate sines read as organic waver, stay deterministic.
       lightWaver.value = 1 + 0.05 * Math.sin(elapsed * 9.7) + 0.04 * Math.sin(elapsed * 23.3 + 1.3);

@@ -5,7 +5,8 @@
  * Around it: a status column on the left (live journey and systems) and a
  * command panel on the right with five tabs - Navigation (star chart, set
  * course), Cameras (go outside), Ship (compartments, lit on the hologram),
- * Tactical (combat drills) and Training.
+ * Tactical (combat drills, and the Vesper away mission while docked
+ * there) and Training.
  *
  * Keyboard: 1-5 or A/D (←→) switch tabs; W/S (↑↓) move the selection;
  * Enter acts on it; T starts training from any tab; Esc or E closes.
@@ -23,20 +24,29 @@ import {
   heading,
   wrapIndex,
 } from './dashboard/panel';
-import { CamerasPanel, ShipPanel, TacticalPanel, TrainingPanel } from './dashboard/simplePanels';
+import {
+  CamerasPanel,
+  ShipPanel,
+  TacticalPanel,
+  TrainingPanel,
+  type PowerCommand,
+} from './dashboard/simplePanels';
 import type { DifficultyId } from '../combat/combatTypes';
 
 export type { DashboardTabId } from './dashboard/panel';
 
 export interface DashboardCallbacks {
+  onPowerCommand(command: PowerCommand): void;
   /** A compartment was picked (lit on the hologram); null when none is. */
   onRoomSelected(roomId: string | null): void;
-  /** Engage a course (only offered while docked). The dashboard stays open. */
+  /** Engage a course (only offered while docked). The dashboard has closed. */
   onSetCourse(destinationId: string): void;
   /** Go outside: the exterior camera. The dashboard has closed. */
   onExteriorView(): void;
   /** Start a tactical fight. The dashboard has closed. */
   onCombat(difficulty: DifficultyId): void;
+  /** Send the drone aboard Vesper Station. The dashboard has closed. */
+  onSalvage(): void;
   /** Start a training module. The dashboard has closed. */
   onTraining(moduleId: string): void;
   /** The player closed the dashboard. */
@@ -85,10 +95,18 @@ export class DashboardOverlay {
     this.callbacks = callbacks;
 
     this.panels = [
-      new NavigationPanel(data, (id) => this.callbacks?.onSetCourse(id)),
+      new NavigationPanel(data, (id) => this.leave((c) => c.onSetCourse(id))),
       new CamerasPanel(data, () => this.leave((c) => c.onExteriorView())),
-      new ShipPanel(data, (id) => this.callbacks?.onRoomSelected(id)),
-      new TacticalPanel(data, (difficulty) => this.leave((c) => c.onCombat(difficulty))),
+      new ShipPanel(
+        data,
+        (id) => this.callbacks?.onRoomSelected(id),
+        (command) => this.callbacks?.onPowerCommand(command),
+      ),
+      new TacticalPanel(data, (engagement) =>
+        this.leave((c) =>
+          engagement.kind === 'salvage' ? c.onSalvage() : c.onCombat(engagement.difficulty),
+        ),
+      ),
       new TrainingPanel(data, (id) => this.leave((c) => c.onTraining(id))),
     ];
 
@@ -226,6 +244,8 @@ export class DashboardOverlay {
           panel?.move(1);
           break;
         case 'Enter':
+          if (event.target instanceof HTMLButtonElement && event.target.closest('.power-controls'))
+            return;
           panel?.activate();
           this.renderFooter();
           break;

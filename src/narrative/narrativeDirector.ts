@@ -69,6 +69,12 @@ export class NarrativeDirector {
       text = text.replaceAll('{destination}', context.destination);
     }
 
+    // Flight announcements take the speaker immediately, even during a briefing.
+    if (trigger === 'departed' || trigger === 'arrived') {
+      this.queue.length = 0;
+      this.current = null;
+      this.gapRemaining = 0;
+    }
     this.queue.push({
       text,
       delay: line.delay ?? 0,

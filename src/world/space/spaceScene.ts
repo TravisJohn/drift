@@ -12,6 +12,7 @@ import type { LocationSpec } from '../../content/destinations';
 import type { ShipLayout } from '../../content/shipLayout';
 import type { Vec3 } from '../../physics/vec3';
 import type { TravelView } from '../../travel/travelDirector';
+import { WarpTrails } from './warpTrails';
 import { Starfield } from './starfield';
 import { SkyDome } from './skyDome';
 import { CelestialBodies } from './celestialBodies';
@@ -30,6 +31,7 @@ export class SpaceScene {
 
   private readonly sky: SkyDome;
   private readonly starfield: Starfield;
+  private readonly warp = new WarpTrails();
   private elapsed = 0;
   private readonly bodies: CelestialBodies;
   private readonly exterior: ShipExterior;
@@ -46,7 +48,13 @@ export class SpaceScene {
     key.position.copy(KEY_LIGHT_DIRECTION);
     this.scene.add(key, new THREE.AmbientLight(0x1a2030, 1.2));
 
-    this.scene.add(this.sky.group, this.starfield.points, this.bodies.group, this.exterior.group);
+    this.scene.add(
+      this.sky.group,
+      this.starfield.points,
+      this.warp.lines,
+      this.bodies.group,
+      this.exterior.group,
+    );
   }
 
   /**
@@ -69,6 +77,7 @@ export class SpaceScene {
     this.elapsed += dt;
     this.sky.update(this.elapsed);
     this.starfield.update(dt, view.driftSpeed, this.elapsed);
+    this.warp.update(dt, view.driftSpeed);
     this.bodies.update(this.elapsed);
     this.bodies.apply(view);
     this.exterior.setEngineIntensity(view.engineIntensity);
@@ -96,6 +105,7 @@ export class SpaceScene {
   dispose(): void {
     this.sky.dispose();
     this.starfield.dispose();
+    this.warp.dispose();
     this.bodies.dispose();
     this.exterior.dispose();
   }

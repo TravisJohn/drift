@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { locations } from '../../src/content/destinations';
 import { shipLayout } from '../../src/content/shipLayout';
 import { VESSEL_NAME, roomReadouts } from '../../src/content/shipSystems';
+import { VESPER_LOCATION_ID } from '../../src/content/vesperDeckPlan';
 import { PlayerMode } from '../../src/state/playerMode';
 import { drawStarChart } from '../../src/ui/dashboard/starChart';
 import { type DashboardInput, buildDashboardData, cssColor } from '../../src/ui/dashboardModel';
 import { type DashboardCallbacks, DashboardOverlay } from '../../src/ui/dashboardOverlay';
 
 const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
+  companions: [],
+  power: { automatic: true, voice: true, busy: false, status: 'Cooldown in 120s' },
   rooms: shipLayout.rooms,
   podCount: 4,
   phase: 'docked',
@@ -17,6 +20,7 @@ const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
   destinationId: null,
   cruiseScale: 1,
   training: [{ id: 'placeholder', title: 'Training console' }],
+  salvageRecovered: false,
   ...over,
 });
 const value = (
@@ -89,14 +93,14 @@ describe('buildDashboardData: navigation (set course from the dashboard)', () =>
     const nav = buildDashboardData(input()).navigation;
     expect(nav.canSetCourse).toBe(true);
     expect(nav.here.id).toBe('anchorage');
-    expect(nav.destinations.map((d) => d.id)).toEqual(['aurelia', 'cinder']);
+    expect(nav.destinations.map((d) => d.id)).toEqual(['aurelia', 'cinder', 'vesper']);
     expect(nav.courseId).toBeNull();
     expect(nav.shipAt).toEqual(nav.here.chart);
   });
 
   it('shows travel times as this run will take them (cruise scale applied)', () => {
     const nav = buildDashboardData(input({ cruiseScale: 0.5 })).navigation;
-    expect(nav.destinations.find((d) => d.id === 'aurelia')?.etaSeconds).toBe(45);
+    expect(nav.destinations.find((d) => d.id === 'aurelia')?.etaSeconds).toBe(55);
   });
 
   it('underway: the course is locked and the ship moves along the route', () => {
@@ -129,7 +133,7 @@ describe('drawStarChart', () => {
 
   it('marks every known place, with the ship on the chart', () => {
     const svg = drawStarChart(nav, null);
-    expect(marks(svg).sort()).toEqual(['anchorage', 'aurelia', 'cinder']);
+    expect(marks(svg).sort()).toEqual(['anchorage', 'aurelia', 'cinder', 'vesper']);
     expect(svg.querySelector('.ship-marker')).not.toBeNull();
   });
 
@@ -147,13 +151,42 @@ describe('drawStarChart', () => {
   });
 });
 
+describe('buildDashboardData: tactical operations', () => {
+  it('offers only the combat drills away from Vesper Station', () => {
+    const kinds = buildDashboardData(input()).tactical.map((e) => e.kind);
+    expect(kinds).toEqual(['drill', 'drill']);
+  });
+
+  it('offers the Vesper away mission first, only while docked there', () => {
+    const docked = buildDashboardData(input({ locationId: 'vesper' })).tactical;
+    expect(docked.map((e) => e.kind)).toEqual(['salvage', 'drill', 'drill']);
+    const leaving = buildDashboardData(
+      input({ locationId: 'vesper', phase: 'departing', destinationId: 'aurelia' }),
+    ).tactical;
+    expect(leaving.map((e) => e.kind)).toEqual(['drill', 'drill']);
+  });
+
+  it('says when the Vesper cells are already home', () => {
+    const [mission] = buildDashboardData(
+      input({ locationId: 'vesper', salvageRecovered: true }),
+    ).tactical;
+    expect(mission?.detail).toContain('Cells recovered');
+  });
+
+  it('the away mission location is a real destination', () => {
+    expect(locations.some((l) => l.id === VESPER_LOCATION_ID)).toBe(true);
+  });
+});
+
 describe('DashboardOverlay', () => {
   let overlay: DashboardOverlay;
   let callbacks: {
+    onPowerCommand: Mock<DashboardCallbacks['onPowerCommand']>;
     onRoomSelected: Mock<DashboardCallbacks['onRoomSelected']>;
     onSetCourse: Mock<DashboardCallbacks['onSetCourse']>;
     onExteriorView: Mock<DashboardCallbacks['onExteriorView']>;
     onCombat: Mock<DashboardCallbacks['onCombat']>;
+    onSalvage: Mock<DashboardCallbacks['onSalvage']>;
     onTraining: Mock<DashboardCallbacks['onTraining']>;
     onClose: Mock<DashboardCallbacks['onClose']>;
   };
@@ -168,10 +201,12 @@ describe('DashboardOverlay', () => {
   beforeEach(() => {
     overlay = new DashboardOverlay();
     callbacks = {
+      onPowerCommand: vi.fn<DashboardCallbacks['onPowerCommand']>(),
       onRoomSelected: vi.fn<DashboardCallbacks['onRoomSelected']>(),
       onSetCourse: vi.fn<DashboardCallbacks['onSetCourse']>(),
       onExteriorView: vi.fn<DashboardCallbacks['onExteriorView']>(),
       onCombat: vi.fn<DashboardCallbacks['onCombat']>(),
+      onSalvage: vi.fn<DashboardCallbacks['onSalvage']>(),
       onTraining: vi.fn<DashboardCallbacks['onTraining']>(),
       onClose: vi.fn<DashboardCallbacks['onClose']>(),
     };
@@ -190,17 +225,52 @@ describe('DashboardOverlay', () => {
     expect(tabs).toEqual(['1Navigation', '2Cameras', '3Ship', '4Tactical', '5Training']);
   });
 
+  it('runs a cabin cycle from Ship and reflects live control state', () => {
+    press('Digit3');
+    const buttons = visible().querySelectorAll<HTMLButtonElement>('.power-controls button');
+    const [automatic, start, voice] = [...buttons];
+    automatic!.click();
+    start!.click();
+    voice!.click();
+    expect(callbacks.onPowerCommand.mock.calls).toEqual([['automatic'], ['start'], ['voice']]);
+    overlay.update(
+      buildDashboardData(
+        input({
+          power: { automatic: false, voice: false, busy: true, status: 'Conserving power' },
+        }),
+      ),
+    );
+    expect(start!.disabled).toBe(true);
+    expect(automatic!.getAttribute('aria-pressed')).toBe('false');
+    expect(voice!.textContent).toBe('Voice off');
+    expect(visible().textContent).toContain('Conserving power');
+  });
+
+  it('lists newly recruited companions with distinct colours', () => {
+    press('Digit3');
+    expect(visible().textContent).toContain('recruit a scout');
+    overlay.update(buildDashboardData(input({ companions: [1, 2] })));
+    expect(visible().textContent).toContain('Autonomous console inspections');
+    const scouts = [...visible().querySelectorAll('.companion-list li')];
+    expect(scouts.map((scout) => scout.textContent)).toEqual([
+      'Vesper Scout 01',
+      'Vesper Scout 02',
+    ]);
+    const colours = scouts.map((scout) => scout.querySelector('span')!.style.backgroundColor);
+    expect(new Set(colours).size).toBe(2);
+  });
+
   it('opens on navigation, with no compartment lit on the hologram', () => {
     expect(overlay.activeTab).toBe('navigation');
     expect(visible().querySelector('.star-chart')).not.toBeNull();
     expect(callbacks.onRoomSelected).toHaveBeenLastCalledWith(null);
   });
 
-  it('Enter engages the chosen destination and keeps the dashboard open', () => {
+  it('Enter engages the chosen destination and dismisses the dashboard', () => {
     press('ArrowDown');
     press('Enter');
     expect(callbacks.onSetCourse).toHaveBeenCalledWith('cinder');
-    expect(overlay.isOpen).toBe(true);
+    expect(overlay.isOpen).toBe(false);
   });
 
   it('the Engage button names the destination and sets the course', () => {
@@ -287,6 +357,24 @@ describe('DashboardOverlay', () => {
     expect(callbacks.onCombat).toHaveBeenCalledWith('ace');
     expect(callbacks.onClose).not.toHaveBeenCalled();
     expect(overlay.isOpen).toBe(false);
+  });
+
+  it('docked at Vesper, the tactical tab leads with the away mission; Enter deploys the drone', () => {
+    overlay.close();
+    overlay.open(buildDashboardData(input({ locationId: 'vesper' })), callbacks);
+    press('Digit4');
+    expect(selected()).toContain('Vesper Station blackout');
+    press('Enter');
+    expect(callbacks.onSalvage).toHaveBeenCalledTimes(1);
+    expect(callbacks.onCombat).not.toHaveBeenCalled();
+    expect(overlay.isOpen).toBe(false);
+  });
+
+  it('adds the away mission to an open tactical tab when the ship docks at Vesper', () => {
+    press('Digit4');
+    expect(visible().textContent).not.toContain('Vesper');
+    overlay.update(buildDashboardData(input({ locationId: 'vesper' })));
+    expect(visible().textContent).toContain('Vesper Station blackout');
   });
 
   it('the dashboard can open straight onto the tactical tab (returning from a fight)', () => {

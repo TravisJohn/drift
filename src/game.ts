@@ -16,10 +16,15 @@ import { InputManager } from './core/input';
 import { gameConfig } from './config/gameConfig';
 import { DroneController } from './player/droneController';
 import { DroneVisual } from './player/droneVisual';
+import { ShipCompanions } from './player/shipCompanions';
+import { GameProgress } from './state/gameProgress';
 import { FollowCamera } from './player/followCamera';
 import { shipLayout } from './content/shipLayout';
 import { buildShip, type ShipWorld } from './world/ship/shipBuilder';
-import { START_LOCATION_ID, getLocation, locations } from './content/destinations';
+import { CabinPowerCycle } from './world/ship/cabinLighting';
+import { WarpIntercom } from './audio/warpIntercom';
+import { PowerCountdown } from './audio/powerCountdown';
+import { getLocation, locations } from './content/destinations';
 import { ShipState } from './state/shipState';
 import { PlayerMode } from './state/playerMode';
 import { InteractionSystem } from './interaction/interactionSystem';
@@ -58,6 +63,9 @@ import { DashboardOverlay, type DashboardTabId } from './ui/dashboardOverlay';
 import { CombatOverlay, type CombatOutcome } from './ui/combatOverlay';
 import { CombatSounds } from './combat/combatSounds';
 import type { DifficultyId } from './combat/combatTypes';
+import { type SalvageOutcome, VesperOverlay } from './ui/vesperOverlay';
+import { VesperSounds } from './salvage/vesperSounds';
+import { cellRoomIds, VESPER_LOCATION_ID } from './content/vesperDeckPlan';
 import { type DashboardData, buildDashboardData } from './ui/dashboardModel';
 import { type HologramPlacement, ShipHologram } from './world/ship/shipHologram';
 import { dashboardPose } from './travel/dashboardCamera';
@@ -78,6 +86,9 @@ export class Game {
   private readonly input: InputManager;
   private readonly drone: DroneController;
   private readonly droneVisual: DroneVisual;
+  private readonly progress = new GameProgress();
+  private readonly companions = new ShipCompanions();
+  private companionTime = 0;
   private readonly followCamera: FollowCamera;
   private readonly ship: ShipWorld;
 
@@ -99,6 +110,9 @@ export class Game {
   /** True once the tether warning has been spoken for this excursion. */
   private tetherWarned = false;
   private travelView: TravelView;
+  private travelTickMs = 0;
+  private readonly warpIntercom = new WarpIntercom();
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly playerMode = new PlayerMode();
   private readonly interaction = new InteractionSystem();
   private readonly interactables: Interactable[] = [];
@@ -113,7 +127,7 @@ export class Game {
   /** The drone's tether alarm: one beat drives the beep and the antenna flash. */
   private readonly warningBeep = new WarningBeep();
   private readonly warningBeat = new WarningBeat();
-  // Music is piped through the intercom; every other sound stays direct.
+  // Ship music is piped through the intercom. The Vesper score plays directly.
   private readonly audio = new AudioManager(
     undefined,
     undefined,
@@ -128,6 +142,8 @@ export class Game {
   private readonly shipBowZ = Math.min(...shipLayout.rooms.map((r) => r.minZ));
   private readonly shipSternZ = Math.max(...shipLayout.rooms.map((r) => r.maxZ));
   private elapsed = 0;
+  private readonly cabinPower = new CabinPowerCycle();
+  private readonly powerCountdown = new PowerCountdown();
   private cryoGain = 0;
 
   // --- M7: app flow and the fps probe ---
@@ -140,6 +156,11 @@ export class Game {
   // --- Tactical combat: a 2D fight on the hologram (src/combat) ---
   private readonly combatSounds = new CombatSounds();
   private readonly combat = new CombatOverlay({ audio: this.combatSounds });
+  // --- Vesper Station blackout: the drone's away mission (src/salvage) ---
+  private readonly salvageSounds = new VesperSounds(undefined, () =>
+    this.audio.isLoopPlaying('music_vesper'),
+  );
+  private readonly salvage = new VesperOverlay({ audio: this.salvageSounds });
   private readonly hologram = new ShipHologram(shipLayout);
   private readonly bridgeRoom: RoomSpec;
   private readonly hologramAtTable: HologramPlacement;
@@ -221,9 +242,11 @@ export class Game {
     );
 
     // Out in space the drone is kept within reach of the hull's box.
-    this.drone = new DroneController(this.ship.spawn, this.spaceScene.hullBounds());
+    const start = this.progress.canContinue ? vec3(0, 1.3, -12.6) : this.ship.spawn;
+    this.drone = new DroneController(start, this.spaceScene.hullBounds());
     this.droneVisual = new DroneVisual();
-    this.scene.add(this.droneVisual.group, this.droneVisual.groundShadow);
+    for (const id of this.progress.snapshot.companions) this.companions.add(id, this.companionTime);
+    this.scene.add(this.droneVisual.group, this.droneVisual.groundShadow, this.companions.group);
 
     this.followCamera = new FollowCamera(0, 0.35);
     this.input = new InputManager({ onLookChange: this.onLookChange });
@@ -232,7 +255,7 @@ export class Game {
     this.renderer.domElement.addEventListener('click', this.onCanvasClick);
 
     // --- M3: journey state, HUD, and the helm interactable ---
-    this.shipState = new ShipState(START_LOCATION_ID, {
+    this.shipState = new ShipState(this.progress.snapshot.locationId, {
       departDuration: gameConfig.travel.departDuration,
       arriveDuration: gameConfig.travel.arriveDuration,
     });
@@ -254,8 +277,23 @@ export class Game {
     });
 
     this.events.on('travel:requested', ({ destinationId }) => {
+      // The helm is within reach through the forward glass while docked.
+      // Require the drone to be on the cabin side before sealing that opening.
+      const { x, y, z } = this.drone.snapshot.position;
+      if (
+        z < this.bridgeRoom.minZ + gameConfig.drone.radius ||
+        x < this.bridgeRoom.minX ||
+        x > this.bridgeRoom.maxX ||
+        y < 0 ||
+        y > shipLayout.ceilingHeight
+      ) {
+        this.hud.setPrompt('Return to the bridge to engage warp');
+        return;
+      }
+      this.travelTickMs = performance.now();
       const cruise = getLocation(destinationId).travelTime * gameConfig.travel.cruiseScale;
       const change = this.shipState.beginTravel(destinationId, cruise);
+      this.followCamera.faceBow();
       this.events.emit('ship:phaseChanged', change);
       this.events.emit('travel:departed', { destinationId });
       this.refreshStatus();
@@ -316,15 +354,19 @@ export class Game {
 
     // The ship AI reacts to the journey; the director decides what it says.
     this.events.on('app:started', () => this.narrative.trigger('started'));
-    this.events.on('travel:departed', ({ destinationId }) =>
-      this.narrative.trigger('departed', { destination: getLocation(destinationId).name }),
-    );
+    this.events.on('travel:departed', () => {
+      this.narrative.trigger('departed');
+      this.warpIntercom.play('departed');
+    });
     this.events.on('ship:phaseChanged', ({ to }) => {
       if (to === 'cruising') this.narrative.trigger('cruising');
     });
-    this.events.on('travel:arrived', ({ destinationId }) =>
-      this.narrative.trigger('arrived', { destination: getLocation(destinationId).name }),
-    );
+    this.events.on('travel:arrived', ({ destinationId }) => {
+      this.narrative.trigger('arrived');
+      this.warpIntercom.play('arrived');
+      // Vesper's distress beacon: point the player at the away mission.
+      if (destinationId === VESPER_LOCATION_ID) this.narrative.trigger('vesperBeacon');
+    });
     this.events.on('terminal:opened', () => this.narrative.trigger('terminalOpened'));
 
     // --- M6: the soundscape follows the journey (author-supplied files) ---
@@ -332,11 +374,8 @@ export class Game {
     connectAudioLibrary((library) => this.audio.setLibrary(library));
     this.cryoRoom = shipLayout.rooms.find((r) => r.id === 'cryo') ?? null;
     this.events.on('app:started', () => {
-      this.audio.playLoop('amb_ship_hum');
-      this.audio.playLoop('music_roaming');
-      this.audio.playLoop('sfx_drone_hover');
-      this.audio.playLoop('amb_cryo_bay');
       this.audio.setLoopGain('amb_cryo_bay', 0); // swells only inside the bay
+      this.setDockedSoundscape(true);
     });
     this.events.on('ship:phaseChanged', ({ to }) => {
       if (to === 'departing') {
@@ -371,7 +410,10 @@ export class Game {
 
   /** Boot to the title screen; the loop renders the dim ship behind it. */
   start(): void {
-    this.titleScreen.show({ onBegin: () => this.beginSession() });
+    this.titleScreen.show({
+      onBegin: () => this.beginSession(),
+      dockedAt: this.progress.canContinue ? getLocation(this.shipState.locationId).name : undefined,
+    });
     this.spaceScene.prepare(this.renderer);
     this.calibrateResolution();
     this.loop.start();
@@ -385,6 +427,7 @@ export class Game {
     this.warningBeep.resume();
     this.combatSounds.resume();
     this.appState.start();
+    this.progress.dock(this.shipState.locationId);
     this.events.emit('app:started');
   }
 
@@ -400,18 +443,23 @@ export class Game {
     this.pauseMenu.close();
     this.dashboard.close();
     this.combat.close();
+    this.salvage.close();
     this.hologram.dispose();
     this.audio.dispose();
+    this.powerCountdown.update(null);
+    this.warpIntercom.pause();
     this.intercom.dispose();
     this.hum.dispose();
     this.warningBeep.dispose();
     this.combatSounds.dispose();
+    this.salvageSounds.dispose();
     this.hud.dispose();
     this.ship.dispose();
     this.spaceScene.dispose();
     this.pipeline.dispose();
     this.environment.dispose();
     this.droneVisual.dispose();
+    this.companions.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -455,14 +503,13 @@ export class Game {
       this.puzzleOverlay.isOpen ||
       this.pauseMenu.isOpen ||
       this.dashboard.isOpen ||
-      this.combat.isOpen;
+      this.combat.isOpen ||
+      this.salvage.isOpen;
 
     // Title / pause: time stands still, but the ship keeps breathing and
     // audio fades keep moving so nothing pops when the player returns.
     if (!this.appState.isPlaying) {
-      this.elapsed += dt;
-      this.ship.update(this.elapsed);
-      this.hologram.update(this.elapsed);
+      this.animateCabin(dt);
       this.audio.update(dt);
       this.input.consumeLookDelta();
       return;
@@ -476,9 +523,14 @@ export class Game {
     }
 
     // The journey continues regardless of what the player is doing (D3).
-    for (const change of this.shipState.update(dt)) {
+    // Flight uses elapsed play time even when the physics loop drops catch-up steps.
+    const now = performance.now();
+    const travelDt = this.shipState.phase === 'docked' ? 0 : (now - this.travelTickMs) / 1000;
+    this.travelTickMs = now;
+    for (const change of this.shipState.update(travelDt)) {
       this.events.emit('ship:phaseChanged', change);
       if (change.to === 'docked' && change.destinationId) {
+        this.progress.dock(this.shipState.locationId);
         this.events.emit('travel:arrived', { destinationId: change.destinationId });
         // The exterior shot of a journey ends when the journey does.
         if (this.playerMode.mode === 'cinematic') this.exitCinematic();
@@ -491,20 +543,26 @@ export class Game {
     this.hud.setSubtitle(this.narrative.update(dt));
 
     // M6: breathing glows, light waver, and the soundscape.
-    this.elapsed += dt;
-    this.ship.update(this.elapsed);
-    this.hologram.update(this.elapsed);
+    this.cabinPower.advance(dt);
+    this.animateCabin(dt);
+    this.companionTime += dt;
+    this.companions.update(this.companionTime);
     this.hologram.setMarker(this.drone.snapshot.position);
-    this.updateAudio(dt);
 
     // M4: space keeps drifting whatever the player is doing.
     this.travelView = computeTravelView(this.shipSnapshot());
     this.spaceScene.update(dt, this.travelView);
+    this.updateAudio(dt);
 
     if (this.playerMode.mode === 'inCombat') {
       // The fight runs on the hologram; the bridge view waits behind it.
       this.dashboardView = dashboardPose(this.bridgeRoom, this.elapsed);
       this.combat.update(dt);
+    }
+
+    if (this.playerMode.mode === 'onSalvage') {
+      // The drone is aboard Vesper; the ship waits, docked, behind the feed.
+      this.salvage.update(dt);
     }
 
     if (this.playerMode.mode === 'atDashboard') {
@@ -534,7 +592,7 @@ export class Game {
         this.updateHint();
       }
       const actions = this.input.sample();
-      this.drone.update(dt, actions, this.followCamera.yaw, this.ship.colliders);
+      this.drone.update(dt, actions, this.followCamera.yaw, this.flightColliders);
 
       const focusChange = this.interaction.update(this.drone.snapshot.position, this.interactables);
       if (focusChange) {
@@ -546,26 +604,51 @@ export class Game {
           this.events.emit('interact:focused', { interactableId: focusChange.focused.id });
         }
       }
-      if (interactPressed) {
+      if (interactPressed && !overlayWasOpen) {
         this.interaction.focused?.onInteract();
       }
     } else {
       // Menus/overlays own the keys; the drone settles where it is.
       this.input.consumeLookDelta();
-      this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.ship.colliders);
+      this.drone.update(dt, IDLE_INPUT, this.followCamera.yaw, this.flightColliders);
     }
+  }
+
+  private get flightColliders() {
+    return this.shipState.phase === 'docked' ? this.ship.colliders : this.ship.sealedColliders;
+  }
+
+  private animateCabin(dt: number): void {
+    this.elapsed += dt;
+    const level = this.cabinPower.level;
+    const hearCabin = this.appState.isPlaying && this.playerMode.mode !== 'onSalvage';
+    this.powerCountdown.update(hearCabin ? this.cabinPower.voiceOffset : null);
+    this.scene.environmentIntensity = gameConfig.rendering.environmentIntensity * level;
+    this.ship.update(this.elapsed, level);
+    this.hologram.update(this.elapsed);
   }
 
   /** Freeze the simulation and show the pause menu (Esc, M7). */
   private openPause(): void {
+    this.warpIntercom.pause();
     this.appState.pause();
     this.events.emit('app:paused');
     this.pauseMenu.open({
       onResume: () => {
+        this.travelTickMs = performance.now();
+        this.warpIntercom.resume();
         this.appState.resume();
         this.events.emit('app:resumed');
       },
     });
+  }
+
+  /** Crossfade these ship loops on leaving for Vesper and returning to the bridge. */
+  private setDockedSoundscape(audible: boolean): void {
+    for (const loop of ['amb_ship_hum', 'music_roaming', 'sfx_drone_hover', 'amb_cryo_bay']) {
+      if (audible) this.audio.playLoop(loop);
+      else this.audio.stopLoop(loop);
+    }
   }
 
   /** Per-step audio gains: hover follows speed, cryo ambience proximity. */
@@ -598,12 +681,17 @@ export class Game {
       'amb_engine_cruise',
       cfg.engineIdleRate + (1 - cfg.engineIdleRate) * way,
     );
-    this.intercom.setLevel(this.audio.categoryLevel('music'));
     // The hum grows toward the engine room (0 at the bow, 1 at the stern).
     const nearEngine = (position.z - this.shipBowZ) / (this.shipSternZ - this.shipBowZ);
-    this.hum.update({ engine: way, nearEngine, outside: this.droneOutside });
-
+    this.hum.update({
+      engine: way,
+      nearEngine,
+      outside: this.droneOutside,
+      muted: this.playerMode.mode === 'onSalvage',
+    });
+    this.audio.setLoopGain('music_vesper', this.salvageSounds.muted ? 0 : 1);
     this.audio.update(dt);
+    this.intercom.setLevel(this.audio.categoryLevel('music'));
   }
 
   /** Enter the exterior travel shot (V during travel, M4). */
@@ -672,6 +760,8 @@ export class Game {
   private dashboardData(): DashboardData {
     const destinationId = this.shipState.destinationId;
     return buildDashboardData({
+      companions: this.progress.snapshot.companions,
+      power: this.cabinPower.snapshot,
       rooms: shipLayout.rooms,
       podCount: shipLayout.props.filter((p) => p.kind === 'pod').length,
       phase: this.shipState.phase,
@@ -682,6 +772,7 @@ export class Game {
       cruiseScale: gameConfig.travel.cruiseScale,
       // Every registered module appears here: the AWS training entry point.
       training: this.puzzles.ids().map((id) => ({ id, title: this.puzzles.get(id).title })),
+      salvageRecovered: this.progress.snapshot.vesperRecovered,
     });
   }
 
@@ -699,6 +790,13 @@ export class Game {
       this.dashboardData(),
       {
         onRoomSelected: (roomId) => this.hologram.setHighlight(roomId),
+        onPowerCommand: (command) => {
+          if (command === 'start') this.cabinPower.startNow();
+          if (command === 'automatic')
+            this.cabinPower.setAutomatic(!this.cabinPower.snapshot.automatic);
+          if (command === 'voice') this.cabinPower.voice = !this.cabinPower.voice;
+          this.dashboard.update(this.dashboardData());
+        },
         onSetCourse: (destinationId) => this.setCourseFromDashboard(destinationId),
         onExteriorView: () => {
           this.closeDashboard();
@@ -707,6 +805,10 @@ export class Game {
         onCombat: (difficulty) => {
           this.closeDashboard();
           this.startCombat(difficulty);
+        },
+        onSalvage: () => {
+          this.closeDashboard();
+          this.startSalvage();
         },
         onTraining: (moduleId) => {
           this.closeDashboard();
@@ -739,16 +841,50 @@ export class Game {
     this.openDashboard('tactical');
   }
 
-  /** Return from the dashboard view to the drone. */
   /**
-   * Engage a course from the dashboard's navigation tab: the same request
-   * the helm makes. The dashboard stays open and shows the departure.
+   * Send the drone aboard Vesper Station (the tactical tab offers this only
+   * while docked there). Its camera feed covers the screen until it returns.
    */
+  private startSalvage(): void {
+    if (this.shipState.phase !== 'docked' || this.shipState.locationId !== VESPER_LOCATION_ID) {
+      return;
+    }
+    this.events.emit('player:modeChanged', this.playerMode.enterSalvage());
+    this.releaseControls();
+    this.powerCountdown.update(null);
+    this.warpIntercom.stop();
+    this.setDockedSoundscape(false);
+    this.audio.playLoop('music_vesper');
+    this.salvageSounds.resume();
+    this.salvage.open({ onEnd: (outcome, runs, cells) => this.endSalvage(outcome, runs, cells) });
+    this.events.emit('salvage:started');
+  }
+
+  /** The drone is back aboard: return to the deck, on the tactical tab. */
+  private endSalvage(outcome: SalvageOutcome, runs: number, cells: number): void {
+    const recruit =
+      outcome === 'recovered' ? this.progress.recoverVesper(cells === cellRoomIds.length) : null;
+    if (recruit !== null) this.companions.add(recruit, this.companionTime);
+    this.audio.stopLoop('music_vesper');
+    this.setDockedSoundscape(true);
+    this.events.emit('salvage:ended', { outcome, runs, cells });
+    this.events.emit('player:modeChanged', this.playerMode.exitToRoaming());
+    this.narrative.trigger(
+      recruit !== null
+        ? 'scoutRecruited'
+        : outcome === 'recovered'
+          ? 'salvageRecovered'
+          : 'salvageAbandoned',
+    );
+    this.openDashboard(recruit !== null ? 'ship' : 'tactical');
+  }
+
+  /** Navigation has dismissed its overlay. Hand control back to the drone. */
   private setCourseFromDashboard(destinationId: string): void {
-    if (this.shipState.phase !== 'docked') return; // course locked underway
+    this.closeDashboard();
+    if (this.shipState.phase !== 'docked') return;
     this.audio.playOnce('sfx_ui_blip');
     this.events.emit('travel:requested', { destinationId });
-    this.dashboard.update(this.dashboardData());
   }
 
   private closeDashboard(): void {
@@ -783,14 +919,21 @@ export class Game {
       const dest = this.shipState.destinationId
         ? getLocation(this.shipState.destinationId).name
         : '';
-      const pct = phase === 'cruising' ? ` ${Math.round(this.shipState.progress * 100)}%` : '';
+      const remaining = Math.ceil(this.shipState.secondsToArrival);
+      const eta = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
       const label =
         phase === 'departing' ? 'Departing' : phase === 'arriving' ? 'Arriving' : 'Cruising';
-      this.hud.setStatus(`${label} — ${dest}${pct}`);
+      this.hud.setStatus(`${label} - ${dest} · ETA ${eta} · Hull sealed`);
     }
   }
 
   private render(alpha: number): void {
+    if (this.salvage.isOpen) {
+      // Like a fight, the drone feed covers the screen: skip the 3D view.
+      this.salvage.render();
+      this.lastFrameAt = null;
+      return;
+    }
     if (this.combat.isOpen) {
       // The fight covers the screen: draw only the hologram, and leave the
       // 3D view (and its resolution tuning) alone until it closes.
@@ -842,12 +985,19 @@ export class Game {
           y: this.droneVisual.group.position.y,
           z: this.droneVisual.group.position.z,
         },
-        this.ship.colliders,
+        this.flightColliders,
       );
       this.camera.position.set(pose.position.x, pose.position.y, pose.position.z);
       this.camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
     }
 
+    // Tiny camera rotations transmit drive vibration without moving collision geometry.
+    if (this.travelView.driftSpeed > 0 && !this.reducedMotion.matches) {
+      const t = this.travelTickMs / 1000;
+      const strength = this.travelView.driftSpeed;
+      this.camera.rotateZ(strength * 0.0028 * Math.sin(t * 18));
+      this.camera.rotateX(strength * 0.0017 * Math.sin(t * 29 + 0.4));
+    }
     const view = chooseView({
       cinematic: false,
       dashboard: this.dashboardView !== null,

@@ -6,7 +6,6 @@
  * leave the dashboard when used (the overlay closes first); the ship tab
  * lights the selected compartment on the hologram.
  */
-import type { DifficultyId } from '../../combat/combatTypes';
 import type {
   DashboardCamera,
   DashboardData,
@@ -15,6 +14,7 @@ import type {
   DashboardTraining,
 } from '../dashboardModel';
 import { type DashboardPanel, el, heading, wrapIndex } from './panel';
+import { companionColor, companionName } from '../../player/companionPatrol';
 
 /** A selectable list: the shared behaviour of the three tabs below. */
 abstract class ListPanel<T> implements DashboardPanel {
@@ -113,23 +113,68 @@ export class CamerasPanel extends ListPanel<DashboardCamera> {
   }
 }
 
+export type PowerCommand = 'start' | 'automatic' | 'voice';
+
 export class ShipPanel extends ListPanel<DashboardRoom> {
   readonly id = 'ship';
   readonly label = 'Ship';
   readonly hint = '↑↓ compartment';
   private readonly detail: HTMLDivElement;
+  private readonly powerStatus = el('div', 'power-status');
+  private readonly automatic = el('button', '', 'Auto · 2 min');
+  private readonly start = el('button', '', 'Cycle now');
+  private readonly voice = el('button', '', 'Voice');
+  private readonly companionStatus = el('div', 'power-status');
+  private readonly companionList = el('ul', 'companion-list');
+  private companions: readonly number[] | null = null;
 
   constructor(
     data: DashboardData,
     private readonly onRoomSelected: (roomId: string) => void,
+    onPowerCommand: (command: PowerCommand) => void,
   ) {
     super('ship', 'Compartments');
     this.detail = el('div', 'detail');
     this.element.appendChild(this.detail);
+    const controls = el('div', 'power-controls');
+    for (const [button, command] of [
+      [this.automatic, 'automatic'],
+      [this.start, 'start'],
+      [this.voice, 'voice'],
+    ] as const) {
+      button.type = 'button';
+      button.addEventListener('click', () => onPowerCommand(command));
+      controls.append(button);
+    }
+    this.element.append(heading('Cabin power'), this.powerStatus, controls);
+    this.element.prepend(heading('Companions'), this.companionStatus, this.companionList);
     this.update(data);
   }
 
   update(data: DashboardData): void {
+    if (this.companions !== data.companions) {
+      this.companions = data.companions;
+      this.companionStatus.textContent = data.companions.length
+        ? 'Autonomous console inspections'
+        : 'Bring all three Vesper cells aboard to recruit a scout.';
+      this.companionList.hidden = data.companions.length === 0;
+      this.companionList.replaceChildren(
+        ...data.companions.map((id) => {
+          const item = el('li', '', companionName(id));
+          const dot = el('span');
+          dot.style.backgroundColor = `#${companionColor(id).toString(16).padStart(6, '0')}`;
+          dot.setAttribute('aria-hidden', 'true');
+          item.prepend(dot);
+          return item;
+        }),
+      );
+    }
+    this.powerStatus.textContent = data.power.status;
+    this.start.disabled = data.power.busy;
+    this.automatic.setAttribute('aria-pressed', String(data.power.automatic));
+    this.voice.setAttribute('aria-pressed', String(data.power.voice));
+    this.voice.textContent = data.power.voice ? 'Voice on' : 'Voice off';
+    this.automatic.textContent = data.power.automatic ? 'Auto · 2 min' : 'Auto off';
     // Compartments never change during play; only build the list once.
     if (this.items.length === data.rooms.length) return;
     this.items = data.rooms;
@@ -158,30 +203,33 @@ export class TacticalPanel extends ListPanel<DashboardEngagement> {
 
   constructor(
     data: DashboardData,
-    private readonly onEngage: (difficulty: DifficultyId) => void,
+    private readonly onEngage: (engagement: DashboardEngagement) => void,
   ) {
-    super('tactical', 'Combat drills');
+    super('tactical', 'Operations');
     this.update(data);
   }
 
   update(data: DashboardData): void {
-    // The drills never change during play; only build the list once.
-    if (this.items.length === data.tactical.length && this.items.length > 0) return;
+    // Rebuild only when the offer changes (docking at Vesper adds the away mission).
+    const same =
+      this.items.length === data.tactical.length &&
+      this.items.every((item, i) => item.detail === data.tactical[i]?.detail);
+    if (same && this.items.length > 0) return;
     this.items = data.tactical;
-    this.renderList('No drills loaded.');
+    this.renderList('No operations available.');
   }
 
   activate(): void {
     const engagement = this.items[this.selected];
-    if (engagement) this.onEngage(engagement.difficulty);
+    if (engagement) this.onEngage(engagement);
   }
 
   protected renderItem(engagement: DashboardEngagement): HTMLElement {
-    const node = el('div', 'engagement');
+    const node = el('div', `engagement ${engagement.kind}`);
     node.append(
       el('div', 'dest-name', engagement.title),
       el('div', 'dest-blurb', engagement.detail),
-      el('div', 'cta', 'Engage ▸'),
+      el('div', 'cta', engagement.kind === 'salvage' ? 'Deploy drone ▸' : 'Engage ▸'),
     );
     return node;
   }

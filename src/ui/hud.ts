@@ -34,7 +34,7 @@ export class Hud {
 
   /** The top-left ship status line, e.g. "DOCKED — ANCHORAGE POINT". */
   setStatus(text: string): void {
-    this.status.textContent = text;
+    if (this.status.textContent !== text) this.status.textContent = text;
   }
 
   /** Show the interaction prompt (null hides it). */

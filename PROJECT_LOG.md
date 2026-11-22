@@ -1313,3 +1313,250 @@ moved since `checkpoint-2026-11-18-b`) and tagged
 `checkpoint-2026-11-19`. On the merged `main`: 707 tests passing, lint,
 types and build clean. Next: the author is trying Codex for a graphics
 refinement pass, on its own experiment branch cut from this checkpoint.
+
+## 2026-11-19 - Cockpit interior (branch `experiment/graphics`)
+
+The author chose the pilot's seat for the first graphics pass. The canopy
+now has bevelled pillars and open side windows. Recessed switch panels sit
+under the dashboard lip, and the centre map has a projector with a cyan
+reflection across the metal. The existing flight meters sit in a recessed
+display. The cockpit caches the metalwork at the current viewport size
+and moves it with the existing seat sway.
+
+All 707 tests passed. Lint, TypeScript and the production build passed.
+The author playtested and approved the cockpit interior before the scenery pass.
+
+## 2026-11-19 - Space scenery through the canopy (branch `experiment/graphics`)
+
+A blue-violet nebula crosses the port sky. A banded gas giant sits above
+the starboard horizon, with a lit limb, a night side and shadows across
+its rings. Fine background stars sit behind the brighter stars that streak
+during boost. The centre of the sky stays dark for tracking incoming ships.
+
+The cockpit loads two local WebP textures (195 kB total). The clouds and
+planet are pre-rendered, including the ring shadows. The planet keeps its
+aspect ratio as the viewport changes. Checked the sky composition at
+1280 × 720 and 400 × 900. The author playtested and approved the space scenery.
+All 707 tests passed, along with lint, TypeScript and the production build.
+
+## 2026-11-19 - Cockpit asteroids (branch `experiment/graphics`)
+
+The cockpit rocks now show impact bowls, chipped edges and fractured strata.
+Each rock keeps its simulation outline corners and spin. Small cuts between
+those corners give the close-up silhouette more detail. A local WebP atlas
+supplies three rock surfaces lit from eight directions. The renderer blends
+adjacent directions as the rock turns, keeping the sun on the port side.
+Decorative debris uses the same surfaces at its existing lower opacity.
+
+Reviewed the materials at close and distant sizes and checked the cockpit
+draw calls through the rotation wrap in both directions. The author
+playtested and approved the asteroid pass before moving on to the raiders.
+All 707 tests passed, along with lint, TypeScript and the production build.
+
+## 2026-11-19 - Raider fighter silhouette (branch `experiment/graphics`)
+
+The cockpit raider has swept wings, a glazed canopy, paired intakes and
+canted tail fins. Orange intake lights face an approaching pilot. The
+engine cores and their glow are visible from the rear. Regular raiders
+carry oxide-red markings. Commanders have taller, gold-tipped fins.
+
+The mesh banks into turns using the difference between heading and
+velocity. It uses the existing visual span and listens to the same 2D
+flight state. Reviewed front, banking and rear projections at three
+distances. The author playtested and approved the fighter graphics.
+All 709 tests passed, including the two new exhaust visibility and
+near-plane tests. Lint, TypeScript and the production build passed.
+
+## 2026-11-19 - Bridge instrument displays (branch `experiment/graphics`)
+
+The three consoles under the bridge window now have dedicated 768 × 192
+readouts. Port shows power bars, the helm shows a course diagram and
+starboard shows a signal waveform. These are static instrument illustrations.
+The screens tilt toward the approaching drone, with a dark casing and a
+gentler glow so the lettering stays distinct.
+
+Checked the original and updated displays in the running game from near the
+helm. The preview HUD showed 60 fps in both samples, at 0.70× render scale
+before and 0.55× after. All three labels were legible on the approach at
+0.61×. All 709 tests, lint, TypeScript and the production build passed.
+The author playtested and approved the bridge displays.
+
+## 2026-11-19 - Cabin power conservation (branch `experiment/graphics`)
+
+Every two minutes of active play the ceiling strips and wall ribs ease down
+over four seconds. Baked room light and reflections fall with the fixtures.
+Low light lasts fourteen seconds, then normal lighting returns over six.
+Floor guides and doorway lights stay on. Screens and cryo pods keep a muted
+glow, and the drone can still light its path. Pausing holds the cycle.
+
+This is a visual experiment. The timing and minimum brightness are grouped
+in `gameConfig.interior.powerSave` for playtest tuning.
+
+Observed the first scheduled dip and recovery from the bridge. The helm
+readout, hologram and floor guides were visible at the darkest point.
+All 711 tests passed, along with lint, TypeScript and the production build.
+The author playtested and approved the cabin lighting cycle.
+
+## 2026-11-19 - Command deck power controls and voice (branch `experiment/graphics`)
+
+The Ship tab now shows the time until cooldown, the low-power state and
+the recovery. Cabin power controls can toggle the automatic schedule,
+run a single cycle immediately or mute its voice. A new session starts
+with the two-minute schedule and the voice enabled. A cycle already
+announced completes even if the automatic schedule is switched off.
+
+A bundled seven-second recording uses Flite's synthetic female SLT voice
+with a filtered intercom sound. The lead-in occupies the first two seconds.
+Five through one land on one-second beats before the existing lighting fade.
+The voice follows the play clock when pausing or resuming.
+
+Tested a manual cycle through countdown, conservation and full lighting
+with auto off on the command deck. Verified the timing of the five recorded
+beats. All 714 tests, lint, TypeScript and the production build passed.
+The author's listening and dashboard playtest is pending.
+
+## 2026-11-20 - Vesper Station blackout prototype filed for integration (standalone, not wired in)
+
+A standalone 2D side quest for the Vesper Station destination is kept as a
+reference build for later integration into the 3D game. Nothing in `src/`
+uses it yet.
+
+- `prototypes/Vesper-Blackout.html` - the whole prototype in one file, with
+  four scripts: `simulation` (deck layout, patrols, detection, timers,
+  reset), `renderer` (2D canvas lamp, light seeds, guard sight), `audio`
+  (synth score and effects) and `controls` (input, HUD, pause).
+- `prototypes/vesper-blackout.test.mjs` - 9 Node tests, run with
+  `node --test prototypes/vesper-blackout.test.mjs`. All 9 passed today.
+- `docs/maps/Vesper-Station.png` - approved deck plan: 16 rooms,
+  26 corridors, six patrol circuits.
+- `docs/Vesper-Handoff.md` - how to play it and what to check in the
+  next playtest.
+
+Gameplay: fly the drone from the western airlock and pull two of three
+energy cells. Each cell needs ten uninterrupted seconds at its socket.
+Then unload both cells at the airlock. If a guard's sight cone touches
+the drone, the run resets. Light seeds (up to five at once, 15 seconds
+each) light the deck and the seed map.
+
+Status: the author has approved the deck plan. The revised movement,
+alert speed and light seeds are waiting on another playtest.
+
+Integration notes, to settle before any porting:
+- Vesper Station already exists as a `derelict` destination in
+  `src/content/destinations.ts`. Arriving there is the natural entry point.
+- The `simulation` script has no DOM dependencies, so it can become a
+  typed module with its tests moved to vitest. The renderer is the real
+  decision. One option keeps it as a 2D "drone camera" feed inside the
+  existing UI. The other rebuilds it in three.js. This choice drives most
+  of the work.
+- The prototype creates its own AudioContext. It should route through
+  the game's audio modules rather than run a second context.
+- All four files are untracked. A fresh clone of HEAD will not include
+  them until they are committed.
+
+## 2026-11-21 - Vesper Station blackout playable in the game (branch `experiment/vesper`)
+
+The standalone Vesper prototype now runs inside DRIFT. Warp to Vesper
+Station, and once docked the ship AI points at the distress beacon. The
+command deck's Tactical tab (renamed "Operations" inside) then leads with
+"Away mission - Vesper Station blackout". Deploying opens the drone camera
+feed full-screen, the same pattern as combat. Unloading both cells or
+leaving from the pause menu returns to the bridge on the Tactical tab with
+an AI line. The mission stays on offer, marked recovered, after a win.
+
+Decisions:
+- Renderer: kept as a 2D drone-camera overlay rather than rebuilt in
+  three.js (author's choice: playable now). The 3D view is not drawn
+  while the feed is open.
+- Entry: an airlock-style action on the command deck, available only while
+  docked at Vesper. No automatic drop-in on arrival.
+- Git: the earlier warp work was committed on `experiment/graphics`; this
+  work is on `experiment/vesper`, cut from that commit.
+- Audio: the blackout synth keeps its own AudioContext, like the combat
+  sounds, warning beep and ship hum. This differs from the earlier
+  integration note, which suggested routing through the game's audio
+  modules. The game has no shared context to route into yet. The ship's
+  music and ambience keep playing under the score, as they do in combat.
+
+Modules:
+- `src/content/vesperDeckPlan.ts` - rooms, corridors, sockets, patrols as data.
+- `src/salvage/vesperDeck.ts` - occupancy grid, steering, sight, patrols
+  (pure; built lazily on first use).
+- `src/salvage/vesperRun.ts` - the rules; `step(dt, input)` returns events.
+- `src/salvage/vesperRenderer.ts` - 2D lamp, seeds, guard cones, seed map.
+- `src/salvage/vesperSounds.ts` - score and effects.
+- `src/ui/vesperOverlay.ts` - feed, rail, keys, pause, results.
+- Tuning lives in `gameConfig.salvage` and `gameConfig.audio.salvageSounds`.
+
+Controls are unchanged from the prototype, plus M to mute. From the pause, Q
+returns to DRIFT. Before deploying and after a win, Enter/Esc work as in
+the dialogs. Touch controls were not carried over.
+
+Verified: all 9 prototype tests were ported to vitest alongside new deck,
+run, overlay, dashboard and player-mode tests. 752 tests, lint, TypeScript
+and the production build passed. In the running game, warped to Vesper,
+heard the beacon line, deployed from the Tactical tab, flew, planted a
+seed, got caught (RED ALERT, reset to run 02), unloaded two cells and
+returned to the bridge with the recovery line. No console errors. Moving
+the drone into position for the capture and adding the two cells were set
+up by script in that check, not flown by hand.
+
+Pending: the author's hands-on playtest of the integrated mission. The
+standalone mechanics playtest from the handoff is still open as well.
+
+### 2026-11-21 — Vesper playtest fixes
+
+- All three cells are collectible. Bring at least two back to the airlock to complete the mission.
+- Opening the drone feed fades out ship music and ambience, silences cabin announcements and fades in the Vesper playlist. The ship soundscape returns when the drone comes back. The Vesper synth provides the score if no recording can play and still handles movement, extraction and patrol effects.
+- The author's local copies of Deep Space Dread and Glassy Tension go in `public/audio/music_vesper/`.
+
+### 2026-11-21 — Vesper reinforcement patrols
+
+- Two hunter drones join the six regular patrols. One sweeps the Relay Hub, Med Bay and Switchyard. The other loops through Sorting Hall, Coolant Plant, Machine Shop and Receiving.
+- Hunters have larger hooked chassis, pulsing red sensors and crimson sight cones. Their sight still follows the same wall and capture rules. The new routes keep the airlock clear and leave socket inspections with the existing patrols.
+- A scripted run recovered all three cells and unloaded them at the airlock with all eight patrols active. All 756 tests, lint and the production build passed.
+
+### 2026-11-21 — Vesper containment breach
+
+- The third extraction triggers a siren and releases three aliens. They pursue through the corridors at 31.2 units per second, 20% above the fastest normal patrol. Contact resets the run.
+- Aim with the mouse and use Space or click to fire the freeze laser. A hit stops an alien for five seconds, and bulkheads block the beam.
+- The return portal starts in a random room and shifts to another every 30 seconds unless the drone is approaching in sight. The HUD shows the room, direction and countdown. Flying into the portal returns the player to the bridge with all three cells. A two-cell run can still finish at the airlock.
+
+### 2026-11-21 — Vesper Scout and temporary deck scans
+
+- Returning aboard with all three cells unlocks and equips the Vesper Scout. The Drone Bay on the Ship tab lets the player switch frames. The unlock and selected frame persist locally in the browser.
+- The upper-right map sometimes shows the full corridor network for three seconds, including the drone and the current exit. Scans recur during the breach and can also appear when a red alert starts. The seed map returns when the scan ends.
+
+### 2026-11-21 — Autonomous companions and docked checkpoints
+
+- Each full three-cell return recruits another differently coloured Vesper Scout. Scouts fly their own bridge and corridor route and pause to scan the power and communications consoles. The Ship tab shows the companion roster.
+- DRIFT saves the last docked location, Vesper recovery and the companion roster in the browser. Continue starts aboard at the bridge. A previous scout-frame unlock becomes the first companion.
+
+## 2026-11-22 - Open-source release setup (0.1.0)
+
+The author wants DRIFT public on GitHub and deployed on Vercel, with the
+learning layer clearly marked as not integrated and easy to resume.
+
+- README now has a project status table (learning layer: not integrated),
+  a folder map, links to the design docs, Git-connected Vercel deploy steps
+  and a contributing note.
+- New `docs/LEARNING-LAYER.md`: what the learning seam already provides,
+  the five steps to add a real module, and the open decisions (content and
+  licensing, format, progress saving, game tie-in, terminal placement).
+- `.vercelignore` keeps local soundtrack files, old copies and build output
+  out of Vercel CLI uploads. Git-connected deploys already skip them because
+  they are git-ignored.
+- GitHub Actions CI runs tests, lint and the build on pushes to `main` and
+  on pull requests (Node.js 24).
+- `package.json` gained repository, bugs and homepage links.
+
+Decisions:
+- Deploy from GitHub through Vercel's Git integration, not by uploading a
+  locally built `dist/`, because a local build copies the author's private
+  soundtrack from `public/audio/` into the output.
+- Exam question banks are copyrighted. Any learning content shipped in the
+  public repo must be original or compatibly licensed.
+
+Verified: 771 tests across 66 files, lint, TypeScript and the production
+build passed. History was scanned for secrets before publishing; none found.
+Existing Prettier drift in 48 older files was left alone.

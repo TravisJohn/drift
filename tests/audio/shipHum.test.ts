@@ -9,6 +9,7 @@ describe('humMix (how the ship sounds at a given moment)', () => {
   it('rumbles harder as the engines work up to cruise', () => {
     const docked = humMix({ engine: 0, nearEngine: 0.5 }, settings);
     const cruising = humMix({ engine: 1, nearEngine: 0.5 }, settings);
+    expect(cruising.electrical).toBeGreaterThan(docked.electrical);
     expect(cruising.rumble).toBeGreaterThan(docked.rumble * 2);
     expect(cruising.airCutoffHz).toBeGreaterThan(docked.airCutoffHz);
   });
@@ -37,6 +38,11 @@ describe('humMix (how the ship sounds at a given moment)', () => {
   it('is silent when switched off in the config', () => {
     const off = humMix({ engine: 1, nearEngine: 1 }, { ...settings, enabled: false });
     expect(off.electrical + off.air + off.rumble).toBe(0);
+  });
+
+  it('is silent while the drone is aboard Vesper', () => {
+    const away = humMix({ engine: 0, nearEngine: 0.5, muted: true }, settings);
+    expect(away.electrical + away.air + away.rumble).toBe(0);
   });
 
   it('clamps out-of-range input instead of blowing up the level', () => {

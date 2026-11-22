@@ -16,7 +16,11 @@ export type NarrativeTrigger =
   | 'terminalOpened'
   | 'dashboardOpened'
   | 'terminalComplete'
-  | 'tetherWarning';
+  | 'tetherWarning'
+  | 'vesperBeacon'
+  | 'salvageRecovered'
+  | 'scoutRecruited'
+  | 'salvageAbandoned';
 
 export interface AiLine {
   readonly text: string;
@@ -31,18 +35,12 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
       delay: 2,
     },
   ],
-  departed: [
-    { text: 'Autopilot engaged. Making way for {destination}.' },
-    { text: 'Course laid in for {destination}. You can wander — I have the helm.' },
-  ],
+  departed: [{ text: 'Preparing for warp drive.' }],
   cruising: [
     { text: 'Course steady. Nothing out here but dust and the long dark.', delay: 7 },
     { text: 'All quiet. The pods are warm and the reactor hums along.', delay: 7 },
   ],
-  arrived: [
-    { text: 'We have arrived. {destination}, right where we left it.' },
-    { text: 'Engines down. Hello again, {destination}.' },
-  ],
+  arrived: [{ text: 'We have arrived.' }],
   helmLocked: [
     { text: 'The course is already set. Enjoy the view — we will be there soon.' },
     { text: 'I have the helm, little one. Go look out a window.' },
@@ -64,6 +62,28 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
     { text: 'That is far enough, little one. Come back toward the hull.' },
     { text: 'Your signal is thinning. I would rather you stayed close.' },
     { text: 'Tether limit. The dark goes on forever; we do not.' },
+  ],
+  // Docked at Vesper Station: the away mission is offered.
+  vesperBeacon: [
+    {
+      text: 'The beacon is automated. Three energy cells still read live on the dark service deck. We need at least two. Send me in from the command deck, Tactical tab.',
+      delay: 3,
+    },
+    {
+      text: 'Vesper again. Their patrol drones never sleep. The deck is yours from the Tactical tab.',
+      delay: 3,
+    },
+  ],
+  scoutRecruited: [
+    { text: 'All three cells are aboard. A new Vesper Scout has joined the inspection crew.' },
+  ],
+  salvageRecovered: [
+    { text: 'The cells are aboard. The reserves will thank you, little one.' },
+    { text: 'Cargo logged. You were very quiet out there.' },
+  ],
+  salvageAbandoned: [
+    { text: 'Back aboard. The cells will keep; nothing on Vesper is going anywhere.' },
+    { text: 'Welcome home. We can try their deck again whenever you like.' },
   ],
 };
 

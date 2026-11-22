@@ -3,6 +3,12 @@ import * as THREE from 'three';
 import { gameConfig } from '../../src/config/gameConfig';
 import { buildDroneModel } from '../../src/player/droneModel';
 import { DroneVisual } from '../../src/player/droneVisual';
+import { companionColor, companionPose } from '../../src/player/companionPatrol';
+import { ShipCompanions } from '../../src/player/shipCompanions';
+import { shipLayout } from '../../src/content/shipLayout';
+import { boxFromCenterSize } from '../../src/physics/colliders';
+import { sphereBoxContact } from '../../src/physics/sphereCollision';
+import { buildShipBoxes } from '../../src/world/ship/shipBuilder';
 import { vec3 } from '../../src/physics/vec3';
 
 /** Furthest any vertex of `root` lies from its origin, after transforms. */
@@ -61,6 +67,46 @@ describe('buildDroneModel (looks never change collision)', () => {
   it('stays within a small draw-call budget (integrated graphics target)', () => {
     const { root } = buildDroneModel();
     expect(count(root, (o) => (o as THREE.Mesh).isMesh === true)).toBeLessThanOrEqual(16);
+  });
+});
+
+describe('ShipCompanions', () => {
+  it('adds distinct scouts alongside the player drone and moves them independently', () => {
+    const roster = new ShipCompanions();
+    roster.add(1, 0);
+    roster.add(2, 0);
+    roster.add(2, 0);
+    const geometry = buildDroneModel('vesper-scout', companionColor(1));
+    expect(farthestVertex(geometry.root)).toBeLessThan(gameConfig.drone.radius);
+    const first = roster.group.getObjectByName('Vesper Scout 01')!;
+    const second = roster.group.getObjectByName('Vesper Scout 02')!;
+    expect(roster.group.children).toHaveLength(4); // model and scan beam per scout
+    expect(first.position.equals(second.position)).toBe(false);
+    expect(new Set(Array.from({ length: 24 }, (_, i) => companionColor(i + 1))).size).toBe(24);
+    const initial = first.position.clone();
+    roster.update(5);
+    expect(first.position.distanceTo(initial)).toBeGreaterThan(1);
+    roster.dispose();
+  });
+
+  it('flies through the actual doorway and clears the ship geometry at every inspection stop', () => {
+    const boxes = buildShipBoxes(shipLayout).map((box) => boxFromCenterSize(box.center, box.size));
+    const endpoints = new Set<number>();
+    let enteredCorridor = false;
+    for (let time = 0; time < 30; time += 0.05) {
+      const { position, scan } = companionPose(1, time);
+      if (scan) endpoints.add(scan.x);
+      if (position.z > -10) enteredCorridor = true;
+      expect(
+        boxes.some((box) => sphereBoxContact(position, gameConfig.drone.radius + 0.035, box)),
+      ).toBe(false);
+      const raised = { ...position, y: position.y + 0.32 };
+      expect(
+        boxes.some((box) => sphereBoxContact(raised, gameConfig.drone.radius + 0.035, box)),
+      ).toBe(false);
+    }
+    expect(enteredCorridor).toBe(true);
+    expect(endpoints.size).toBe(2);
   });
 });
 

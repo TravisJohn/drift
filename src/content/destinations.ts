@@ -2,13 +2,15 @@
  * Destinations - the places the ship can travel to (D4: content as data).
  *
  * The ship is always docked at exactly one location; the helm menu offers
- * the others. `travelTime` is the cruise phase in seconds (PRD: 60-120s),
+ * the others. `travelTime` is the cruise phase in seconds,
  * scaled by `gameConfig.travel.cruiseScale` (shortened in debug runs).
  * `accentColor` seeds each location's look (skybox/body tint, M4).
  */
 
+import { gameConfig } from '../config/gameConfig';
+
 /** What the location looks like out the window (built in celestialBodies.ts). */
-export type BodyKind = 'station' | 'ringed' | 'sun';
+export type BodyKind = 'station' | 'derelict' | 'ringed' | 'sun';
 
 export interface BodySpec {
   readonly kind: BodyKind;
@@ -59,7 +61,25 @@ export const locations: readonly LocationSpec[] = [
     body: { kind: 'sun', radius: 34 },
     chart: { x: 0.7, y: 0.78 },
   },
+  {
+    id: 'vesper',
+    name: 'Vesper Station',
+    blurb: 'Abandoned orbital relay. A broken habitat ring and a lone distress beacon.',
+    travelTime: 50,
+    accentColor: 0xe5ac72,
+    body: { kind: 'derelict', radius: 18 },
+    chart: { x: 0.28, y: 0.2 },
+  },
 ];
+
+/** Seconds from engaging a course to docking, including both manoeuvres. */
+export function journeySeconds(
+  cruiseSeconds: number,
+  scale: number = gameConfig.travel.cruiseScale,
+): number {
+  const { departDuration, arriveDuration } = gameConfig.travel;
+  return departDuration + cruiseSeconds * scale + arriveDuration;
+}
 
 /** Where the ship is docked when the game starts. */
 export const START_LOCATION_ID = 'anchorage';

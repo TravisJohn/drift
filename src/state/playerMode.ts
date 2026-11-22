@@ -8,11 +8,12 @@
  * Modes: roaming (default), atHelm (destination menu open),
  * atTerminal (puzzle overlay, M5), cinematic (exterior travel view, M4),
  * atDashboard (the bridge holo-table's ship overview), inCombat (a
- * tactical fight on the hologram).
+ * tactical fight on the hologram), onSalvage (the drone's away mission
+ * on another station's deck, seen through its camera feed).
  */
 
 export type PlayerModeId =
-  'roaming' | 'atHelm' | 'atTerminal' | 'cinematic' | 'atDashboard' | 'inCombat';
+  'roaming' | 'atHelm' | 'atTerminal' | 'cinematic' | 'atDashboard' | 'inCombat' | 'onSalvage';
 
 export interface PlayerModeChange {
   readonly from: PlayerModeId;
@@ -44,6 +45,10 @@ export class PlayerMode {
 
   enterCombat(): PlayerModeChange {
     return this.transition('inCombat', ['roaming']);
+  }
+
+  enterSalvage(): PlayerModeChange {
+    return this.transition('onSalvage', ['roaming']);
   }
 
   enterCinematic(): PlayerModeChange {

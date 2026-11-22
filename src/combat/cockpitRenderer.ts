@@ -33,6 +33,7 @@ import {
   skyToCamera,
   toCamera,
 } from './cockpitCamera';
+import { paintCockpitInterior } from './cockpitInterior';
 import { angleBetween, approach, clamp } from './combatMath';
 import {
   type CombatEvent,
@@ -45,6 +46,10 @@ import {
 } from './combatTypes';
 import type { CombatView } from './combatView';
 import { drawHoloMap } from './holoMap';
+import { drawRaiderModel, RAIDER_HALF_SPAN } from './raiderModel';
+import asteroidUrl from './scenery/asteroid-relief.webp';
+import nebulaUrl from './scenery/dust-nebula.webp';
+import planetUrl from './scenery/ringed-giant.webp';
 import { type Vec2, add, fromAngle, length, normalize, scale, sub, vec2 } from './vec2';
 
 /** Eye height above the plane the fight happens on. */
@@ -62,48 +67,6 @@ const DEBRIS_TILE = 2600;
 const MAX_PARTICLES = 500;
 const HIT_FLASH = 0.28;
 
-/** The raider fighter from STARFALL: vertices (x right, y up, −z forward). */
-const RAIDER_VERTS: readonly (readonly [number, number, number])[] = [
-  [-24, -1, 7],
-  [-8, 1, -4],
-  [-4, 3, 5],
-  [-3, 3, -14],
-  [0, 1, -22],
-  [3, 3, -14],
-  [4, 3, 5],
-  [8, 1, -4],
-  [24, -1, 7],
-  [12, -2, 12],
-  [4, -2, 11],
-  [0, -3, -13],
-  [-4, -2, 11],
-  [-12, -2, 12],
-  [-6, 6, 10],
-  [6, 6, 10],
-  [0, 6, -7],
-];
-const RAIDER_FACES: readonly { ids: readonly number[]; fill: string; stroke?: string }[] = [
-  { ids: [0, 1, 2, 12, 13], fill: '#44505b' },
-  { ids: [7, 8, 9, 10, 6], fill: '#394754' },
-  { ids: [0, 1, 12, 13], fill: '#1e2c3a' },
-  { ids: [7, 8, 9, 10], fill: '#293642' },
-  { ids: [2, 3, 4, 5, 6, 10, 11, 12], fill: '#66717a' },
-  { ids: [3, 4, 5, 16], fill: '#506574' },
-  { ids: [2, 14, 16, 3], fill: '#859099' },
-  { ids: [6, 15, 16, 5], fill: '#3a4d5d' },
-  { ids: [14, 15, 16], fill: '#a6afb1' },
-  { ids: [3, 16, 5, 4], fill: '#142b3b', stroke: '#97ccdc77' },
-];
-const RAIDER_EDGES: readonly (readonly [number, number, string, number])[] = [
-  [0, 1, '#c67f57', 1.7],
-  [7, 8, '#dd8a5d', 1.7],
-  [14, 16, '#c3d3d988', 1],
-  [3, 5, '#8ad9e7', 1],
-  [0, 13, '#b2bec555', 1],
-  [8, 9, '#b2bec555', 1],
-];
-/** The model's half-span, to scale it to a raider's radius. */
-const RAIDER_SPAN = 24;
 /**
  * Raiders are drawn this much larger than their real size: at 120 degrees
  * a raider at fighting range is otherwise only a few pixels. (Hits use the
@@ -129,7 +92,11 @@ export function incomingLabel(raider: Readonly<Raider>, shipPos: Vec2): string |
   if (raider.dead || raider.attacking <= 0) return null;
   return `INCOMING · ${Math.round(length(sub(raider.pos, shipPos)))} M`;
 }
-const ROCK_SHADES = ['#30343d', '#1a222d', '#242c36', '#3a3b42', '#222a33'];
+// Atlas columns sweep the sun around each surface. Rows are distinct rock materials.
+const ROCK_LIGHT_ANGLES = 8;
+const ROCK_MATERIALS = 3;
+// The tile covers all outline radii, including the larger corners on decorative debris.
+const ROCK_TILE_RADIUS = 1.16;
 
 interface Star {
   readonly azimuth: number;
@@ -174,7 +141,12 @@ export class CockpitRenderer implements CombatView {
   private particles: Particle[] = [];
   private readonly stars: Star[];
   private readonly debris: Debris[];
-  private readonly nebula: HTMLCanvasElement;
+  private interior: HTMLCanvasElement | null = null;
+  private pixelRatio = 1;
+  private readonly nebula = new Image();
+  private readonly planet = new Image();
+  private readonly asteroid = new Image();
+  private readonly rockContours = new WeakMap<readonly number[], (readonly [number, number])[]>();
 
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
@@ -195,10 +167,14 @@ export class CockpitRenderer implements CombatView {
       outline: Array.from({ length: 9 }, () => 0.7 + random() * 0.45),
       spin: (random() * 2 - 1) * 0.3,
     }));
-    this.nebula = this.paintNebula(random);
+    this.nebula.src = nebulaUrl;
+    this.planet.src = planetUrl;
+    this.asteroid.src = asteroidUrl;
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
+    this.interior = null;
+    this.pixelRatio = pixelRatio;
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     this.frame = {
@@ -256,8 +232,20 @@ export class CockpitRenderer implements CombatView {
     c.restore();
 
     this.drawReticle(view);
-    this.drawCockpit(drift);
+    // Composite the detailed metalwork as one layer, including its projector lighting.
+    this.interior ??= paintCockpitInterior(
+      this.width,
+      this.height,
+      this.pixelRatio,
+      consoleMapFrame(this.width, this.height),
+    );
+    // Allow the original five-pixel seat sway at full drift. Overscan the sides
+    // so the moving foreground still covers the viewport edges.
+    c.save();
+    c.translate(drift * 5, 0);
+    c.drawImage(this.interior, -5, 0, this.width + 10, this.height);
     this.drawMap(view);
+    c.restore();
     if (this.flash > 0) {
       const a = this.flash / HIT_FLASH;
       c.fillStyle = `rgba(255, 90, 60, ${(a * 0.3).toFixed(3)})`;
@@ -282,41 +270,26 @@ export class CockpitRenderer implements CombatView {
 
   // --- The sky: nebula, stars, planet, sun ---
 
-  /** A soft nebula, painted once; it scrolls sideways as the ship turns. */
-  private paintNebula(random: () => number): HTMLCanvasElement {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1400;
-    canvas.height = 850;
-    const n = canvas.getContext('2d');
-    if (!n) return canvas; // nothing to paint on: the sky is just dark
-    n.fillStyle = '#060b16';
-    n.fillRect(0, 0, 1400, 850);
-    for (let i = 0; i < 90; i++) {
-      const x = random() * 1400;
-      const y = random() * 850;
-      const r = 90 + random() * 310;
-      const g = n.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, i % 3 === 0 ? 'rgba(70,63,72,.065)' : 'rgba(23,66,90,.065)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      n.fillStyle = g;
-      n.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    return canvas;
-  }
-
   private drawSky(boosting: boolean): void {
     const c = this.ctx;
-    // Overscan so the banked view never shows an edge.
-    const pad = Math.max(this.width, this.height) * 0.2;
+    // Overscan the distant sky for banking and hit shake. Cover preserves cloud proportions.
+    const pad = Math.max(this.width, this.height) * 0.12 + 6;
     const w = this.width + pad * 2;
     const h = this.height + pad * 2;
-    // One full turn scrolls the nebula across two widths of the screen.
-    const turnShare = (((this.cam.heading / (Math.PI * 2)) % 1) + 1) % 1;
-    const offset = -turnShare * w * 2;
-    for (let k = -1; k <= 3; k++) {
-      const left = offset + k * w - pad;
-      // Only the (at most two) copies that reach the screen.
-      if (left < this.width + pad && left + w > -pad) c.drawImage(this.nebula, left, -pad, w, h);
+    if (this.nebula.complete && this.nebula.naturalWidth > 0) {
+      const scale = Math.max(w / this.nebula.naturalWidth, h / this.nebula.naturalHeight);
+      const skyWidth = this.nebula.naturalWidth * scale;
+      const skyHeight = this.nebula.naturalHeight * scale;
+      c.drawImage(
+        this.nebula,
+        (this.width - skyWidth) / 2,
+        (this.height - skyHeight) / 2,
+        skyWidth,
+        skyHeight,
+      );
+    } else {
+      c.fillStyle = '#050a16';
+      c.fillRect(-pad, -pad, w, h);
     }
 
     const { cx, cy } = this.frame;
@@ -333,7 +306,7 @@ export class CockpitRenderer implements CombatView {
         continue;
       }
       c.globalAlpha = star.alpha * (0.85 + Math.sin(this.time + star.size * 100) * 0.15);
-      c.fillStyle = star.size > 1.3 ? '#c3d7de' : '#9bb6cb';
+      c.fillStyle = star.size > 1.3 ? '#d8e6ed' : star.alpha > 0.68 ? '#e5c29d' : '#94b2d1';
       c.fillRect(at.x, at.y, star.size, star.size);
       if (boosting) {
         // Streaks away from the centre while the afterburner runs.
@@ -363,69 +336,18 @@ export class CockpitRenderer implements CombatView {
     return { x: q.x * far, y: q.y * far, z: q.z * far };
   }
 
-  /** STARFALL's ringed planet, hanging off to one side. */
+  /** Keep the planet round and above the combat horizon across different canopy sizes. */
   private drawPlanet(): void {
-    const c = this.ctx;
-    const dirQ = skyToCamera(this.cam.heading, 0.5 - Math.PI / 2, 0.2);
-    if (dirQ.z < 0.1) return;
-    const at = project({ x: dirQ.x * 2e4, y: dirQ.y * 2e4, z: dirQ.z * 2e4 }, this.frame);
-    if (!at) return;
-    // A distant planet keeps its size wherever it sits in the view.
-    const r = Math.min(this.width, this.height) * 0.2;
-    if (at.x + r * 2 < 0 || at.x - r * 2 > this.width) return;
-    c.save();
-    c.translate(at.x, at.y);
-    c.rotate(-0.32);
-    c.scale(1, 0.25);
-    c.beginPath();
-    c.ellipse(0, 0, r * 1.8, r * 1.8, 0, 0, Math.PI * 2);
-    c.strokeStyle = '#77a0b725';
-    c.lineWidth = r * 0.18;
-    c.stroke();
-    c.beginPath();
-    c.ellipse(0, 0, r * 1.65, r * 1.65, 0, 0, Math.PI * 2);
-    c.strokeStyle = '#a2b6bd27';
-    c.lineWidth = r * 0.035;
-    c.stroke();
-    c.restore();
-    this.glow(at.x, at.y, r * 1.15, 'rgba(72,142,181,.07)');
-    c.save();
-    c.beginPath();
-    c.arc(at.x, at.y, r, 0, Math.PI * 2);
-    c.clip();
-    const g = c.createRadialGradient(
-      at.x - r * 0.55,
-      at.y - r * 0.5,
-      0,
-      at.x + r * 0.15,
-      at.y + r * 0.1,
-      r * 1.4,
+    if (!this.planet.complete || this.planet.naturalWidth === 0) return;
+    const width = Math.min(this.width * 0.49, this.height * 0.82);
+    const height = (width * this.planet.naturalHeight) / this.planet.naturalWidth;
+    this.ctx.drawImage(
+      this.planet,
+      this.width * 0.77 - width / 2,
+      this.height * 0.25 - height / 2,
+      width,
+      height,
     );
-    g.addColorStop(0, '#6b8998');
-    g.addColorStop(0.32, '#365366');
-    g.addColorStop(0.66, '#172e3e');
-    g.addColorStop(1, '#040b14');
-    c.fillStyle = g;
-    c.fillRect(at.x - r, at.y - r, r * 2, r * 2);
-    for (let i = 0; i < 34; i++) {
-      const y = at.y - r + (i * r * 2) / 34;
-      c.beginPath();
-      c.ellipse(at.x - r * 0.1, y, r * 1.1, r * 0.022, Math.sin(i) * 0.06, 0, Math.PI * 2);
-      c.fillStyle = i % 3 === 0 ? 'rgba(167,191,197,.055)' : 'rgba(8,24,41,.09)';
-      c.fill();
-    }
-    const shade = c.createLinearGradient(at.x - r, at.y, at.x + r * 0.5, at.y);
-    shade.addColorStop(0, '#0a172000');
-    shade.addColorStop(0.55, '#02081330');
-    shade.addColorStop(1, '#020710d9');
-    c.fillStyle = shade;
-    c.fillRect(at.x - r, at.y - r, r * 2, r * 2);
-    c.restore();
-    c.beginPath();
-    c.arc(at.x, at.y, r, Math.PI * 0.65, Math.PI * 1.65);
-    c.strokeStyle = '#a1d9ef55';
-    c.lineWidth = 1.3;
-    c.stroke();
   }
 
   // --- Rocks, debris and raiders, far to near ---
@@ -473,7 +395,7 @@ export class CockpitRenderer implements CombatView {
     }
   }
 
-  /** A rock as STARFALL drew them: a faceted, shaded outline facing the pilot. */
+  /** Rotate the original outline and its surface together, with sunlight fixed to port. */
   private drawRock(
     pos: Vec2,
     height: number,
@@ -485,76 +407,101 @@ export class CockpitRenderer implements CombatView {
     const at = project(toCamera(this.cam, pos, height), this.frame);
     if (!at) return;
     const size = radius * at.scale;
-    if (size < 1 || !this.onScreen(at, size)) return;
+    if (size < 1 || !this.onScreen(at, size * ROCK_TILE_RADIUS)) return;
     const c = this.ctx;
     c.save();
     c.globalAlpha = alpha;
     c.translate(at.x, at.y);
     c.rotate(angle);
-    const pts = outline.map((k, i) => {
-      const a = (i / outline.length) * Math.PI * 2;
-      return [Math.cos(a) * size * k, Math.sin(a) * size * k] as const;
-    });
-    this.path(pts, '#212832', '#77818a30');
-    const centre = [-size * 0.15, -size * 0.05] as const;
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      if (a && b)
-        this.path(
-          [centre, a, b],
-          ROCK_SHADES[i % ROCK_SHADES.length] ?? '#222a33',
-          '#555f6810',
-          0.5,
-        );
+    c.scale(size, size);
+    const pts = this.rockContour(outline);
+    if (this.asteroid.complete && this.asteroid.naturalWidth > 0) {
+      this.path(pts, null);
+      c.clip();
+      const material = Math.floor((outline[0] ?? 1) * 1000) % ROCK_MATERIALS;
+      this.drawRockSurface(material, angle, alpha);
+    } else {
+      // The silhouette is visible immediately, including while the texture is loading.
+      this.path(pts, '#3c4149');
     }
     c.restore();
   }
 
+  /** Keep the sim's corners and cut small chips into the straight edges between them. */
+  private rockContour(outline: readonly number[]): (readonly [number, number])[] {
+    const cached = this.rockContours.get(outline);
+    if (cached) return cached;
+    const corners = outline.map((radius, i) => {
+      const angle = (i * Math.PI * 2) / outline.length;
+      return [Math.cos(angle) * radius, Math.sin(angle) * radius] as const;
+    });
+    const random = mulberry32(Math.floor((outline[0] ?? 1) * 1e8));
+    const contour: (readonly [number, number])[] = [];
+    corners.forEach(([x, y], i) => {
+      const next = corners[(i + 1) % corners.length];
+      if (!next) return;
+      contour.push([x, y]);
+      for (let j = 0; j < 4; j++) {
+        const t = (j + 0.3 + random() * 0.4) / 4;
+        const chip = 1 - random() * 0.037;
+        contour.push([(x + (next[0] - x) * t) * chip, (y + (next[1] - y) * t) * chip]);
+      }
+    });
+    this.rockContours.set(outline, contour);
+    return contour;
+  }
+
+  private drawRockSurface(material: number, angle: number, opacity: number): void {
+    const c = this.ctx;
+    const turns = angle / (Math.PI * 2);
+    const phase = (turns - Math.floor(turns)) * ROCK_LIGHT_ANGLES;
+    const first = Math.floor(phase) % ROCK_LIGHT_ANGLES;
+    const blend = phase - Math.floor(phase);
+    const tile = this.asteroid.naturalWidth / ROCK_LIGHT_ANGLES;
+    const radius = ROCK_TILE_RADIUS;
+    const drawFrame = (column: number) =>
+      c.drawImage(
+        this.asteroid,
+        column * tile,
+        material * tile,
+        tile,
+        tile,
+        -radius,
+        -radius,
+        radius * 2,
+        radius * 2,
+      );
+
+    // Crossfade neighbouring sun angles. Compensate for source-over blending so
+    // decorative debris stays at its requested opacity throughout the rotation.
+    const topAlpha = opacity * blend;
+    c.globalAlpha = (opacity - topAlpha) / (1 - topAlpha);
+    drawFrame(first);
+    if (topAlpha > 0) {
+      c.globalAlpha = topAlpha;
+      drawFrame((first + 1) % ROCK_LIGHT_ANGLES);
+    }
+  }
+
   /** A raider as a small 3D fighter, its faces sorted far to near. */
   private drawRaider(r: Readonly<Raider>, time: number): void {
-    const forward = fromAngle(r.heading);
-    const right = vec2(-Math.sin(r.heading), Math.cos(r.heading));
-    const size = (r.radius * RAIDER_LOOK) / RAIDER_SPAN;
-    const bank = Math.sin(time + r.phase) * 0.22;
     const lift = Math.sin(time * 0.7 + r.phase * 2.3) * RAIDER_BOB;
-    const cs = Math.cos(bank);
-    const sn = Math.sin(bank);
-    const cam = RAIDER_VERTS.map(([x, y, z]) => {
-      const bx = x * cs - y * sn;
-      const by = x * sn + y * cs;
-      const world = add(r.pos, add(scale(forward, -z * size), scale(right, bx * size)));
-      return toCamera(this.cam, world, by * size + lift);
-    });
-    const points = cam.map((q) => project(q, this.frame));
-    const centre = project(toCamera(this.cam, r.pos, lift), this.frame);
+    const position = toCamera(this.cam, r.pos, lift);
+    const centre = project(position, this.frame);
     if (!centre || !this.onScreen(centre, r.radius * RAIDER_LOOK * centre.scale * 2)) return;
 
-    const faces = RAIDER_FACES.map((face) => ({
-      face,
-      depth: face.ids.reduce((sum, i) => sum + (cam[i]?.z ?? 0), 0) / face.ids.length,
-    })).sort((a, b) => b.depth - a.depth);
-    for (const { face } of faces) {
-      const pts = face.ids.map((i) => points[i]);
-      if (pts.some((pt) => !pt)) continue;
-      this.path(
-        pts.map((pt) => [pt?.x ?? 0, pt?.y ?? 0] as const),
-        face.fill,
-        face.stroke ?? '#a8b7bb25',
-        0.8,
-      );
-    }
-    for (const [a, b, color, width] of RAIDER_EDGES) {
-      const pa = points[a];
-      const pb = points[b];
-      if (pa && pb) this.line(pa.x, pa.y, pb.x, pb.y, color, width);
-    }
-    // Engine glow at the tail.
-    const tail = project(
-      toCamera(this.cam, sub(r.pos, scale(forward, 12 * size)), lift),
+    // The nose leads the velocity through a turn. Lower the inside wing as it breaks away.
+    const slip = length(r.vel) > 1 ? angleBetween(Math.atan2(r.vel.y, r.vel.x), r.heading) : 0;
+    const bank = Math.sin(time + r.phase) * 0.12 - Math.sin(slip) * 0.62;
+    drawRaiderModel(
+      this.ctx,
+      position,
       this.frame,
+      (r.radius * RAIDER_LOOK) / RAIDER_HALF_SPAN,
+      r.heading - this.cam.heading,
+      bank,
+      r.commander,
     );
-    if (tail) this.glow(tail.x, tail.y, Math.max(3, 9 * tail.scale * size), 'rgba(255,150,90,.55)');
 
     const span = r.radius * centre.scale;
     if (r.commander) {
@@ -870,146 +817,6 @@ export class CockpitRenderer implements CombatView {
       ],
       color,
     );
-    c.restore();
-  }
-
-  /** The canopy frame and instrument console (STARFALL's cockpit). */
-  private drawCockpit(drift: number): void {
-    const c = this.ctx;
-    const w = this.width;
-    const h = this.height;
-    c.save();
-    c.translate(drift * 5, 0);
-    const metal = c.createLinearGradient(0, h * 0.7, 0, h);
-    metal.addColorStop(0, '#182430');
-    metal.addColorStop(0.2, '#111e2a');
-    metal.addColorStop(1, '#070d15');
-    // Side canopy spars, tapering toward the instrument deck.
-    this.path(
-      [
-        [0, h * 0.18],
-        [w * 0.026, h * 0.23],
-        [w * 0.16, h * 0.77],
-        [w * 0.12, h],
-        [0, h],
-      ],
-      '#090f18',
-      '#6e859339',
-      1.2,
-    );
-    this.path(
-      [
-        [w, h * 0.18],
-        [w * 0.974, h * 0.23],
-        [w * 0.84, h * 0.77],
-        [w * 0.88, h],
-        [w, h],
-      ],
-      '#090f18',
-      '#6e859339',
-      1.2,
-    );
-    this.path(
-      [
-        [0, h * 0.39],
-        [w * 0.011, h * 0.4],
-        [w * 0.124, h * 0.79],
-        [w * 0.15, h * 0.79],
-      ],
-      '#283745',
-      '#778c9b30',
-    );
-    this.path(
-      [
-        [w, h * 0.39],
-        [w * 0.989, h * 0.4],
-        [w * 0.876, h * 0.79],
-        [w * 0.85, h * 0.79],
-      ],
-      '#263340',
-      '#778c9b30',
-    );
-    this.line(w * 0.023, h * 0.285, w * 0.148, h * 0.776, '#b4c3c438', 1.4);
-    this.line(w * 0.977, h * 0.285, w * 0.852, h * 0.776, '#b4c3c438', 1.4);
-    // Narrow upper canopy rim.
-    this.path(
-      [
-        [0, 0],
-        [w, 0],
-        [w, h * 0.036],
-        [w * 0.71, h * 0.027],
-        [w * 0.29, h * 0.027],
-        [0, h * 0.036],
-      ],
-      '#090e16',
-      '#46596933',
-    );
-    // Console, its bevelled lip, and three recessed instrument bays.
-    this.path(
-      [
-        [0, h * 0.88],
-        [w * 0.12, h * 0.765],
-        [w * 0.32, h * 0.815],
-        [w * 0.41, h * 0.795],
-        [w * 0.59, h * 0.795],
-        [w * 0.68, h * 0.815],
-        [w * 0.88, h * 0.765],
-        [w, h * 0.88],
-        [w, h],
-        [0, h],
-      ],
-      metal,
-      '#9ab6c250',
-      1.2,
-    );
-    this.path(
-      [
-        [w * 0.12, h * 0.8],
-        [w * 0.33, h * 0.852],
-        [w * 0.34, h * 0.99],
-        [w * 0.12, h * 0.97],
-      ],
-      '#08131c',
-      '#44627635',
-    );
-    this.path(
-      [
-        [w * 0.88, h * 0.8],
-        [w * 0.67, h * 0.852],
-        [w * 0.66, h * 0.99],
-        [w * 0.88, h * 0.97],
-      ],
-      '#08131c',
-      '#44627635',
-    );
-    this.path(
-      [
-        [w * 0.36, h * 0.857],
-        [w * 0.42, h * 0.838],
-        [w * 0.58, h * 0.838],
-        [w * 0.64, h * 0.857],
-        [w * 0.62, h],
-        [w * 0.38, h],
-      ],
-      '#09151f',
-      '#66879825',
-    );
-    // Structural ribs and small amber indicator lights.
-    for (const side of [0, 1]) {
-      const xx = (x: number) => (side ? w - x : x);
-      this.line(xx(w * 0.085), h * 0.87, xx(w * 0.108), h * 0.965, '#46556266', 2);
-      for (let i = 0; i < 5; i++) {
-        const y = h * (0.884 + i * 0.016);
-        this.line(xx(w * 0.052), y, xx(w * 0.074), y - 3, '#294352', 2);
-      }
-      for (let i = 0; i < 3; i++) {
-        c.fillStyle = i === 0 ? '#ef9e64' : '#68858d';
-        c.fillRect(xx(w * 0.099 + i * 5), h * 0.844, 2, 2);
-      }
-    }
-    // Faint canopy reflections; the centre of the view stays clear.
-    this.line(w * 0.11, h * 0.66, w * 0.2, h * 0.73, '#94cee20b', 20);
-    this.line(w * 0.83, h * 0.65, w * 0.9, h * 0.61, '#94cee208', 25);
     c.restore();
   }
 

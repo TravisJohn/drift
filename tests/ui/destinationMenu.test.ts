@@ -21,9 +21,10 @@ describe('DestinationMenu', () => {
   it('renders one item per destination with name and ETA', () => {
     openWith();
     const items = document.querySelectorAll('#menu .item');
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
+    expect(items[2]?.textContent).toContain('ETA 60s');
     expect(items[0]?.textContent).toContain('Aurelia');
-    expect(items[0]?.textContent).toContain('ETA 90s');
+    expect(items[0]?.textContent).toContain('ETA 100s');
   });
 
   it('the first item starts selected; arrows move the selection and wrap', () => {
@@ -32,10 +33,12 @@ describe('DestinationMenu', () => {
     expect(selected()).toContain('Aurelia');
     key('ArrowDown');
     expect(selected()).toContain('Cinder');
+    key('ArrowDown');
+    expect(selected()).toContain('Vesper Station');
     key('ArrowDown'); // wraps
     expect(selected()).toContain('Aurelia');
     key('ArrowUp'); // wraps back
-    expect(selected()).toContain('Cinder');
+    expect(selected()).toContain('Vesper Station');
   });
 
   it('Enter engages the selected destination and closes the menu', () => {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { AudioManager, type AudioElementLike } from '../../src/audio/audioManager';
 import type { AudioLibrary } from '../../src/audio/audioLibrary';
 import { gameConfig } from '../../src/config/gameConfig';
-import type { AudioSpec } from '../../src/content/audioManifest';
+import { audioManifest, type AudioSpec } from '../../src/content/audioManifest';
 
 class FakeElement implements AudioElementLike {
   volume = 0;
@@ -136,6 +136,40 @@ describe('AudioManager', () => {
       expect(el('hum/a.mp3').pauseCalls).toBe(1);
       manager.playLoop('hum');
       expect(el('hum/a.mp3').playCalls).toBe(2);
+    });
+
+    it('crossfades ship music with the separate Vesper score and resumes the ship track', () => {
+      manager = make(audioManifest);
+      const shipTrack = 'music/ship.mp3';
+      const scoreTrack = 'music_vesper/score.mp3';
+      manager.setLibrary({ music: [shipTrack] });
+      manager.unlock();
+      manager.playLoop('music_roaming');
+      manager.update(FADE);
+      expect(manager.isLoopPlaying('music_vesper')).toBe(false);
+
+      manager.setLibrary({ music: [shipTrack], music_vesper: [scoreTrack] });
+      manager.stopLoop('music_roaming');
+      manager.playLoop('music_vesper');
+      manager.update(FADE / 2);
+      expect(manager.isLoopPlaying('music_vesper')).toBe(true);
+      expect(hooked).toEqual([
+        { url: shipTrack, category: 'music' },
+        { url: scoreTrack, category: 'score' },
+      ]);
+      expect(el(shipTrack).volume).toBeCloseTo(0.25);
+      expect(el(scoreTrack).volume).toBeCloseTo(0.25);
+      manager.update(FADE);
+      expect(el(shipTrack).pauseCalls).toBe(1);
+      expect(manager.categoryLevel('music')).toBe(0);
+
+      manager.stopLoop('music_vesper');
+      manager.playLoop('music_roaming');
+      manager.update(FADE);
+      expect(manager.isLoopPlaying('music_vesper')).toBe(false);
+      expect(el(scoreTrack).pauseCalls).toBe(1);
+      expect(el(shipTrack).playCalls).toBe(2);
+      expect(el(shipTrack).volume).toBeCloseTo(0.5);
     });
 
     it('setLoopGain scales a loop immediately', () => {

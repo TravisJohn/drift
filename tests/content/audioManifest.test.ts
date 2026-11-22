@@ -26,6 +26,7 @@ describe('audio manifest content', () => {
     for (const expected of [
       'music_roaming',
       'music_cruise',
+      'music_vesper',
       'amb_ship_hum',
       'amb_engine_cruise',
       'amb_cryo_bay',
@@ -43,7 +44,7 @@ describe('audio manifest content', () => {
     for (const s of audioManifest) expect(s.folder).toBe(s.key);
   });
 
-  it('only music falls back to the shared playlist folder', () => {
+  it('only ship music falls back to the shared playlist folder', () => {
     for (const s of audioManifest) {
       expect(s.fallbackFolder).toBe(s.category === 'music' ? SHARED_MUSIC_FOLDER : null);
     }
