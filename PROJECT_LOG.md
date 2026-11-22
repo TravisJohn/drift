@@ -1560,3 +1560,14 @@ Decisions:
 Verified: 771 tests across 66 files, lint, TypeScript and the production
 build passed. History was scanned for secrets before publishing; none found.
 Existing Prettier drift in 48 older files was left alone.
+
+### 2026-11-22 - Published on GitHub
+
+- `experiment/vesper` merged into `main` and tagged `checkpoint-2026-11-22`
+  (DRIFT 0.1.0). `main` and the tag are pushed.
+- github.com/TravisJohn/drift is now public, with a description and topics.
+  The first CI run on `main` passed.
+- Commits carry the author's existing email; the author chose to publish
+  without rewriting history.
+- Pending: the author imports the repo into Vercel (needs their sign-in) and
+  smoke-tests the live URL.
