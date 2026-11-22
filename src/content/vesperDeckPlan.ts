@@ -1,8 +1,8 @@
 /**
  * Vesper Station service deck - the approved deck plan as data (D4).
  *
- * Survey coordinates match docs/maps/Vesper-Station.png: 16 rooms, 26
- * corridors and six patrol circuits on a 1184 x 908 deck. Each room is an
+ * Survey coordinates match docs/maps/Vesper-Station.png: 16 rooms and 26
+ * corridors on a 1184 x 908 deck. Each room is an
  * octagon (a rectangle with 12-unit chamfers) centred on (x, y). A corridor
  * runs from room `a`'s centre through its bend points to room `b`'s centre.
  *
@@ -25,6 +25,7 @@ export interface DeckHallSpec {
 }
 
 export interface PatrolSpec {
+  readonly kind?: 'hunter';
   /** Rooms visited in order; the circuit closes back to the first. */
   readonly rooms: readonly string[];
   /** Units per second. */
@@ -105,7 +106,7 @@ export const deckHalls: readonly DeckHallSpec[] = [
   hall('coolant', 'sorting', [557, 639], [473, 556]),
 ];
 
-/** Rooms holding an energy cell socket (any two make a full cargo). */
+/** Rooms holding an energy cell socket (two are enough to complete the mission). */
 export const cellRoomIds: readonly string[] = ['hydro', 'bank', 'stores'];
 
 /** Socket position relative to its room's centre. */
@@ -118,4 +119,7 @@ export const patrolSpecs: readonly PatrolSpec[] = [
   { rooms: ['bank', 'converter', 'pump'], speed: 21, offset: 0.53 },
   { rooms: ['shop', 'stores', 'coolant'], speed: 20, offset: 0.76 },
   { rooms: ['sorting', 'hub', 'switchyard', 'converter', 'coolant'], speed: 26, offset: 0.67 },
+  // Hunters sweep the corridors between objectives. Regular patrols still inspect the sockets.
+  { kind: 'hunter', rooms: ['hub', 'med', 'switchyard'], speed: 22, offset: 0.36 },
+  { kind: 'hunter', rooms: ['sorting', 'coolant', 'shop', 'receiving'], speed: 18, offset: 0.42 },
 ];

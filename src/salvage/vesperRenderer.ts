@@ -15,6 +15,7 @@
 import { gameConfig } from '../config/gameConfig';
 import type { DeckRoom } from '../content/vesperDeckPlan';
 import { type GuardPose, type Point, type VesperDeck } from './vesperDeck';
+import type { Alien } from './vesperEscape';
 import type { LightSeed, VesperRun } from './vesperRun';
 
 type Ctx = CanvasRenderingContext2D;
@@ -215,15 +216,17 @@ export class VesperRenderer {
       );
     }
     this.drawSockets(run);
-    const alarm = run.mode === 'alarm';
+    const alarm = run.mode === 'alarm' || run.mode === 'escape';
     const r = this.guardRadius;
     for (const g of run.guards) {
       if (g.x + r < left || g.x - r > left + width || g.y + r < top || g.y - r > top + height) {
         continue;
       }
       this.drawGuardSight(g, alarm);
-      this.drone(ctx, g.x, g.y, g.angle, true, alarm);
+      if (g.kind === 'hunter') this.drawHunter(g, run.time, alarm);
+      else this.drone(ctx, g.x, g.y, g.angle, true, alarm);
     }
+    for (const alien of run.escape?.aliens ?? []) this.drawAlien(alien, run.time);
     ctx.restore();
 
     // Combine lamp and seeds into one mask; each light stops at walls.
@@ -252,6 +255,20 @@ export class VesperRenderer {
     this.setCamera(ctx, p);
     for (const seed of run.seeds)
       this.seedMarker(ctx, seed, run.time, gameConfig.salvage.seedRadius);
+    const escape = run.escape;
+    if (escape) {
+      const { x, y } = escape.portal;
+      if (Math.hypot(x - p.x, y - p.y) < range && deck.clearPath(p.x, p.y, x, y)) {
+        this.drawPortal(x, y, run.time);
+      }
+      if (escape.laser && escape.laser.expires > run.time) {
+        ctx.globalAlpha =
+          (escape.laser.expires - run.time) / gameConfig.salvage.escape.laserFlashSeconds;
+        line(ctx, [escape.laser.from, escape.laser.to], '#2fd9ff', 2);
+        line(ctx, [escape.laser.from, escape.laser.to], '#e7fdff', 0.6);
+        ctx.globalAlpha = 1;
+      }
+    }
     // The camera always sees its own drone, even against a wall.
     this.drone(ctx, p.x, p.y, p.angle);
     ctx.restore();
@@ -261,18 +278,23 @@ export class VesperRenderer {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  /** The seed map: only floor that active seeds light. Cheap when nothing changed. */
-  drawMap(run: VesperRun): void {
+  /** Show the temporary deck scan or the usual seed-lit map. */
+  drawMap(run: VesperRun, scan: boolean): void {
     const c = this.mapCtx;
     const seeds = run.seeds;
-    if (seeds.length === 0 && !this.mapLit) return;
+    if (!scan && seeds.length === 0 && !this.mapLit) return;
     c.clearRect(0, 0, this.mapView.width, this.mapView.height);
-    this.mapLit = seeds.length > 0;
+    this.mapLit = scan || seeds.length > 0;
     if (!this.mapLit) return;
     const mapHeight = this.deck.height - MAP_TOP;
     c.save();
     c.scale(this.mapScale, this.mapScale);
     c.translate(0, -MAP_TOP);
+    if (scan) {
+      this.drawDeckScan(c, run);
+      c.restore();
+      return;
+    }
     for (const seed of seeds) this.seedLight(c, seed, run.time);
     c.globalCompositeOperation = 'source-in';
     c.drawImage(
@@ -289,6 +311,42 @@ export class VesperRenderer {
     c.globalCompositeOperation = 'source-over';
     for (const seed of seeds) this.seedMarker(c, seed, run.time, 6);
     c.restore();
+  }
+
+  private drawDeckScan(c: Ctx, run: VesperRun): void {
+    c.lineJoin = 'round';
+    c.lineCap = 'round';
+    for (const hall of this.deck.halls) line(c, hall.points, '#51827e', 24);
+    for (const room of Object.values(this.deck.rooms)) {
+      polygon(c, roomShape(room));
+      c.fillStyle = '#294944';
+      c.strokeStyle = '#79a89c';
+      c.lineWidth = 4;
+      c.fill();
+      c.stroke();
+    }
+
+    const exit = run.escape?.portal ?? gameConfig.salvage.start;
+    circle(c, run.player.x, run.player.y, 15, '#86ffe2');
+    circle(c, run.player.x, run.player.y, 6, '#183c36');
+    polygon(c, [
+      [exit.x, exit.y - 22],
+      [exit.x + 20, exit.y],
+      [exit.x, exit.y + 22],
+      [exit.x - 20, exit.y],
+    ]);
+    c.strokeStyle = '#fbebff';
+    c.lineWidth = 4;
+    c.fillStyle = '#ad6bff';
+    c.fill();
+    c.stroke();
+    c.font = 'bold 45px monospace';
+    c.textAlign = 'center';
+    c.lineWidth = 9;
+    c.strokeStyle = '#0a1213';
+    c.fillStyle = '#f9eaff';
+    c.strokeText('EXIT', exit.x, exit.y - 32);
+    c.fillText('EXIT', exit.x, exit.y - 32);
   }
 
   private setCamera(c: Ctx, p: { x: number; y: number }): void {
@@ -333,7 +391,7 @@ export class VesperRenderer {
     }
   }
 
-  private drawGuardSight({ x, y, angle, cone }: GuardPose, alarm: boolean): void {
+  private drawGuardSight({ x, y, angle, cone, kind }: GuardPose, alarm: boolean): void {
     const g = this.guardCtx;
     const r = this.guardRadius;
     const depth = gameConfig.salvage.sightDepth;
@@ -346,11 +404,178 @@ export class VesperRenderer {
       x + depth * Math.cos(angle),
       y + depth * Math.sin(angle),
     );
-    glow.addColorStop(0, alarm ? 'rgba(255,85,63,.72)' : 'rgba(250,158,111,.52)');
-    glow.addColorStop(1, alarm ? 'rgba(255,73,49,.38)' : 'rgba(245,143,99,.28)');
+    if (alarm) {
+      glow.addColorStop(0, 'rgba(255,85,63,.72)');
+      glow.addColorStop(1, 'rgba(255,73,49,.38)');
+    } else if (kind === 'hunter') {
+      glow.addColorStop(0, 'rgba(255,75,98,.66)');
+      glow.addColorStop(1, 'rgba(236,53,92,.36)');
+    } else {
+      glow.addColorStop(0, 'rgba(250,158,111,.52)');
+      glow.addColorStop(1, 'rgba(245,143,99,.28)');
+    }
     fillWithSoftEdge(g, cone, glow, 6);
     g.restore();
     this.ctx.drawImage(this.guardLight, x - r, y - r);
+  }
+
+  private drawHunter({ x, y, angle }: GuardPose, time: number, alarm: boolean): void {
+    const c = this.ctx;
+    const eye = alarm ? '#fff0db' : '#ff697d';
+    c.save();
+    c.translate(x, y);
+    c.rotate(angle);
+    circle(c, -1, 1.4, 7.2, '#06090c');
+    c.lineWidth = 0.6;
+    c.lineJoin = 'round';
+
+    // Each hooked arm leans forward, like a pair of jaws around the sensor.
+    for (const side of [-1, 1]) {
+      c.save();
+      c.scale(1, side);
+      polygon(c, [
+        [-5.9, 2],
+        [-3.8, 5.4],
+        [2.3, 5.4],
+        [6.8, 2.5],
+        [4, 2.7],
+        [0.6, 3.6],
+        [-2.1, 2],
+      ]);
+      c.fillStyle = '#22242b';
+      c.strokeStyle = '#776069';
+      c.fill();
+      c.stroke();
+      line(
+        c,
+        [
+          [-3, 4.7],
+          [-0.7, 4.7],
+        ],
+        '#ae6c73',
+        0.55,
+      );
+      c.restore();
+    }
+
+    polygon(c, [
+      [5.1, 0],
+      [1.3, -3],
+      [-4.7, -2.5],
+      [-6.2, 0],
+      [-4.7, 2.5],
+      [1.3, 3],
+    ]);
+    c.fillStyle = '#302a33';
+    c.strokeStyle = '#8d717d';
+    c.fill();
+    c.stroke();
+    line(
+      c,
+      [
+        [-4.6, 0],
+        [-1.4, 0],
+      ],
+      '#b07f85',
+      0.5,
+    );
+
+    // The slit brightens through its sweep and burns white during an alert.
+    const pulse = 0.5 + 0.5 * Math.sin(time * 4.5 + x * 0.06);
+    c.shadowColor = '#ff2048';
+    c.shadowBlur = 5 + pulse * 7;
+    line(
+      c,
+      [
+        [2.4, -1.7],
+        [3.6, 0],
+        [2.4, 1.7],
+      ],
+      eye,
+      1.15,
+    );
+    c.restore();
+  }
+
+  private drawAlien(alien: Alien, time: number): void {
+    const c = this.ctx;
+    const frozen = time <= alien.frozenUntil;
+    const stride = frozen ? 1 : Math.sin(time * 19 + alien.x * 0.035) * 2.6;
+    const bone = frozen ? '#81e5ff' : '#b0a394';
+    c.save();
+    c.translate(alien.x, alien.y);
+    c.rotate(alien.angle);
+    c.lineCap = 'round';
+    for (const side of [-1, 1]) {
+      const reach = stride * side;
+      line(
+        c,
+        [
+          [-4, side * 1.7],
+          [-7 + reach, side * 5],
+          [-10 + reach, side * 5.8],
+        ],
+        bone,
+        1.2,
+      );
+      line(
+        c,
+        [
+          [1, side * 2.2],
+          [2 - reach, side * 6.2],
+          [8 - reach, side * 4.2],
+        ],
+        bone,
+        1.5,
+      );
+    }
+    polygon(c, [
+      [-7, 0],
+      [-2, -3.2],
+      [3, -2.8],
+      [7, -1.6],
+      [7, 1.6],
+      [3, 2.8],
+      [-2, 3.2],
+    ]);
+    c.fillStyle = frozen ? '#2d6277' : '#35252b';
+    c.strokeStyle = bone;
+    c.lineWidth = 0.75;
+    c.fill();
+    c.stroke();
+    circle(c, 5.5, -0.85, 0.7, frozen ? '#d4ffff' : '#ff8066');
+    circle(c, 5.5, 0.85, 0.7, frozen ? '#d4ffff' : '#ff8066');
+    if (frozen) {
+      c.strokeStyle = '#b2f4ffb7';
+      c.beginPath();
+      c.arc(0, 0, 9, 0, 2 * Math.PI);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  private drawPortal(x: number, y: number, time: number): void {
+    const c = this.ctx;
+    const radius = gameConfig.salvage.escape.portalRadius;
+    const glow = c.createRadialGradient(x, y, 1, x, y, radius * 1.65);
+    glow.addColorStop(0, '#160a35');
+    glow.addColorStop(0.45, '#492497');
+    glow.addColorStop(0.59, '#b884ffbb');
+    glow.addColorStop(1, '#9b5cff00');
+    c.beginPath();
+    c.arc(x, y, radius * 1.65, 0, 2 * Math.PI);
+    c.fillStyle = glow;
+    c.fill();
+    c.beginPath();
+    c.arc(x, y, radius, 0, 2 * Math.PI);
+    c.strokeStyle = '#c68bff';
+    c.lineWidth = 1.1;
+    c.stroke();
+    c.beginPath();
+    c.arc(x, y, radius - 2, time * 3, time * 3 + Math.PI * 1.35);
+    c.strokeStyle = '#f5dfff';
+    c.lineWidth = 1.4;
+    c.stroke();
   }
 
   private drone(c: Ctx, x: number, y: number, a: number, guard = false, alarm = false): void {

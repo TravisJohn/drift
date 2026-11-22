@@ -7,6 +7,7 @@
  */
 
 export interface TitleScreenCallbacks {
+  readonly dockedAt?: string | undefined;
   /** The player pressed Begin (a genuine user gesture). */
   onBegin(): void;
 }
@@ -37,7 +38,8 @@ export class TitleScreen {
     const begin = document.createElement('button');
     begin.className = 'begin';
     begin.type = 'button';
-    begin.textContent = 'Begin';
+    begin.textContent = callbacks.dockedAt ? 'Continue' : 'Begin';
+    if (callbacks.dockedAt) tagline.textContent = `Docked at ${callbacks.dockedAt}.`;
     begin.addEventListener('click', () => {
       const cb = callbacks;
       this.close();

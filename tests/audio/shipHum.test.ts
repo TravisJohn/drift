@@ -40,6 +40,11 @@ describe('humMix (how the ship sounds at a given moment)', () => {
     expect(off.electrical + off.air + off.rumble).toBe(0);
   });
 
+  it('is silent while the drone is aboard Vesper', () => {
+    const away = humMix({ engine: 0, nearEngine: 0.5, muted: true }, settings);
+    expect(away.electrical + away.air + away.rumble).toBe(0);
+  });
+
   it('clamps out-of-range input instead of blowing up the level', () => {
     const wild = humMix({ engine: 9, nearEngine: -4 }, settings);
     const sane = humMix({ engine: 1, nearEngine: 0 }, settings);

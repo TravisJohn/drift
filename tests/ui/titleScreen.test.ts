@@ -30,6 +30,16 @@ describe('TitleScreen', () => {
     expect(document.querySelector('#title')).toBeNull();
   });
 
+  it('shows Continue and the last dock when a checkpoint exists', () => {
+    const onBegin = vi.fn();
+    screen.show({ onBegin, dockedAt: 'Vesper Station' });
+    expect(document.querySelector('#title .tagline')?.textContent).toContain('Vesper Station');
+    const button = document.querySelector<HTMLButtonElement>('#title .begin')!;
+    expect(button.textContent).toBe('Continue');
+    button.click();
+    expect(onBegin).toHaveBeenCalledOnce();
+  });
+
   it('close() without Begin never notifies (dispose path)', () => {
     const onBegin = vi.fn();
     screen.show({ onBegin: onBegin as () => void });

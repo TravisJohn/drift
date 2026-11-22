@@ -20,6 +20,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gameConfig } from '../config/gameConfig';
 
+type DroneFrame = 'maintenance' | 'vesper-scout';
+
 const HULL_RADIUS = 0.17;
 /** The hull is a sphere squashed a little flat and stretched a little long. */
 const HULL_SCALE = new THREE.Vector3(1, 0.82, 1.08);
@@ -69,11 +71,15 @@ function merged(parts: THREE.BufferGeometry[], material: THREE.Material): THREE.
   return new THREE.Mesh(geometry, material);
 }
 
-function createMaterials() {
+function createMaterials(frame: DroneFrame, companionColor: number) {
   const cfg = gameConfig.droneLook;
+  const scout = frame === 'vesper-scout';
+  const accent = scout ? companionColor : cfg.accentColor;
   return {
     paint: new THREE.MeshStandardMaterial({
-      color: cfg.hullColor,
+      color: scout
+        ? new THREE.Color(companionColor).lerp(new THREE.Color(0x304766), 0.55)
+        : cfg.hullColor,
       roughness: 0.48,
       metalness: 0.15,
     }),
@@ -91,21 +97,21 @@ function createMaterials() {
     }),
     // A touch of self-light keeps the stripe readable in dark rooms.
     accent: new THREE.MeshStandardMaterial({
-      color: cfg.accentColor,
+      color: accent,
       roughness: 0.5,
       metalness: 0.2,
-      emissive: cfg.accentColor,
+      emissive: accent,
       emissiveIntensity: 0.18,
     }),
     glass: new THREE.MeshStandardMaterial({ color: 0x0a0d12, roughness: 0.1, metalness: 0.6 }),
     eye: new THREE.MeshStandardMaterial({
       color: 0x000000,
-      emissive: cfg.eyeColor,
+      emissive: scout ? companionColor : cfg.eyeColor,
       emissiveIntensity: cfg.eyeIntensity,
     }),
     exhaust: new THREE.MeshStandardMaterial({
       color: 0x000000,
-      emissive: cfg.exhaustColor,
+      emissive: scout ? companionColor : cfg.exhaustColor,
       emissiveIntensity: cfg.exhaustIdle,
     }),
     beacon: new THREE.MeshStandardMaterial({
@@ -273,15 +279,60 @@ function buildFittings(m: Materials): THREE.Mesh {
   return merged([...struts, mast, ...arm], m.metal);
 }
 
-export function buildDroneModel(): DroneModel {
-  const m = createMaterials();
-  const root = new THREE.Group();
-  root.name = 'drone';
+function buildScoutHull(m: Materials): THREE.Group {
+  const wing = new THREE.Shape();
+  wing.moveTo(0, -0.211);
+  wing.lineTo(-0.192, 0.105);
+  wing.lineTo(-0.111, 0.162);
+  wing.lineTo(0.111, 0.162);
+  wing.lineTo(0.192, 0.105);
+  wing.closePath();
+  const plating = new THREE.ExtrudeGeometry(wing, {
+    depth: 0.077,
+    bevelEnabled: true,
+    bevelSize: 0.013,
+    bevelThickness: 0.012,
+    bevelSegments: 1,
+  });
+  plating.rotateX(Math.PI / 2).translate(0, 0.107, 0);
+  const shell = new THREE.Mesh(plating, m.paint);
+  const keel = new THREE.Mesh(new THREE.SphereGeometry(0.144, 20, 10), m.metal);
+  keel.scale.set(0.86, 0.56, 1.16);
+  keel.position.y = -0.042;
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.103, 0.058, 0.09), m.glass);
+  visor.position.set(0, 0.012, -0.164);
+  const stripes = merged(
+    [-1, 1].map((side) =>
+      placed(
+        new THREE.BoxGeometry(0.012, 0.008, 0.188),
+        [side * 0.078, 0.12, -0.021],
+        [0, side * 0.55, 0],
+      ),
+    ),
+    m.accent,
+  );
+  const hull = new THREE.Group();
+  hull.add(shell, keel, stripes, visor);
+  return hull;
+}
 
-  root.add(buildHull(m), buildFittings(m));
+export function buildDroneModel(
+  frame: DroneFrame = 'maintenance',
+  companionColor = 0xb984ff,
+): DroneModel {
+  const m = createMaterials(frame, companionColor);
+  const scout = frame === 'vesper-scout';
+  const root = new THREE.Group();
+  root.name = scout ? frame : 'drone';
+
+  root.add(scout ? buildScoutHull(m) : buildHull(m), buildFittings(m));
 
   // The eye sits just proud of the visor's centre.
-  const eyeRest = new THREE.Vector3(0, 0.006, -HULL_RADIUS * 1.012 * HULL_SCALE.z - 0.003);
+  const eyeRest = new THREE.Vector3(
+    0,
+    0.006,
+    scout ? -0.216 : -HULL_RADIUS * 1.012 * HULL_SCALE.z - 0.003,
+  );
   const eye = buildEye(m);
   eye.position.copy(eyeRest);
   root.add(eye);

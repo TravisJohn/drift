@@ -21,12 +21,12 @@ import { type RunEvent, VesperRun } from '../salvage/vesperRun';
 import type { VesperSoundState } from '../salvage/vesperSounds';
 import { el } from './dashboard/panel';
 
-/** recovered: both cells unloaded. abandoned: the player went back early. */
+/** recovered: enough cells unloaded. abandoned: the player went back early. */
 export type SalvageOutcome = 'recovered' | 'abandoned';
 
 export interface SalvageCallbacks {
   /** The player left the deck. The overlay has closed. */
-  onEnd(outcome: SalvageOutcome, runs: number): void;
+  onEnd(outcome: SalvageOutcome, runs: number, cells: number): void;
 }
 
 /** Whatever plays the blackout's score and effects (salvage/vesperSounds.ts). */
@@ -35,6 +35,8 @@ export interface SalvageAudio {
   resume(): void;
   update(state: VesperSoundState): void;
   cellSecured(): void;
+  breach(): void;
+  freezeShot(): void;
 }
 
 export interface VesperOverlayOptions {
@@ -59,12 +61,23 @@ const MOVE_KEYS = new Set([
 ]);
 /** Keys the browser would otherwise act on (scrolling). */
 const SWALLOW = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-const FEED_STATE = { ready: 'Standby', play: 'Live', alarm: 'Intrusion detected', won: 'Docked' };
+const FEED_STATE = {
+  ready: 'Standby',
+  play: 'Live',
+  escape: 'Containment breach',
+  alarm: 'Intrusion detected',
+  won: 'Docked',
+};
+const BEARINGS = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
 
 interface Hud {
   feedState: HTMLSpanElement;
   seedCount: HTMLSpanElement;
+  minimap: HTMLElement;
+  mapTitle: HTMLSpanElement;
   room: HTMLElement;
+  order: HTMLElement;
+  orderDetail: HTMLElement;
   notice: HTMLDivElement;
   noticeTitle: HTMLElement;
   noticeDetail: HTMLSpanElement;
@@ -97,6 +110,7 @@ export class VesperOverlay {
   private refresh = 0;
   /** The notice now showing, so buttons are rebuilt only when it changes. */
   private noticeKey = '';
+  private returnIn: number | null = null;
 
   constructor(private readonly options: VesperOverlayOptions) {}
 
@@ -126,7 +140,7 @@ export class VesperOverlay {
     this.view = el('canvas', 'view');
     this.view.setAttribute('aria-label', 'Dark service deck seen by drone light');
     const mapCanvas = el('canvas', 'deckmap');
-    mapCanvas.setAttribute('aria-label', 'Only active seeds reveal the deck');
+    mapCanvas.setAttribute('aria-label', 'Station minimap');
     this.hud = this.buildHud();
     this.feed = this.buildFeed(this.view, mapCanvas, this.hud);
     this.root.append(this.buildHeader(), this.feed, this.buildRail(this.hud), this.buildControls());
@@ -145,19 +159,23 @@ export class VesperOverlay {
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     window.addEventListener('resize', this.onResize);
     this.view.addEventListener('pointermove', this.onPointerMove);
+    this.view.addEventListener('pointerdown', this.onPointerDown);
     this.view.addEventListener('pointerleave', this.onPointerLeave);
     this.onResize();
     this.refreshHud();
+    this.refreshMap();
   }
 
   /** Tear everything down without telling anyone (the caller knows). */
   close(): void {
+    this.returnIn = null;
     document.removeEventListener('keydown', this.onKeyDown);
     document.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     window.removeEventListener('resize', this.onResize);
     this.view?.removeEventListener('pointermove', this.onPointerMove);
+    this.view?.removeEventListener('pointerdown', this.onPointerDown);
     this.view?.removeEventListener('pointerleave', this.onPointerLeave);
     this.options.audio.update(silence());
     this.root?.remove();
@@ -175,11 +193,19 @@ export class VesperOverlay {
   update(dt: number): void {
     const run = this.run;
     if (!run) return;
+    const wasScanning = run.mapScanSeconds > 0;
+    if (this.returnIn !== null) {
+      this.returnIn -= dt;
+      if (this.returnIn <= 0) {
+        this.leave();
+        return;
+      }
+    }
     if (!this.paused && run.active) {
       const held = (a: string, b: string): number => Number(this.keys.has(a) || this.keys.has(b));
       const dx = held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft');
       const dy = held('KeyS', 'ArrowDown') - held('KeyW', 'ArrowUp');
-      if (!this.mouseAiming && (dx || dy) && run.mode === 'play') {
+      if (!this.mouseAiming && (dx || dy) && run.canFly) {
         run.player.angle = Math.atan2(dy, dx);
       }
       const { x, y } = run.player;
@@ -192,8 +218,10 @@ export class VesperOverlay {
     if (this.refresh >= REFRESH_SECONDS) {
       this.refresh = 0;
       this.refreshHud();
-      this.renderer?.drawMap(run);
+      this.refreshMap();
       this.options.audio.update(this.soundState());
+    } else if (wasScanning !== run.mapScanSeconds > 0) {
+      this.refreshMap();
     }
   }
 
@@ -206,6 +234,7 @@ export class VesperOverlay {
 
   private deploy(): void {
     if (!this.run) return;
+    this.returnIn = null;
     this.paused = false;
     this.keys.clear();
     this.mouseAiming = false;
@@ -228,13 +257,18 @@ export class VesperOverlay {
   private handle(events: readonly RunEvent[]): void {
     for (const event of events) {
       if (event.type === 'cellSecured') this.options.audio.cellSecured();
+      if (event.type === 'breach') this.options.audio.breach();
+      if (event.type === 'laserFired') this.options.audio.freezeShot();
+      if (event.type === 'won' && this.run && this.run.taken.size === this.run.deck.cells.length) {
+        this.returnIn = gameConfig.salvage.resultsDelay;
+      }
       if (event.type === 'reset') {
         // A fresh run: nothing held over from the capture.
         this.keys.clear();
         this.mouseAiming = false;
         this.throttle = 0;
       }
-      if (event.type === 'seedPlanted' && this.run) this.renderer?.drawMap(this.run);
+      if (event.type === 'seedPlanted') this.refreshMap();
     }
     if (events.length > 0) {
       this.refreshHud();
@@ -253,6 +287,7 @@ export class VesperOverlay {
     }
     this.options.audio.update(this.soundState());
     this.refreshHud();
+    this.refreshMap();
   }
 
   private toggleSound(): void {
@@ -267,8 +302,9 @@ export class VesperOverlay {
     const callbacks = this.callbacks;
     const outcome: SalvageOutcome = this.run?.mode === 'won' ? 'recovered' : 'abandoned';
     const runs = this.run?.attempt ?? 0;
+    const cells = outcome === 'recovered' ? (this.run?.taken.size ?? 0) : 0;
     this.close();
-    callbacks?.onEnd(outcome, runs);
+    callbacks?.onEnd(outcome, runs, cells);
   }
 
   private soundState(): VesperSoundState {
@@ -287,6 +323,16 @@ export class VesperOverlay {
 
   // --- HUD ---
 
+  private refreshMap(): void {
+    const run = this.run;
+    const h = this.hud;
+    if (!run || !h) return;
+    const seconds = this.paused ? 0 : Math.ceil(run.mapScanSeconds);
+    h.minimap.classList.toggle('scan', seconds > 0);
+    setText(h.mapTitle, seconds ? `Deck scan · ${seconds}s` : 'Seed map');
+    this.renderer?.drawMap(run, seconds > 0);
+  }
+
   private refreshHud(): void {
     const run = this.run;
     const h = this.hud;
@@ -297,7 +343,14 @@ export class VesperOverlay {
     const roomId = run.deck.roomAt(run.player.x, run.player.y);
     setText(h.room, (roomId && run.deck.rooms[roomId]?.name) || 'Service passage');
     setText(h.feedState, this.paused ? 'Paused' : FEED_STATE[mode]);
-    setText(h.count, `${run.taken.size} / ${cfg.cellsNeeded}`);
+    setText(h.order, mode === 'escape' ? 'Reach the portal.' : 'Bring at least two cells home.');
+    setText(
+      h.orderDetail,
+      mode === 'escape'
+        ? 'Freeze pursuers for five seconds. Fly into the portal to return to DRIFT.'
+        : 'Return two cells to the western airlock or collect all three to open a portal.',
+    );
+    setText(h.count, `${run.taken.size} / ${run.deck.cells.length}`);
     setText(h.seedCount, `${run.seeds.length} / ${cfg.seedLimit}`);
     setText(h.attempt, `Run ${String(Math.max(1, run.attempt)).padStart(2, '0')}`);
     run.deck.cells.forEach((c, i) => h.rows[i]?.classList.toggle('taken', run.taken.has(c.id)));
@@ -307,12 +360,7 @@ export class VesperOverlay {
     setText(h.pause, this.paused ? 'Resume [Esc]' : 'Pause [Esc]');
     const unload = run.canUnload;
     const nearby = run.nearby;
-    h.action.hidden = !(
-      playing &&
-      !this.paused &&
-      !run.tap &&
-      (unload || (nearby && !run.cargoFull))
-    );
+    h.action.hidden = !(playing && !this.paused && !run.tap && (unload || nearby));
     setText(h.action, unload ? 'Unload cells [E]' : 'Extract cell [E]');
     h.track.hidden = !run.tap;
     if (run.tap) h.trackFill.style.width = `${(run.progress / cfg.extractionSeconds) * 100}%`;
@@ -332,13 +380,23 @@ export class VesperOverlay {
         return 'Security active. Returning to the airlock.';
       case 'won':
         return 'Cargo transferred to DRIFT.';
+      case 'escape': {
+        const escape = run.escape!;
+        const { portal } = escape;
+        const angle = Math.atan2(portal.y - run.player.y, portal.x - run.player.x);
+        const bearing = BEARINGS[(Math.round(angle / (Math.PI / 4)) + 8) % 8];
+        const room = run.deck.rooms[portal.room]?.name;
+        const seconds = Math.max(0, Math.ceil(escape.shiftAt - run.time));
+        const timing = seconds ? `shifts in ${seconds}s` : 'holding nearby';
+        return `Portal · ${room} · ${bearing} · ${timing}`;
+      }
       case 'play':
         if (run.tap) {
           return `Extracting · ${Math.min(full, run.progress).toFixed(1)} / ${full.toFixed(1)} s`;
         }
-        if (run.canUnload) return 'Airlock secured. Unload both cells.';
-        if (run.cargoFull) return 'Cargo full. Return to the western airlock.';
+        if (run.canUnload) return 'Airlock secured. Unload the recovered cells.';
         if (run.nearby) return 'Socket in range. Stay beside it during extraction.';
+        if (run.hasRequiredCells) return 'Return to the airlock or recover the last cell.';
         if (run.lastCell) return `${run.lastCell} cell secured. Find one more.`;
         return run.atDock
           ? 'Move east into Receiving.'
@@ -351,10 +409,22 @@ export class VesperOverlay {
     const run = this.run;
     const h = this.hud;
     if (!run || !h) return;
-    const key = this.paused ? 'paused' : run.mode === 'alarm' || run.mode === 'won' ? run.mode : '';
+    const breach =
+      run.mode === 'escape' &&
+      run.time - run.escape!.startedAt < gameConfig.salvage.escape.alarmBannerSeconds;
+    const key = this.paused
+      ? 'paused'
+      : run.mode === 'alarm' || run.mode === 'won'
+        ? run.mode
+        : breach
+          ? 'breach'
+          : '';
     h.notice.hidden = key === '';
-    h.notice.classList.toggle('alarm', key === 'alarm');
-    if (key === 'alarm') {
+    h.notice.classList.toggle('alarm', key === 'alarm' || key === 'breach');
+    h.notice.classList.toggle('breach', key === 'breach');
+    if (key === 'alarm' && !run.spottedBy) {
+      setText(h.noticeDetail, 'A pursuer caught you. Resetting to the airlock.');
+    } else if (key === 'alarm') {
       setText(
         h.noticeDetail,
         `Guard ${String(run.spottedBy).padStart(2, '0')} spotted you. Resetting to the airlock…`,
@@ -373,16 +443,19 @@ export class VesperOverlay {
     };
     if (key === 'paused') {
       setText(h.noticeTitle, 'Feed paused');
-      setText(h.noticeDetail, 'Patrols hold position. Resume to continue your run.');
+      setText(h.noticeDetail, 'Resume to continue your run.');
       button('Resume', 'Esc', () => this.togglePause());
       button('Return to DRIFT', 'Q', () => this.leave());
     } else if (key === 'alarm') {
       setText(h.noticeTitle, 'RED ALERT');
+    } else if (key === 'breach') {
+      setText(h.noticeTitle, 'CONTAINMENT BREACH');
+      setText(h.noticeDetail, 'Aliens loose. Freeze them and find the portal.');
     } else if (key === 'won') {
       setText(h.noticeTitle, 'Cells recovered');
-      setText(h.noticeDetail, 'Both energy cells are aboard DRIFT.');
+      setText(h.noticeDetail, `${run.taken.size} energy cells are aboard DRIFT.`);
       button('Return to DRIFT', 'Enter', () => this.leave());
-      button('Deploy again', 'R', () => this.deploy());
+      if (this.returnIn === null) button('Deploy again', 'R', () => this.deploy());
     }
   }
 
@@ -422,7 +495,11 @@ export class VesperOverlay {
     return {
       feedState: el('span', '', 'Standby'),
       seedCount: el('span', 'seeds', '0 / 0'),
+      minimap: el('figure', 'minimap'),
+      mapTitle: el('span', '', 'Seed map'),
       room: el('strong', '', 'Docking airlock'),
+      order: el('h2'),
+      orderDetail: el('p'),
       notice,
       noticeTitle,
       noticeDetail,
@@ -460,9 +537,9 @@ export class VesperOverlay {
     const live = el('span', 'live', 'Drone camera');
     live.prepend(el('i', 'lampdot'));
     top.append(live, h.feedState);
-    const minimap = el('figure', 'minimap');
+    const minimap = h.minimap;
     const caption = el('figcaption');
-    caption.append(el('span', '', 'Seed map'), h.seedCount);
+    caption.append(h.mapTitle, h.seedCount);
     minimap.append(caption, map);
     const location = el('div', 'location');
     location.append(el('div', 'label', 'Local signal'), h.room);
@@ -473,15 +550,7 @@ export class VesperOverlay {
   private buildRail(h: Hud): HTMLElement {
     const rail = el('aside', 'rail');
     const order = el('section');
-    order.append(
-      el('div', 'label mission', 'Salvage order'),
-      el('h2', '', 'Bring two cells home.'),
-      el(
-        'p',
-        '',
-        'Search the service deck and return to the western airlock. Each tap needs ten uninterrupted seconds.',
-      ),
-    );
+    order.append(el('div', 'label mission', 'Salvage order'), h.order, h.orderDetail);
     const cells = el('section');
     const line = el('div', 'line');
     line.append(el('span', 'label', 'Energy cells'), h.count);
@@ -524,6 +593,7 @@ export class VesperOverlay {
       hint('W A S D / ↑ ↓ ← →', 'Move'),
       hint('Mouse', 'Aim lamp'),
       hint('E', 'Extract / unload'),
+      hint('Space / click', 'Freeze laser during escape'),
       hint('Q', 'Plant light seed · 15 s'),
       hint('Esc', 'Pause'),
       this.hud?.sound ?? el('span'),
@@ -563,7 +633,7 @@ export class VesperOverlay {
     if (SWALLOW.has(event.code)) event.preventDefault();
     const run = this.run;
     if (!run) return;
-    if (MOVE_KEYS.has(event.code) && run.mode === 'play' && !this.paused) {
+    if (MOVE_KEYS.has(event.code) && run.canFly && !this.paused) {
       this.keys.add(event.code);
     }
     if (event.repeat) return;
@@ -575,7 +645,7 @@ export class VesperOverlay {
     if (run.mode === 'ready' || run.mode === 'won') {
       if (code === 'Enter' && run.mode === 'ready') this.deploy();
       else if (code === 'Enter' || code === 'Escape') this.leave();
-      else if (code === 'KeyR' && run.mode === 'won') this.deploy();
+      else if (code === 'KeyR' && run.mode === 'won' && this.returnIn === null) this.deploy();
       event.preventDefault();
       return;
     }
@@ -591,6 +661,7 @@ export class VesperOverlay {
     }
     if (code === 'KeyE') this.interact();
     else if (code === 'KeyQ') this.plantSeed();
+    else if (code === 'Space') this.handle(run.fireLaser());
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
@@ -598,7 +669,7 @@ export class VesperOverlay {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    if (event.pointerType === 'touch' || this.run?.mode !== 'play' || this.paused) return;
+    if (event.pointerType === 'touch' || !this.run?.canFly || this.paused) return;
     const rect = this.view?.getBoundingClientRect();
     const angle = this.renderer?.aimFrom(
       event.clientX - (rect?.left ?? 0),
@@ -608,6 +679,12 @@ export class VesperOverlay {
       this.run.player.angle = angle;
       this.mouseAiming = true;
     }
+  };
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || this.paused || this.run?.mode !== 'escape') return;
+    this.onPointerMove(event);
+    this.handle(this.run.fireLaser());
   };
 
   private readonly onPointerLeave = (): void => {

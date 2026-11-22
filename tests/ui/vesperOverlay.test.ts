@@ -33,6 +33,8 @@ class FakeAudio implements SalvageAudio {
   muted = false;
   resume = vi.fn();
   cellSecured = vi.fn();
+  breach = vi.fn();
+  freezeShot = vi.fn();
   states: VesperSoundState[] = [];
   update(state: VesperSoundState): void {
     this.states.push(state);
@@ -76,7 +78,7 @@ describe('VesperOverlay', () => {
   it('opens on standby at the airlock with the salvage order and a deploy button', () => {
     expect(overlay.isOpen).toBe(true);
     expect(run().mode).toBe('ready');
-    expect(text()).toContain('Bring two cells home.');
+    expect(text()).toContain('Bring at least two cells home.');
     expect(text()).toContain('Docking airlock');
     expect(text()).toContain('Deploy drone');
     expect(text()).toContain('Hydroponics');
@@ -114,12 +116,12 @@ describe('VesperOverlay', () => {
     expect(run().clock).toBe(clock);
     press('KeyQ');
     expect(overlay.isOpen).toBe(false);
-    expect(onEnd).toHaveBeenCalledWith('abandoned', 1);
+    expect(onEnd).toHaveBeenCalledWith('abandoned', 1, 0);
   });
 
   it('Esc from standby goes straight back to the ship without a run', () => {
     press('Escape');
-    expect(onEnd).toHaveBeenCalledWith('abandoned', 0);
+    expect(onEnd).toHaveBeenCalledWith('abandoned', 0, 0);
     expect(document.getElementById('vesper')).toBeNull();
   });
 
@@ -146,8 +148,46 @@ describe('VesperOverlay', () => {
     expect(run().mode).toBe('won');
     expect(text()).toContain('Cells recovered');
     press('Enter');
-    expect(onEnd).toHaveBeenCalledWith('recovered', 1);
+    expect(onEnd).toHaveBeenCalledWith('recovered', 1, 2);
     expect(overlay.isOpen).toBe(false);
+  });
+
+  it('sounds the third-cell alarm, fires the freeze laser and returns to DRIFT via the portal', () => {
+    press('Enter');
+    const r = run();
+    vi.spyOn(r, 'detect').mockReturnValue(-1);
+    r.taken.add('hydro').add('bank');
+    const last = r.deck.cells.find((cell) => !r.taken.has(cell.id))!;
+    Object.assign(r.player, { x: last.x, y: last.y });
+    steps(0.1);
+    const action = document.querySelector<HTMLButtonElement>('#vesper .action');
+    expect(action?.hidden).toBe(false);
+    expect(action?.textContent).toContain('Extract cell');
+    action?.click();
+    steps(gameConfig.salvage.extractionSeconds);
+    expect(r.taken.has(last.id)).toBe(true);
+    expect(text()).toContain('3 / 3');
+    expect(text()).toContain('CONTAINMENT BREACH');
+    expect(text()).toContain('Reach the portal.');
+    expect(audio.breach).toHaveBeenCalledOnce();
+    press('Space');
+    expect(audio.freezeShot).toHaveBeenCalledOnce();
+    for (const alien of r.escape!.aliens) alien.frozenUntil = Infinity;
+    steps(gameConfig.salvage.mapScan.firstDelay[1] + 0.1);
+    expect(document.querySelector('#vesper .minimap.scan')).not.toBeNull();
+    expect(text()).toContain('Deck scan');
+    press('Escape');
+    expect(document.querySelector('#vesper .minimap.scan')).toBeNull();
+    press('Escape');
+    expect(document.querySelector('#vesper .minimap.scan')).not.toBeNull();
+    steps(gameConfig.salvage.mapScan.visibleSeconds);
+    expect(document.querySelector('#vesper .minimap.scan')).toBeNull();
+    expect(text()).toContain('Seed map');
+    Object.assign(r.player, r.escape!.portal);
+    steps(DT);
+    expect(text()).toContain('3 energy cells are aboard DRIFT.');
+    steps(gameConfig.salvage.resultsDelay + DT);
+    expect(onEnd).toHaveBeenCalledWith('recovered', 1, 3);
   });
 
   it('Q plants a light seed and the seed map counts it', () => {

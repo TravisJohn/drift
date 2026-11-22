@@ -669,7 +669,29 @@ export const gameConfig = {
     lampRange: 111,
     /** Patrollers closer than this start the proximity pulse. */
     warningRange: 110,
-    /** Seconds the win banner stays before the results dialog. */
+    mapScan: {
+      visibleSeconds: 3,
+      firstDelay: [1, 3],
+      repeatDelay: [6, 11],
+      redAlertChance: 0.5,
+    },
+    escape: {
+      alienCount: 3,
+      alienSpeedMultiplier: 1.2,
+      spawnDistance: 135,
+      contactRadius: 8,
+      repathSeconds: 0.18,
+      portalShiftSeconds: 30,
+      portalHoldDistance: 80,
+      portalRadius: 11,
+      freezeSeconds: 5,
+      laserRange: 125,
+      laserHitRadius: 7,
+      laserCooldown: 0.65,
+      laserFlashSeconds: 0.16,
+      alarmBannerSeconds: 3,
+    },
+    /** Seconds the portal result stays on screen before returning to the ship. */
     resultsDelay: 1.4,
   },
 

@@ -17,7 +17,7 @@ export const AUDIO_EXTENSIONS: readonly string[] = ['ogg', 'mp3', 'wav'];
  */
 export const SHARED_MUSIC_FOLDER = 'music';
 
-export type AudioCategory = 'music' | 'ambience' | 'sfx';
+export type AudioCategory = 'music' | 'score' | 'ambience' | 'sfx';
 
 export interface AudioSpec {
   readonly key: string;
@@ -44,6 +44,7 @@ export const audioManifest: readonly AudioSpec[] = [
   // Music beds.
   spec('music_roaming', true, 0.5, 'music'),
   spec('music_cruise', true, 0.5, 'music'),
+  spec('music_vesper', true, 0.5, 'score'),
   // Ambience loops.
   spec('amb_ship_hum', true, 0.55, 'ambience'),
   spec('amb_engine_cruise', true, 0.5, 'ambience'),

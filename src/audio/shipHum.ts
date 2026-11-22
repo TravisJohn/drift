@@ -45,6 +45,8 @@ export interface HumState {
   readonly nearEngine: number;
   /** The drone is outside the ship, in vacuum. */
   readonly outside?: boolean;
+  /** The listener is aboard another vessel. */
+  readonly muted?: boolean;
 }
 
 export interface HumMix {
@@ -64,7 +66,7 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 export function humMix(state: HumState, s: ShipHumSettings = gameConfig.audio.shipHum): HumMix {
   const engine = clamp01(state.engine);
   const room = 1 + s.engineRoomBoost * clamp01(state.nearEngine);
-  const level = (s.enabled ? s.level : 0) * (state.outside ? s.outsideLevel : 1);
+  const level = (s.enabled && !state.muted ? s.level : 0) * (state.outside ? s.outsideLevel : 1);
   return {
     electrical: level * s.electricalLevel * room * (1 + 0.55 * engine),
     air: level * s.airLevel * (1 + 0.18 * engine),

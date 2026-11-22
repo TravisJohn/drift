@@ -1,11 +1,12 @@
 /**
  * VesperSounds - the blackout's score and effects, synthesized live.
  *
- * A slow four-chord pad with sparse accents, a thruster hum that follows
+ * A fallback four-chord pad with sparse accents, a thruster hum that follows
  * actual movement, a rising collector tone during an extraction, a pulse
  * that quickens as a patroller closes in, and a two-note chime when a cell
- * is secured. No audio files; one AudioContext of its own, like the combat
- * sounds. `pulseInterval` and `noteHz` are pure so the timing and tuning
+ * is secured. The authored playlist takes over from the pad when playing.
+ * The synth uses its own AudioContext, like the combat sounds.
+ * `pulseInterval` and `noteHz` are pure so the timing and tuning
  * can be tested without Web Audio.
  *
  * Where Web Audio is missing it stays silent and says so once.
@@ -67,6 +68,7 @@ interface Voice {
 export class VesperSounds {
   private context: AudioContext | null = null;
   private mix: GainNode | null = null;
+  private score: GainNode | null = null;
   private thruster: Voice | null = null;
   private collector: Voice | null = null;
   private overtone: Voice | null = null;
@@ -77,7 +79,10 @@ export class VesperSounds {
   private unavailable = false;
   private _muted = false;
 
-  constructor(private readonly settings: VesperSoundSettings = gameConfig.audio.salvageSounds) {}
+  constructor(
+    private readonly settings: VesperSoundSettings = gameConfig.audio.salvageSounds,
+    private readonly hasRecordedScore: () => boolean = () => false,
+  ) {}
 
   get muted(): boolean {
     return this._muted;
@@ -100,11 +105,13 @@ export class VesperSounds {
   /** Ease every continuous voice toward the run's state; schedule score and pulses. */
   update(state: VesperSoundState): void {
     const context = this.context;
-    const { mix, thruster, collector, overtone } = this;
-    if (!context || !mix || !thruster || !collector || !overtone) return;
+    const { mix, score, thruster, collector, overtone } = this;
+    if (!context || !mix || !score || !thruster || !collector || !overtone) return;
     const active = state.active && !this._muted;
     const now = context.currentTime;
+    const recorded = this.hasRecordedScore();
     this.ease(mix.gain, active ? this.settings.level : 0, now, 0.035);
+    this.ease(score.gain, recorded ? 0 : 1, now, 0.15);
     this.ease(thruster.volume.gain, active ? 0.09 * state.speed : 0, now);
     this.ease(thruster.oscillator.frequency, 75 + 30 * state.speed, now);
     const charging = active && state.charge !== null;
@@ -115,13 +122,13 @@ export class VesperSounds {
     this.ease(overtone.oscillator.frequency, pitch * 2.01, now);
     if (!active || context.state !== 'running') return;
 
-    if (now >= this.nextChord) {
+    if (!recorded && now >= this.nextChord) {
       const [pad, accents] = SCORE[this.chord] as (typeof SCORE)[number];
       pad.forEach((midi, i) =>
-        this.note(i === 1 ? 'triangle' : 'sine', noteHz(midi), 0.038, now, 7.4, 1.6, 2.4),
+        this.note(i === 1 ? 'triangle' : 'sine', noteHz(midi), 0.038, now, 7.4, 1.6, 2.4, score),
       );
       accents.forEach((midi, i) =>
-        this.note('sine', noteHz(midi), 0.025, now + 1.8 + i * 1.8, 1.6, 0.07, 1.45),
+        this.note('sine', noteHz(midi), 0.025, now + 1.8 + i * 1.8, 1.6, 0.07, 1.45, score),
       );
       this.chord = (this.chord + 1) % SCORE.length;
       this.nextChord = now + CHORD_SECONDS;
@@ -144,12 +151,28 @@ export class VesperSounds {
     this.note('sine', 880, 0.08, now + 0.11, 0.42, 0.018, 0.37);
   }
 
+  breach(): void {
+    const context = this.context;
+    if (!context || this._muted || context.state !== 'running') return;
+    const start = context.currentTime;
+    for (let i = 0; i < 6; i++) {
+      this.note('sawtooth', i % 2 === 0 ? 292 : 388, 0.26, start + i * 0.28, 0.27, 0.026, 0.09);
+    }
+  }
+
+  freezeShot(): void {
+    const context = this.context;
+    if (!context || this._muted || context.state !== 'running') return;
+    this.note('triangle', 1280, 0.12, context.currentTime, 0.16, 0.009, 0.14);
+  }
+
   dispose(): void {
     this.context?.close().catch((error: unknown) => {
       console.warn('Drift audio: could not close the Vesper sounds', error);
     });
     this.context = null;
     this.mix = null;
+    this.score = null;
     this.thruster = null;
     this.collector = null;
     this.overtone = null;
@@ -184,9 +207,10 @@ export class VesperSounds {
     duration: number,
     attack: number,
     release: number,
+    output = this.mix,
   ): void {
-    if (!this.mix) return;
-    const { oscillator, volume } = this.voice(type, frequency, this.mix);
+    if (!output) return;
+    const { oscillator, volume } = this.voice(type, frequency, output);
     const end = start + duration;
     volume.gain.setValueAtTime(0, start);
     volume.gain.linearRampToValueAtTime(level, start + attack);
@@ -213,6 +237,9 @@ export class VesperSounds {
     this.mix = this.context.createGain();
     this.mix.gain.value = 0;
     this.mix.connect(this.context.destination);
+    this.score = this.context.createGain();
+    this.score.gain.value = 0;
+    this.score.connect(this.mix);
     const filter = this.context.createBiquadFilter();
     filter.frequency.value = 340;
     filter.Q.value = 0.6;

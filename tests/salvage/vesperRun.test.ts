@@ -32,7 +32,7 @@ function inspectSocket(cell: CellSocket): { safe: number; seen: number } {
 }
 
 function deployed(): VesperRun {
-  const run = new VesperRun(deck);
+  const run = new VesperRun(deck, () => 0.99);
   run.deploy();
   return run;
 }
@@ -190,6 +190,20 @@ describe('VesperRun', () => {
     expect(run.step(DT, { dx: 1, dy: 0 })).toEqual([]); // the clock stops
   });
 
+  it('gives a triggered red alert scan three seconds before the run resets', () => {
+    const run = new VesperRun(deck, () => 0);
+    run.deploy();
+    vi.spyOn(run, 'detect').mockReturnValue(0);
+    run.step(DT, STILL);
+    expect(run.mapScanSeconds).toBeCloseTo(3);
+    advance(run, 179);
+    expect(run.mapScanSeconds).toBeGreaterThan(0);
+    expect(run.mode).toBe('alarm');
+    advance(run, 2);
+    expect(run.mapScanSeconds).toBe(0);
+    expect(run.mode).toBe('play');
+  });
+
   it('can be redeployed after a win with a fresh run', () => {
     const run = deployed();
     run.taken.add('hydro').add('bank');
@@ -198,5 +212,101 @@ describe('VesperRun', () => {
     expect(run.deploy()).toEqual([{ type: 'deployed', attempt: 2 }]);
     expect(run.taken.size).toBe(0);
     expect(run.atDock).toBe(true);
+  });
+
+  describe('third-cell escape', () => {
+    const breach = (): VesperRun => {
+      const run = new VesperRun(deck, () => 0);
+      run.deploy();
+      vi.spyOn(run, 'detect').mockReturnValue(-1);
+      run.taken.add('hydro').add('bank');
+      atSocket(run, deck.cells[2]!, 0);
+      run.interact();
+      run.progress = cfg.extractionSeconds - DT;
+      expect(advance(run, 1)).toContainEqual({ type: 'breach' });
+      return run;
+    };
+
+    it('releases three pursuers 20% faster than the fastest regular patrol and locks out the airlock', () => {
+      const run = breach();
+      expect(run.mode).toBe('escape');
+      const escape = run.escape!;
+      expect(escape.aliens).toHaveLength(3);
+      const fastest = Math.max(
+        ...deck.paths.filter((p) => p.kind === 'patroller').map((p) => p.speed),
+      );
+      expect(escape.alienSpeed).toBeCloseTo(fastest * 1.2);
+      Object.assign(run.player, cfg.start);
+      expect(run.interact()).toEqual([]);
+      expect(run.canUnload).toBe(false);
+    });
+
+    it('holds a laser hit in place for five seconds and then resumes pursuit', () => {
+      const run = breach();
+      const escape = run.escape!;
+      const [alien, ...others] = escape.aliens;
+      for (const other of others) other.frozenUntil = Infinity;
+      Object.assign(run.player, { x: 600, y: 450, angle: 0 });
+      Object.assign(alien!, { x: 650, y: 450 });
+      expect(run.fireLaser()).toEqual([{ type: 'laserFired' }]);
+      expect(run.fireLaser()).toEqual([]);
+      expect(alien!.frozenUntil - run.time).toBeCloseTo(5);
+      advance(run, 299);
+      expect(alien!.x).toBe(650);
+      advance(run, 2);
+      expect(alien!.x).toBeLessThan(650);
+      expect(deck.fits(alien!.x, alien!.y)).toBe(true);
+    });
+
+    it('stops the freeze laser at bulkheads and safely routes aliens around corridors', () => {
+      const run = breach();
+      const escape = run.escape!;
+      const [alien, ...others] = escape.aliens;
+      for (const other of others) other.frozenUntil = Infinity;
+      Object.assign(run.player, { x: 262, y: 560, angle: 0 });
+      Object.assign(alien!, { x: 390, y: 560 });
+      run.fireLaser();
+      expect(alien!.frozenUntil).toBe(0);
+      expect(escape.laser!.to[0]).toBeLessThan(390);
+      const initial = { x: alien!.x, y: alien!.y };
+      for (let i = 0; i < 150; i++) {
+        run.step(DT, STILL);
+        expect(deck.fits(alien!.x, alien!.y)).toBe(true);
+      }
+      expect(Math.hypot(alien!.x - initial.x, alien!.y - initial.y)).toBeGreaterThan(40);
+    });
+
+    it('moves the portal between rooms, holds it within reach, and wins when the drone flies in', () => {
+      const run = breach();
+      const escape = run.escape!;
+      const initial = escape.portal.room;
+      for (const alien of escape.aliens) alien.frozenUntil = Infinity;
+      run.time = escape.shiftAt;
+      run.step(DT, STILL);
+      expect(escape.portal.room).not.toBe(initial);
+      const portal = escape.portal;
+      Object.assign(run.player, { x: portal.x + 20, y: portal.y });
+      run.time = escape.shiftAt;
+      run.step(DT, STILL);
+      expect(escape.portal).toBe(portal);
+      Object.assign(run.player, portal);
+      expect(run.step(DT, STILL)).toContainEqual({ type: 'won' });
+      expect(run.mode).toBe('won');
+      expect(run.taken.size).toBe(3);
+    });
+
+    it('resets the pursuit and cargo after an alien catches the drone', () => {
+      const run = breach();
+      Object.assign(run.escape!.aliens[0]!, run.player);
+      expect(run.step(DT, STILL)).toEqual([{ type: 'alienCaught' }]);
+      expect(run.mode).toBe('alarm');
+      expect(advance(run, Math.ceil((cfg.mapScan.visibleSeconds + DT) / DT))).toContainEqual({
+        type: 'reset',
+        attempt: 2,
+      });
+      expect(run.escape).toBeNull();
+      expect(run.taken.size).toBe(0);
+      expect(run.atDock).toBe(true);
+    });
   });
 });

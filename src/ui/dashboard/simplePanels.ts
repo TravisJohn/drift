@@ -14,6 +14,7 @@ import type {
   DashboardTraining,
 } from '../dashboardModel';
 import { type DashboardPanel, el, heading, wrapIndex } from './panel';
+import { companionColor, companionName } from '../../player/companionPatrol';
 
 /** A selectable list: the shared behaviour of the three tabs below. */
 abstract class ListPanel<T> implements DashboardPanel {
@@ -123,6 +124,9 @@ export class ShipPanel extends ListPanel<DashboardRoom> {
   private readonly automatic = el('button', '', 'Auto · 2 min');
   private readonly start = el('button', '', 'Cycle now');
   private readonly voice = el('button', '', 'Voice');
+  private readonly companionStatus = el('div', 'power-status');
+  private readonly companionList = el('ul', 'companion-list');
+  private companions: readonly number[] | null = null;
 
   constructor(
     data: DashboardData,
@@ -143,10 +147,28 @@ export class ShipPanel extends ListPanel<DashboardRoom> {
       controls.append(button);
     }
     this.element.append(heading('Cabin power'), this.powerStatus, controls);
+    this.element.prepend(heading('Companions'), this.companionStatus, this.companionList);
     this.update(data);
   }
 
   update(data: DashboardData): void {
+    if (this.companions !== data.companions) {
+      this.companions = data.companions;
+      this.companionStatus.textContent = data.companions.length
+        ? 'Autonomous console inspections'
+        : 'Bring all three Vesper cells aboard to recruit a scout.';
+      this.companionList.hidden = data.companions.length === 0;
+      this.companionList.replaceChildren(
+        ...data.companions.map((id) => {
+          const item = el('li', '', companionName(id));
+          const dot = el('span');
+          dot.style.backgroundColor = `#${companionColor(id).toString(16).padStart(6, '0')}`;
+          dot.setAttribute('aria-hidden', 'true');
+          item.prepend(dot);
+          return item;
+        }),
+      );
+    }
     this.powerStatus.textContent = data.power.status;
     this.start.disabled = data.power.busy;
     this.automatic.setAttribute('aria-pressed', String(data.power.automatic));

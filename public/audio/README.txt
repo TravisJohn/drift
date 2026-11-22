@@ -4,10 +4,10 @@ Drift audio drop folder
 Each folder here is one moment in the game. Drop any .ogg, .mp3 or .wav
 file into a folder, under any file name, and it plays for that moment.
 
-  music              shared playlist: plays for every music moment below
-                     that has no files of its own
+  music              shared ship playlist: fallback for roaming and cruise
   music_roaming      music while docked / roaming (overrides "music")
   music_cruise       music during autopilot travel (overrides "music")
+  music_vesper       Vesper Station away mission (uses a synth score when empty)
   amb_ship_hum       constant low ship hum
   amb_engine_cruise  engine wash during travel
   amb_cryo_bay       cryo bay room tone (swells inside the bay)

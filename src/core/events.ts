@@ -62,7 +62,7 @@ export interface GameEvents {
   /** The drone was sent aboard Vesper Station from the tactical tab. */
   'salvage:started': void;
   /** The player came back: cells recovered or abandoned, after this many runs. */
-  'salvage:ended': { outcome: string; runs: number };
+  'salvage:ended': { outcome: string; runs: number; cells: number };
 }
 
 export type GameEventName = keyof GameEvents;

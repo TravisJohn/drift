@@ -32,4 +32,9 @@ export class WarpIntercom {
   pause(): void {
     this.active?.pause();
   }
+
+  stop(): void {
+    this.pause();
+    this.active = null;
+  }
 }

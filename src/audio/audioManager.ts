@@ -201,6 +201,11 @@ export class AudioManager {
     this.require(key, true).target = 0;
   }
 
+  /** True when the loop has a track playing, including during its fade. */
+  isLoopPlaying(key: string): boolean {
+    return this.bankOf(this.require(key, true))?.playing ?? false;
+  }
+
   /** Scale a playing loop immediately (e.g. hover volume from speed). */
   setLoopGain(key: string, gain: number): void {
     this.require(key, true).gain = Math.min(1, Math.max(0, gain));

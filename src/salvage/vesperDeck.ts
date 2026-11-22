@@ -21,6 +21,7 @@ import {
   deckRooms,
   patrolSpecs,
   type DeckRoom,
+  type PatrolSpec,
 } from '../content/vesperDeckPlan';
 
 export type Point = readonly [number, number];
@@ -62,6 +63,7 @@ interface PatrolSegment {
 }
 
 export interface PatrolPath {
+  readonly kind: 'patroller' | 'hunter';
   readonly segments: readonly PatrolSegment[];
   readonly length: number;
   readonly speed: number;
@@ -70,6 +72,7 @@ export interface PatrolPath {
 
 /** A patroller at one instant: where it is, where it faces, what it sees. */
 export interface GuardPose {
+  readonly kind: PatrolPath['kind'];
   readonly x: number;
   readonly y: number;
   readonly angle: number;
@@ -132,7 +135,7 @@ export class VesperDeck {
       if (!r) throw new Error(`VesperDeck: cell room "${id}" is not on the deck`);
       return { id, name: r.name, x: r.x + SOCKET_OFFSET.x, y: r.y + SOCKET_OFFSET.y };
     });
-    this.paths = patrolSpecs.map((spec) => this.buildPatrol(spec.rooms, spec.speed, spec.offset));
+    this.paths = patrolSpecs.map((spec) => this.buildPatrol(spec));
 
     const r = this.cfg.droneRadius;
     this.hull = Array.from({ length: HULL_POINTS }, (_, i) => {
@@ -157,6 +160,17 @@ export class VesperDeck {
   /** Does the whole drone hull fit here? */
   fits(x: number, y: number): boolean {
     return this.floor(x, y) && this.hull.every(([dx, dy]) => this.floor(x + dx, y + dy));
+  }
+
+  /** Can a drone-sized hull pass in a straight line between these points? */
+  clearPath(x: number, y: number, targetX: number, targetY: number): boolean {
+    const steps = Math.ceil(Math.hypot(targetX - x, targetY - y) / 2);
+    for (let i = 1; i < steps; i++) {
+      if (!this.fits(x + ((targetX - x) * i) / steps, y + ((targetY - y) * i) / steps)) {
+        return false;
+      }
+    }
+    return this.fits(targetX, targetY);
   }
 
   /** The room whose bounding box holds this point (corridors return undefined). */
@@ -247,7 +261,7 @@ export class VesperDeck {
     const t = (d - seg.start) / seg.dist;
     const x = seg.x + seg.dx * t;
     const y = seg.y + seg.dy * t;
-    return { x, y, angle: seg.angle, cone: this.sight(x, y, seg.angle) };
+    return { kind: path.kind, x, y, angle: seg.angle, cone: this.sight(x, y, seg.angle) };
   }
 
   /** Every patroller at patrol-clock time `clock` (seconds). */
@@ -262,7 +276,7 @@ export class VesperDeck {
     return h.a === a ? h.points : [...h.points].reverse();
   }
 
-  private buildPatrol(rooms: readonly string[], speed: number, offset: number): PatrolPath {
+  private buildPatrol({ rooms, speed, offset, kind }: PatrolSpec): PatrolPath {
     const first = this.rooms[rooms[0] as string] as DeckRoom;
     const points: Point[] = [[first.x, first.y]];
     rooms.forEach((id, i) => {
@@ -285,7 +299,7 @@ export class VesperDeck {
       length += dist;
       return { x: sx, y: sy, dx, dy, dist, start, angle: Math.atan2(dy, dx) };
     });
-    return { segments, length, speed, offset };
+    return { kind: kind ?? 'patroller', segments, length, speed, offset };
   }
 
   private buildMap(): Uint8Array {

@@ -50,6 +50,19 @@ describe('VesperDeck geometry (the approved deck plan)', () => {
     }
   });
 
+  it('adds two hunters to the six regular patrols and keeps the airlock out of their reach', () => {
+    const guards = deck.guardsAt(0);
+    expect(guards.filter((guard) => guard.kind === 'patroller')).toHaveLength(6);
+    expect(guards.filter((guard) => guard.kind === 'hunter')).toHaveLength(2);
+
+    const airlock = deck.rooms[deck.airlockId]!;
+    const eastEdge = airlock.x + airlock.width / 2;
+    for (const path of deck.paths.filter((patrol) => patrol.kind === 'hunter')) {
+      const westernmost = Math.min(...path.segments.map((s) => Math.min(s.x, s.x + s.dx)));
+      expect(westernmost - deck.sightReach).toBeGreaterThan(eastEdge);
+    }
+  });
+
   it('leaves the breach in the north ring as open space, not floor', () => {
     expect(deck.floor(753, 250)).toBe(false);
   });

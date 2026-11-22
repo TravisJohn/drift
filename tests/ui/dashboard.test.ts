@@ -9,6 +9,7 @@ import { type DashboardInput, buildDashboardData, cssColor } from '../../src/ui/
 import { type DashboardCallbacks, DashboardOverlay } from '../../src/ui/dashboardOverlay';
 
 const input = (over: Partial<DashboardInput> = {}): DashboardInput => ({
+  companions: [],
   power: { automatic: true, voice: true, busy: false, status: 'Cooldown in 120s' },
   rooms: shipLayout.rooms,
   podCount: 4,
@@ -243,6 +244,20 @@ describe('DashboardOverlay', () => {
     expect(automatic!.getAttribute('aria-pressed')).toBe('false');
     expect(voice!.textContent).toBe('Voice off');
     expect(visible().textContent).toContain('Conserving power');
+  });
+
+  it('lists newly recruited companions with distinct colours', () => {
+    press('Digit3');
+    expect(visible().textContent).toContain('recruit a scout');
+    overlay.update(buildDashboardData(input({ companions: [1, 2] })));
+    expect(visible().textContent).toContain('Autonomous console inspections');
+    const scouts = [...visible().querySelectorAll('.companion-list li')];
+    expect(scouts.map((scout) => scout.textContent)).toEqual([
+      'Vesper Scout 01',
+      'Vesper Scout 02',
+    ]);
+    const colours = scouts.map((scout) => scout.querySelector('span')!.style.backgroundColor);
+    expect(new Set(colours).size).toBe(2);
   });
 
   it('opens on navigation, with no compartment lit on the hologram', () => {

@@ -87,6 +87,7 @@ export type DashboardEngagement =
   | { readonly kind: 'salvage'; readonly title: string; readonly detail: string };
 
 export interface DashboardData {
+  readonly companions: readonly number[];
   readonly power: CabinPowerStatus;
   readonly vessel: string;
   readonly journey: readonly DashboardRow[];
@@ -112,6 +113,7 @@ export interface PlaceInput {
 }
 
 export interface DashboardInput {
+  readonly companions: readonly number[];
   readonly power: CabinPowerStatus;
   readonly rooms: readonly RoomSpec[];
   /** Cryo pods aboard (counted from the layout). */
@@ -128,7 +130,7 @@ export interface DashboardInput {
   /** Travel-time scale for this run (gameConfig.travel.cruiseScale). */
   readonly cruiseScale: number;
   readonly training: readonly DashboardTraining[];
-  /** Have the Vesper cells been brought home this session? */
+  /** Have the Vesper cells been brought home? */
   readonly salvageRecovered: boolean;
 }
 
@@ -181,7 +183,7 @@ export function engagements(input: DashboardInput): readonly DashboardEngagement
     title: 'Away mission · Vesper Station blackout',
     detail: input.salvageRecovered
       ? 'Cells recovered. The service deck is still dark if you want another run.'
-      : 'Send the drone onto the dark service deck. Bring two energy cells home unseen.',
+      : 'Send the drone onto the dark service deck. Bring at least two energy cells home unseen.',
   };
   return [salvage, ...ENGAGEMENTS];
 }
@@ -293,6 +295,7 @@ function systemRows(input: DashboardInput): DashboardRow[] {
 export function buildDashboardData(input: DashboardInput): DashboardData {
   return {
     vessel: VESSEL_NAME,
+    companions: input.companions,
     power: input.power,
     journey: journeyRows(input),
     systems: systemRows(input),

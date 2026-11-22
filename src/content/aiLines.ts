@@ -19,6 +19,7 @@ export type NarrativeTrigger =
   | 'tetherWarning'
   | 'vesperBeacon'
   | 'salvageRecovered'
+  | 'scoutRecruited'
   | 'salvageAbandoned';
 
 export interface AiLine {
@@ -65,7 +66,7 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
   // Docked at Vesper Station: the away mission is offered.
   vesperBeacon: [
     {
-      text: 'The beacon is automated. Their service deck is dark, but two energy cells still read live. Send me in from the command deck, Tactical tab.',
+      text: 'The beacon is automated. Three energy cells still read live on the dark service deck. We need at least two. Send me in from the command deck, Tactical tab.',
       delay: 3,
     },
     {
@@ -73,8 +74,11 @@ export const aiLines: Record<NarrativeTrigger, readonly AiLine[]> = {
       delay: 3,
     },
   ],
+  scoutRecruited: [
+    { text: 'All three cells are aboard. A new Vesper Scout has joined the inspection crew.' },
+  ],
   salvageRecovered: [
-    { text: 'Both cells are aboard. The reserves will thank you, little one.' },
+    { text: 'The cells are aboard. The reserves will thank you, little one.' },
     { text: 'Cargo logged. You were very quiet out there.' },
   ],
   salvageAbandoned: [
