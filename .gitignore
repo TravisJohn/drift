@@ -1,5 +1,12 @@
 node_modules/
 dist/
+.vercel/
+/.release/
+.codex/
+/drift/
+/public/audio/**/*.mp3
+/public/audio/**/*.ogg
+/public/audio/**/*.wav
 .env
 .env.*
 !.env.example

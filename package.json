@@ -2,8 +2,20 @@
   "name": "drift",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": "24.x"
+  },
   "type": "module",
   "description": "Drift - a quiet space travel game. You are a maintenance drone on a research vessel whose crew is in cryosleep.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TravisJohn/drift.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TravisJohn/drift/issues"
+  },
+  "homepage": "https://github.com/TravisJohn/drift#readme",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

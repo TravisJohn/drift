@@ -1503,3 +1503,60 @@ up by script in that check, not flown by hand.
 
 Pending: the author's hands-on playtest of the integrated mission. The
 standalone mechanics playtest from the handoff is still open as well.
+
+### 2026-11-21 — Vesper playtest fixes
+
+- All three cells are collectible. Bring at least two back to the airlock to complete the mission.
+- Opening the drone feed fades out ship music and ambience, silences cabin announcements and fades in the Vesper playlist. The ship soundscape returns when the drone comes back. The Vesper synth provides the score if no recording can play and still handles movement, extraction and patrol effects.
+- The author's local copies of Deep Space Dread and Glassy Tension go in `public/audio/music_vesper/`.
+
+### 2026-11-21 — Vesper reinforcement patrols
+
+- Two hunter drones join the six regular patrols. One sweeps the Relay Hub, Med Bay and Switchyard. The other loops through Sorting Hall, Coolant Plant, Machine Shop and Receiving.
+- Hunters have larger hooked chassis, pulsing red sensors and crimson sight cones. Their sight still follows the same wall and capture rules. The new routes keep the airlock clear and leave socket inspections with the existing patrols.
+- A scripted run recovered all three cells and unloaded them at the airlock with all eight patrols active. All 756 tests, lint and the production build passed.
+
+### 2026-11-21 — Vesper containment breach
+
+- The third extraction triggers a siren and releases three aliens. They pursue through the corridors at 31.2 units per second, 20% above the fastest normal patrol. Contact resets the run.
+- Aim with the mouse and use Space or click to fire the freeze laser. A hit stops an alien for five seconds, and bulkheads block the beam.
+- The return portal starts in a random room and shifts to another every 30 seconds unless the drone is approaching in sight. The HUD shows the room, direction and countdown. Flying into the portal returns the player to the bridge with all three cells. A two-cell run can still finish at the airlock.
+
+### 2026-11-21 — Vesper Scout and temporary deck scans
+
+- Returning aboard with all three cells unlocks and equips the Vesper Scout. The Drone Bay on the Ship tab lets the player switch frames. The unlock and selected frame persist locally in the browser.
+- The upper-right map sometimes shows the full corridor network for three seconds, including the drone and the current exit. Scans recur during the breach and can also appear when a red alert starts. The seed map returns when the scan ends.
+
+### 2026-11-21 — Autonomous companions and docked checkpoints
+
+- Each full three-cell return recruits another differently coloured Vesper Scout. Scouts fly their own bridge and corridor route and pause to scan the power and communications consoles. The Ship tab shows the companion roster.
+- DRIFT saves the last docked location, Vesper recovery and the companion roster in the browser. Continue starts aboard at the bridge. A previous scout-frame unlock becomes the first companion.
+
+## 2026-11-22 - Open-source release setup (0.1.0)
+
+The author wants DRIFT public on GitHub and deployed on Vercel, with the
+learning layer clearly marked as not integrated and easy to resume.
+
+- README now has a project status table (learning layer: not integrated),
+  a folder map, links to the design docs, Git-connected Vercel deploy steps
+  and a contributing note.
+- New `docs/LEARNING-LAYER.md`: what the learning seam already provides,
+  the five steps to add a real module, and the open decisions (content and
+  licensing, format, progress saving, game tie-in, terminal placement).
+- `.vercelignore` keeps local soundtrack files, old copies and build output
+  out of Vercel CLI uploads. Git-connected deploys already skip them because
+  they are git-ignored.
+- GitHub Actions CI runs tests, lint and the build on pushes to `main` and
+  on pull requests (Node.js 24).
+- `package.json` gained repository, bugs and homepage links.
+
+Decisions:
+- Deploy from GitHub through Vercel's Git integration, not by uploading a
+  locally built `dist/`, because a local build copies the author's private
+  soundtrack from `public/audio/` into the output.
+- Exam question banks are copyrighted. Any learning content shipped in the
+  public repo must be original or compatibly licensed.
+
+Verified: 771 tests across 66 files, lint, TypeScript and the production
+build passed. History was scanned for secrets before publishing; none found.
+Existing Prettier drift in 48 older files was left alone.
