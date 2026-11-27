@@ -22,6 +22,28 @@ export interface RenderLayer {
   readonly camera: THREE.Camera;
 }
 
+/**
+ * The glow pass, with a soft threshold. Three's default cut-off is hard: a
+ * pixel just over the threshold glows at its full brightness, so a large
+ * fixture sitting just above it (the bridge ceiling strip) flooded the frame
+ * white while one a shade dimmer did not glow at all. Over the soft band,
+ * glow fades in with brightness; anything well above it glows as before.
+ */
+export function createBloomPass(cfg = gameConfig.rendering): UnrealBloomPass {
+  const pass = new UnrealBloomPass(
+    new THREE.Vector2(1, 1),
+    cfg.bloomStrength,
+    cfg.bloomRadius,
+    cfg.bloomThreshold,
+  );
+  // Three's types leave these uniforms untyped; the shader names them.
+  const uniforms = pass.highPassUniforms as Record<string, THREE.IUniform<number> | undefined>;
+  const softness = uniforms['smoothWidth'];
+  if (!softness) throw new Error('createBloomPass: UnrealBloomPass has no smoothWidth uniform');
+  softness.value = cfg.bloomSoftness;
+  return pass;
+}
+
 export class RenderPipeline {
   private readonly composer: EffectComposer;
   private readonly interiorPass: InteriorPass;
@@ -46,12 +68,7 @@ export class RenderPipeline {
     const spacePass = new RenderPass(space.scene, space.camera);
     this.interiorPass = new InteriorPass(interior.scene, interior.camera);
 
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(1, 1),
-      cfg.bloomStrength,
-      cfg.bloomRadius,
-      cfg.bloomThreshold,
-    );
+    this.bloomPass = createBloomPass();
 
     this.composer.addPass(spacePass);
     this.composer.addPass(this.interiorPass);

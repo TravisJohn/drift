@@ -15,6 +15,7 @@ import type { PropKind, RoomSpec, ShipLayout } from '../../content/shipLayout';
 import { type BoxCollider, boxFromCenterSize } from '../../physics/colliders';
 import { type Vec3, vec3 } from '../../physics/vec3';
 import { disposeObject3D } from '../../rendering/dispose';
+import { limitGlowNearCamera } from '../../rendering/nearGlow';
 import {
   type Interval,
   type WallOpening,
@@ -103,6 +104,13 @@ const AMBIENT_INTENSITY = 0.3;
 /** Emissive level of the ceiling strips: above 1 so they bloom. */
 const STRIP_GLOW = 1.8;
 
+/** A light fixture: glows from across a room, but not when right beside the camera. */
+function fixtureMaterial(emissive: number, emissiveIntensity: number): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({ color: 0x0c1116, emissive, emissiveIntensity });
+  limitGlowNearCamera(material);
+  return material;
+}
+
 function createTrimMaterial(role: TrimRole, roomId: string | undefined): THREE.Material {
   const accent = ROOM_ACCENT[roomId ?? ''] ?? DEFAULT_ACCENT;
   switch (role) {
@@ -113,23 +121,11 @@ function createTrimMaterial(role: TrimRole, roomId: string | undefined): THREE.M
       return new THREE.MeshStandardMaterial({ color: 0x20252d, roughness: 0.45, metalness: 0.75 });
     case 'guideLight':
       // A faint line at ankle height: guides the eye down long rooms.
-      return new THREE.MeshStandardMaterial({
-        color: 0x0c1116,
-        emissive: accent,
-        emissiveIntensity: gameConfig.interior.guideLightLevel,
-      });
+      return fixtureMaterial(accent, gameConfig.interior.guideLightLevel);
     case 'accent':
-      return new THREE.MeshStandardMaterial({
-        color: 0x0c1116,
-        emissive: accent,
-        emissiveIntensity: gameConfig.interior.ribLightLevel,
-      });
+      return fixtureMaterial(accent, gameConfig.interior.ribLightLevel);
     case 'doorLight':
-      return new THREE.MeshStandardMaterial({
-        color: 0x0c1116,
-        emissive: 0x8fe6ff,
-        emissiveIntensity: 1.5,
-      });
+      return fixtureMaterial(0x8fe6ff, 1.5);
     case 'glass':
       // Barely there: a cool tint and a reflection, so a window reads as
       // glazed instead of as a hole in the wall.
@@ -483,6 +479,7 @@ export function buildShip(layout: ShipLayout): ShipWorld {
       emissiveIntensity: STRIP_GLOW,
       roughness: 0.4,
     });
+    limitGlowNearCamera(stripMaterial);
     const strip = new THREE.Mesh(
       along === 'z'
         ? new THREE.BoxGeometry(0.22, 0.05, stripLength)

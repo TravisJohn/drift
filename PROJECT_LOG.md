@@ -1585,3 +1585,45 @@ Existing Prettier drift in 48 older files was left alone.
   Continue appeared after a reload.
 - Not yet checked on the live site by hand: the warp to Vesper and the
   blackout mission.
+
+## 2026-11-28 - Visual revisit brainstorm, and the bridge whiteout fix (branch `experiment/bridge-whiteout`)
+
+**Brainstorm.** The author asked to revisit visuals, the landing page and
+game skins before more code. `docs/VISUAL-REVISIT.md` lists every mode,
+visual ideas per mode with effort, two landing page options and eight
+skin directions. Nothing in it is decided yet. The open decision that
+shapes most of it: stay procedural, or open an asset pipeline for
+authored 3D models.
+
+**Bug found during the review.** After setting a course from the command
+deck, the bridge went almost white for the whole trip. Cause, measured
+in the running game (mean frame brightness at the doorway spot: 197 with
+the bug, about 55 normally):
+- Returning from the deck levels the follow camera behind the drone at
+  the helm, which puts it in the bridge doorway, half a metre under the
+  door light bar. The bar ran through the whole wall, so from below it
+  was a 1.4 m by 0.38 m glowing panel filling the top of the view.
+- The bridge ceiling strip sits just over the glow threshold (about 0.92
+  against 0.9). The glow pass had a hard cut-off: anything over it glowed
+  at full brightness, so the 5.5 m strip flooded the frame from just
+  inside the door (168 at intensity 1.8, 65 at 1.0).
+
+Fix, three parts:
+- `world/ship/trim.ts`: each door light is now two thin strips, one on
+  each face of the door head, instead of one bar through the wall. Seen
+  from each room it looks the same; from below it is two 4 cm lines.
+- `rendering/nearGlow.ts` (new): light fixtures (door strips, rib lights,
+  guide lights, ceiling strips) are held under the glow threshold when the
+  camera is within about 1 to 3 m. They still read as lit; they stop
+  glowing. Tuning in `gameConfig.rendering.nearGlow`.
+- `rendering/renderPipeline.ts`: the glow pass has a soft threshold
+  (`gameConfig.rendering.bloomSoftness`, 0.3). Glow fades in over that
+  band instead of switching on at full strength; things well above it
+  (screens, stars, the sun) glow as before.
+
+Result at the doorway spot during cruise: 197 to 64. Other views checked
+(corridor, bridge interior, exterior) keep their glow. New tests cover the
+door strips, the near-camera patch (including fail-loud on a Three.js
+rename or a clashing shader hook), that every bright fixture is limited,
+and the soft threshold. Checked in the embedded pane only (integrated
+graphics); the author's own browser is still to be checked.

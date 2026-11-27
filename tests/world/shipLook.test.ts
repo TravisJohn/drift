@@ -22,6 +22,7 @@ import {
   buildShipBoxes,
 } from '../../src/world/ship/shipBuilder';
 import { buildTrimBoxes } from '../../src/world/ship/trim';
+import { isGlowLimitedNearCamera } from '../../src/rendering/nearGlow';
 
 describe('generatePanelTextureData (a bulkhead wall, not flat colour)', () => {
   const SIZE = 256;
@@ -198,8 +199,9 @@ describe('buildTrimBoxes', () => {
     expect(count('glass')).toBe(shipLayout.windows.length);
   });
 
-  it('gives every door a light bar and a frame without a sill to trip on', () => {
-    expect(count('doorLight')).toBe(shipLayout.doors.length);
+  it('gives every door a light bar on each face and a frame without a sill to trip on', () => {
+    // One strip facing each room the door joins.
+    expect(count('doorLight')).toBe(shipLayout.doors.length * 2);
     // Windows have 4 bars, doors 3.
     expect(count('frame')).toBe(shipLayout.windows.length * 4 + shipLayout.doors.length * 3);
   });
@@ -232,6 +234,29 @@ describe('buildTrimBoxes', () => {
       expect(piece.size.x).toBeGreaterThan(0);
       expect(piece.size.y).toBeGreaterThan(0);
       expect(piece.size.z).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps door lights thin from below, so a camera under a doorway is not flooded with glow', () => {
+    // A bar as deep as the wall showed a wide glowing panel overhead; with
+    // the follow camera in a doorway it filled the frame and bloom turned
+    // the whole bridge white.
+    const t = shipLayout.wallThickness;
+    const lights = trim.filter((p) => p.role === 'doorLight');
+    for (const light of lights) {
+      expect(Math.min(light.size.x, light.size.z)).toBeLessThanOrEqual(0.05);
+    }
+    // Each strip has exactly one partner across the wall: the same door seen
+    // from the other room.
+    for (const light of lights) {
+      const partners = lights.filter((other) => {
+        if (other === light) return false;
+        return Math.hypot(other.center.x - light.center.x, other.center.z - light.center.z) < 0.5;
+      });
+      expect(partners.length).toBe(1);
+      const partner = partners[0]!;
+      const gap = Math.hypot(partner.center.x - light.center.x, partner.center.z - light.center.z);
+      expect(gap).toBeGreaterThan(t * 0.9);
     }
   });
 
@@ -394,6 +419,26 @@ describe('the lit ship', () => {
       colours.add(material.emissive.getHex());
     });
     expect(colours.size).toBe(shipLayout.rooms.length);
+    ship.dispose();
+  });
+
+  it('holds every bright light fixture under the glow threshold when the camera is beside it', () => {
+    const ship = buildShip(shipLayout);
+    const threshold = gameConfig.rendering.bloomThreshold;
+    let fixtures = 0;
+    ship.group.traverse((obj) => {
+      const material = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (!material?.isMeshStandardMaterial || material.emissiveMap) return;
+      // Same luminance weights the glow pass uses.
+      const c = material.emissive.clone().multiplyScalar(material.emissiveIntensity);
+      if (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b <= threshold) return;
+      fixtures++;
+      expect(isGlowLimitedNearCamera(material), `${obj.name || 'unnamed'} is not limited`).toBe(
+        true,
+      );
+    });
+    // Door strips, rib lights and the ceiling strips at least.
+    expect(fixtures).toBeGreaterThanOrEqual(3);
     ship.dispose();
   });
 
