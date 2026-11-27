@@ -316,6 +316,20 @@ export const gameConfig = {
     bloomRadius: 0.6,
     bloomThreshold: 0.9,
     /**
+     * Width of the brightness band over which glow fades in above the
+     * threshold. 0 is a hard cut-off, where a large surface barely over the
+     * threshold glows at full strength and can wash out the frame.
+     */
+    bloomSoftness: 0.3,
+    /**
+     * Light fixtures right beside the camera are held under the glow
+     * threshold, or a strip filling the view washes the frame white.
+     * `cap` is the brightest they emit up close (keep it below
+     * `bloomThreshold`); full effect within `fullWithin` metres, none
+     * beyond `clearBeyond`.
+     */
+    nearGlow: { cap: 0.75, fullWithin: 1.0, clearBeyond: 3.0 },
+    /**
      * Multisample anti-aliasing of the offscreen frame. Off by default:
      * on integrated graphics 4 samples cost as much as the whole rest of
      * the frame (measured ~10 ms). `fxaa` smooths edges for about 1 ms.

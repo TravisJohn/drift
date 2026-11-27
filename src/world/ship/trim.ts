@@ -1,7 +1,8 @@
 /**
  * trim - the small built details that stop a room reading as a bare box:
  * baseboards with a floor-level guide light, ceiling coves, frames around
- * every window and door, a light bar over each doorway, window glass.
+ * every window and door, a light strip under each door head (one per
+ * face), window glass.
  *
  * Pure: derived from the same layout data and wall boxes as the ship
  * itself, so the details always fit the walls. Only the glass gains
@@ -49,6 +50,11 @@ const COVE_HEIGHT = 0.12;
 const WINDOW_FRAME = 0.07;
 const DOOR_FRAME = 0.1;
 const DOOR_LIGHT_HEIGHT = 0.03;
+/**
+ * How deep each door light strip is, measured into the wall. Kept thin so
+ * that from right under a door head it reads as a line, not a lit panel.
+ */
+const DOOR_LIGHT_DEPTH = 0.04;
 const GLASS_THICKNESS = 0.02;
 /** Wall pieces shorter than this get no baseboard (door-side slivers). */
 const MIN_RUN = 0.2;
@@ -211,6 +217,23 @@ export function buildTrimBoxes(layout: ShipLayout, walls: readonly WallBox[]): T
     const edge = a && b ? sharedEdge(a, b) : null;
     if (!edge) continue; // validateLayout rejects this before we get here
     const center = (edge.span.start + edge.span.end) / 2;
+    // A light strip under the door head on each face of the wall, one for
+    // each room. Not one bar through the whole wall: its underside was a wide
+    // glowing panel, and with the follow camera in a doorway it filled the
+    // view and bloom washed out the frame.
+    const faceOffset = t / 2 + 1.5 * PROUD - DOOR_LIGHT_DEPTH / 2;
+    const doorLights = [-1, 1].map((side) =>
+      onWall(
+        edge.axis,
+        edge.at + side * faceOffset,
+        center,
+        layout.doorHeight - DOOR_FRAME - DOOR_LIGHT_HEIGHT / 2,
+        layout.doorWidth - 2 * DOOR_FRAME,
+        DOOR_LIGHT_HEIGHT,
+        DOOR_LIGHT_DEPTH,
+        'doorLight',
+      ),
+    );
     trim.push(
       ...openingFrame(
         edge.axis,
@@ -222,17 +245,7 @@ export function buildTrimBoxes(layout: ShipLayout, walls: readonly WallBox[]): T
         DOOR_FRAME,
         t + 2 * PROUD,
       ),
-      // A light bar under the door head, seen from both rooms.
-      onWall(
-        edge.axis,
-        edge.at,
-        center,
-        layout.doorHeight - DOOR_FRAME - DOOR_LIGHT_HEIGHT / 2,
-        layout.doorWidth - 2 * DOOR_FRAME,
-        DOOR_LIGHT_HEIGHT,
-        t + 3 * PROUD,
-        'doorLight',
-      ),
+      ...doorLights,
     );
   }
   return trim;
